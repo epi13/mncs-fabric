@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mncs-fabric"
+version = "0.1.0a0"
+description = "Operator-controlled bounded execution and evidence fabric for MNCS"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {file = "LICENSE"}
+authors = [{name = "MNCS Fabric Contributors"}]
+keywords = ["mncs", "evidence", "distributed-systems", "reproducibility", "testing"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = []
+
+[project.scripts]
+mncs-fabric = "mncs_fabric.cli:main"
+
+[project.urls]
+Repository = "https://github.com/epi13/mncs-fabric"
+Issues = "https://github.com/epi13/mncs-fabric/issues"
+MNCS = "https://github.com/epi13/machine-native-complexity-standard"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
