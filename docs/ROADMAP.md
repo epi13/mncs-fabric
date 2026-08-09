@@ -19,14 +19,18 @@
 - [x] durable local controller/worker ledgers;
 - [x] replay and duplicate rejection;
 - [x] local concurrency/admission limits;
+- [x] additive EA-NEXT-005 challenge/replay compatibility;
 - [ ] Fedora-to-Fedora two-node evidence run.
 
 - [~] one-request network service lifecycle; production multi-host operation
   and certificate provisioning remain operator responsibilities;
-- [ ] Fedora-to-Fedora two-node evidence run.
 
 Fabric does not claim Phase 1 complete: no real second-host run has occurred,
 and bulk execution-bundle transfer is not yet implemented.
+
+EA-NEXT-005 challenge/replay compatibility is implemented locally and in the
+transport envelope, but awaits a genuine physical-host run for deployment
+evidence.
 
 ## Phase 2 — scheduler foundation (partially implemented)
 

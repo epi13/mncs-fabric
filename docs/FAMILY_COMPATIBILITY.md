@@ -4,12 +4,12 @@ This iteration was aligned against these local sibling snapshots:
 
 | Project | Commit used | Boundary used | Status |
 | --- | --- | --- | --- |
-| `machine-native-complexity-standard` | `49400a41f3b7b36de8a25e6cac1141d3980878be` | EA-NEXT-001 typed receipt and EA-NEXT-002 immutable execution bundle `0.1-experimental` | receipt adapter and offline bundle verifier; assurance remains UNKNOWN where Fabric cannot establish a property |
-| `MNCS-Commons` | `108ce56000a879c0b2595cab8665b1656c0a1bd5` | append/recovery, locking, and structured adapter concepts | Fabric-owned ledger; no private Commons dependency |
-| `mncs-forge-mcp` | `5a5691709b26a2f923e14674138bdb215471a5a7` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
-| `mncs-language` | `26cd7f015cb857abe3f0601780de096e04dea7b4` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
-| `RAVEL` | `2dfedd2a7edbab12b7e301228d56b1416f172f78` | lifecycle/episode identity awareness | no RAVEL conformance claim |
-| `Machine-Native-Experimental-Learning` | `3a44380c56ded6a1fae1aa7a6a908f28ad1dd953` | identity/lifecycle and native artifact vocabulary | no imported private contract |
+| `machine-native-complexity-standard` | `80f08d312dce963265c7f69ac5b4bae8245bd692` | EA-NEXT-001 typed receipt, EA-NEXT-002 immutable execution bundle, and EA-NEXT-005 challenge/replay `0.1-experimental` | receipt, bundle, and additive challenge/replay adapters; assurance remains UNKNOWN where Fabric cannot establish a property |
+| `MNCS-Commons` | `95583b9b061101366ffad887ecc31c6fe60bea8d` | append/recovery, locking, and structured adapter concepts | Fabric-owned ledger; no private Commons dependency |
+| `mncs-forge-mcp` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
+| `mncs-language` | `f234cc8079faa5895a38b7abce0c96031f7d2565` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
+| `RAVEL` | `d572d68ab9c8eaf163425748d44729aaa8028e98` | lifecycle/episode identity awareness | no RAVEL conformance claim |
+| `Machine-Native-Experimental-Learning` | `5da7a2e69e4a4d3c6333bfa15a824ee0fe38e0e4` | identity/lifecycle and native artifact vocabulary | no imported private contract |
 | `gimp-local-mcp` | `e824c6a25db2a262c4f9f55801d77d96c95eae43` | provider-neutral CPU/accelerator/offload placement direction | no CUDA-specific requirement imported |
 
 ## Supported receipt assumptions
@@ -22,7 +22,9 @@ Fabric job, candidate, manifest, runner, and environment observations.
 
 Unknown receipt versions fail closed. The self-contained shape snapshot is
 `compat/mncs-execution-receipt-0.1.snapshot.json`; the optional checker accepts
-a sibling schema path but is never required by CI.
+a sibling schema path but is never required by CI. The corresponding
+`scripts/check_mncs_challenge_compat.py` checks the current challenge, receipt,
+and binding validators together when a read-only sibling checkout is present.
 
 ## EA-NEXT-002 bundle assumptions
 
@@ -36,6 +38,17 @@ require logical bundle, harness, input, and policy agreement.
 Fabric currently consumes and verifies bundle archives; it does not yet stream
 bulk bundle material as a network dispatch payload. A network worker therefore
 requires pre-positioned verified artifacts until the transfer profile is added.
+
+## EA-NEXT-005 challenge/replay assumptions
+
+`compat/mncs-execution-challenge-0.1-experimental.snapshot.json` pins the
+current challenge, scope, and replay-receipt shape. Fabric carries an optional
+scoped challenge in dispatch envelopes, copies its nonce/window into the typed
+receipt, and consumes it once in a Fabric-owned durable replay ledger. The
+protocol request ID and the MNCS challenge identity remain separate replay
+layers. The replay store is operator-controlled and does not establish
+freshness beyond that store, correctness, isolation, custody, independence,
+conformance, or promotion.
 
 Fabric does not emit MNCS/MNCDS conformance, execution assurance, protected
 custody, independent evaluation, sandbox, encryption, or attestation claims.

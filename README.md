@@ -39,6 +39,7 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
 - explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
+- additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
 
@@ -99,6 +100,11 @@ mncs-fabric worker serve --worker-id ID --controller-id ID --bundle-root ROOT \
 `worker serve` is explicit and serves one bounded TLS request; it defaults to
 loopback only when `--host` is omitted and never falls back to plaintext. The
 controller-side Python API is `NetworkController` plus `TLSNetworkTransport`.
+
+The repeatable physical-host harness is `scripts/two_host_fedora_test.py`. SSH
+is limited to bootstrap, staging, diagnostics, and worker lifecycle; the
+candidate request is sent through direct Fabric mTLS. It requires explicit
+operator arguments and never uses SSH host-key bypasses.
 
 The public application boundary is `mncs_fabric.service.FabricService`:
 `nodes`, `capabilities`, `validate_plan`, `execute_local`, `verify_record`,

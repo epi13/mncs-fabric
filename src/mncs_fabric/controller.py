@@ -8,6 +8,7 @@ import threading
 from typing import Any
 
 from .canonical import sha256_identity
+from .challenges import bind_challenge_to_receipt
 from .errors import ProtocolError
 from .models import validate_job_plan
 from .node import utc_now
@@ -59,26 +60,32 @@ class LocalController:
             outputs.append(response)
         return outputs
 
-    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str) -> dict[str, Any]:
+    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str, challenge: dict[str, Any] | None = None) -> dict[str, Any]:
         """Dispatch through a transport without moving protocol semantics into it."""
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
-        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": sha256_identity({"job_plan": checked, "artifact_manifest": manifest})}
+        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": sha256_identity({"job_plan": checked, "artifact_manifest": manifest, **({"execution_challenge": challenge} if challenge is not None else {})})}
+        if challenge is not None:
+            payload["execution_challenge"] = challenge
         envelope = make_envelope("dispatch.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request_id, job_id=checked["job_id"], nonce="dispatch-" + sha256_identity({"request": request_id, "worker": worker_id})[7:55], payload=payload, created_at=created, expires_at=expires)
         self.ledger.append("protocol.controller-dispatch", envelope)
         response = transport.request(envelope)
         if response.get("message_type") == "execution.result":
-            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"])
+            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge)
         return validate_envelope(response)
 
-    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None) -> dict[str, Any]:
+    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None) -> dict[str, Any]:
         value = validate_envelope(response)
         record = value["payload"].get("record", {})
         if value["worker_id"] != worker_id or record.get("job_identity") != job_identity or (candidate_identity is not None and record.get("candidate_identity") != candidate_identity) or (artifact_manifest_identity is not None and record.get("artifact_manifest_identity") != artifact_manifest_identity):
             raise ProtocolError("controller response identity binding does not match the dispatch")
+        if challenge is not None:
+            receipt = value["payload"].get("receipt")
+            if not isinstance(receipt, dict) or not bind_challenge_to_receipt(challenge, receipt).valid:
+                raise ProtocolError("controller response receipt does not bind to its execution challenge")
         return value
 
 
@@ -99,7 +106,7 @@ class NetworkController(LocalController):
             raise ProtocolError(f"worker is already registered: {worker_id}")
         self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=worker_id, capabilities=capabilities, concurrency_limit=concurrency_limit))
 
-    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None) -> list[dict[str, Any]]:
+    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
@@ -117,7 +124,7 @@ class NetworkController(LocalController):
                 transport, _ = self.remote_workers[worker_id]
                 request = request_id or sha256_identity({"job_identity": checked["job_identity"], "worker_id": worker_id, "replica": len(outputs)})
                 try:
-                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request))
+                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge))
                 except (ProtocolError, OSError, TimeoutError) as exc:
                     outputs.append({"disposition": "UNKNOWN", "reason": "WORKER_UNAVAILABLE", "worker_id": worker_id, "diagnostic": str(exc)})
         finally:

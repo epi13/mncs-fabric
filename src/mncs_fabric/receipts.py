@@ -91,6 +91,17 @@ def _iso(value: datetime) -> str:
     return value.isoformat().replace("+00:00", "Z")
 
 
+def execution_policy_identity_for_plan(plan: dict[str, Any]) -> str:
+    """Return the raw EA-NEXT-compatible policy identity used by the adapter."""
+    policy = plan.get("network_policy")
+    argv = plan.get("argv") if isinstance(plan.get("argv"), list) else []
+    # Preserve the existing receipt adapter's v0.2 projection: a Fabric
+    # execution record carries the requested timeout separately, while the
+    # policy identity only includes an observed termination timeout when that
+    # companion observation exists.
+    return _raw(sha256_identity({"network_policy": policy, "argv": argv, "timeout": None}))
+
+
 def _stream(value: object, limit: int | None) -> dict[str, Any]:
     stream = value if isinstance(value, dict) else {}
     text = stream.get("captured_utf8") if isinstance(stream.get("captured_utf8"), str) else ""
@@ -151,6 +162,7 @@ def build_execution_receipt(
     runner_identity: str = "mncs-fabric-local-runner-v1",
     runner_version: str = "0.2.0a0",
     placement_reference: dict[str, Any] | None = None,
+    challenge: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the current experimental MNCS typed receipt from one Fabric record."""
 
@@ -188,6 +200,13 @@ def build_execution_receipt(
     policy_identity = _raw(sha256_identity({"network_policy": record.get("policy_observations", {}).get("network_policy") if isinstance(record.get("policy_observations"), dict) else None, "argv": argv, "timeout": record.get("termination_observations", {}).get("timeout_seconds") if isinstance(record.get("termination_observations"), dict) else None}))
     outcome = record.get("outcome") if record.get("outcome") in {"PASS", "FAIL", "UNKNOWN"} else "UNKNOWN"
     execution_status = outcome if not rejected else "UNKNOWN"
+    challenge_observation = {
+        "nonce": nonce,
+        "issued_at": _iso(challenge_issued),
+        "expires_at": _iso(challenge_expires),
+    }
+    if isinstance(challenge, dict):
+        challenge_observation = {key: challenge[key] for key in ("nonce", "issued_at", "expires_at") if key in challenge}
     receipt: dict[str, Any] = {
         "schema_version": RECEIPT_SCHEMA,
         "record_type": RECEIPT_TYPE,
@@ -198,7 +217,7 @@ def build_execution_receipt(
         "policy": {"execution_policy_identity": policy_identity, "placement_policy_identity": None, "requested_limits": [{"resource": "timeout", "value": float(record.get("timeout_seconds", 0) or 0), "unit": "seconds"}] if record.get("timeout_seconds") else [], "result_semantics": "Fabric records declared result artifact identities; project evaluators define semantic result meaning."},
         "runner": {"runner_identity": runner_identity, "runner_version": runner_version, "executable_identity": _raw(executable_identity) if executable_identity else None, "runtime_identity": _id("runtime-", runtime_identity) if runtime_identity else "runtime-unknown", "command_identity": _raw(sha256_identity(argv))},
         "environment": {"environment_identity": environment_identity},
-        "challenge": {"nonce": nonce, "issued_at": _iso(challenge_issued), "expires_at": _iso(challenge_expires)},
+        "challenge": challenge_observation,
         "request": {"status": "rejected" if rejected else "accepted", "observed_at": _iso(challenge_issued)},
         "lifecycle": {"started_at": None if rejected else _iso(started), "ended_at": None if rejected else _iso(finished), "duration_seconds": None if rejected else max(0.0, (finished - started).total_seconds()), "termination_category": category},
         "process": {"exit_code": None if rejected else record.get("exit_code"), "signal": signal, "harness_status": "UNKNOWN" if rejected else outcome, "result_identity": result_identity},

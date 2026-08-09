@@ -7,11 +7,14 @@ from pathlib import Path
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.auth import KeyRecord, Keyring
 from mncs_fabric.canonical import attach_identity, sha256_identity
+from mncs_fabric.challenges import issue_execution_challenge
 from mncs_fabric.controller import LocalController
 from mncs_fabric.errors import ProtocolError
 from mncs_fabric.models import validate_job_plan
 from mncs_fabric.protocol import make_envelope, validate_envelope
 from mncs_fabric.worker import LocalWorker
+from mncs_fabric.receipts import execution_policy_identity_for_plan
+from mncs_fabric.transport import InProcessTransport
 
 
 def identity(char: str) -> str:
@@ -94,3 +97,19 @@ class ProtocolTests(unittest.TestCase):
         forged["message_id"] = sha256_identity({key: value for key, value in forged.items() if key != "message_id"})
         with self.assertRaises(ProtocolError):
             controller.verify_response(forged, worker_id="worker-a", job_identity=plan["job_identity"], candidate_identity=plan["candidate_identity"], artifact_manifest_identity=plan["artifact_manifest_identity"])
+
+    def test_scoped_execution_challenge_is_carried_and_bound_to_receipt(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name) / "bundle"
+        root.mkdir()
+        (root / "task.py").write_text("print('challenged')", encoding="utf-8")
+        plan, manifest = dispatch_values(root)
+        worker = LocalWorker("worker-a", root, Path(temporary.name) / "worker.jsonl")
+        controller = LocalController("controller", Path(temporary.name) / "controller.jsonl")
+        scope = {"subject_identity": plan["candidate_identity"][7:], "candidate_id": "candidate-" + plan["candidate_identity"][7:], "bundle_identity": manifest["manifest_identity"][7:], "execution_policy_identity": execution_policy_identity_for_plan(plan), "runner_identity": "mncs-fabric-worker-worker-a"}
+        challenge = issue_execution_challenge(issuer_identity="controller", scope=scope, ttl_seconds=60).challenge
+        assert challenge is not None
+        response = controller.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id="worker-a", request_id="challenge-request", challenge=challenge)
+        self.assertEqual(response["message_type"], "execution.result")
+        self.assertEqual(response["payload"]["receipt"]["challenge"]["nonce"], challenge["nonce"])

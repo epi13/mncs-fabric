@@ -44,6 +44,12 @@ conflicting replay.
 
 `receipts.py` produces the current experimental MNCS typed execution receipt as a companion observation. It maps only facts present in a Fabric execution record and emits UNKNOWN or `not-asserted` for sandboxing, network isolation, custody, independence, attestation, correctness, and conformance. See [docs/FAMILY_COMPATIBILITY.md](docs/FAMILY_COMPATIBILITY.md).
 
+`challenges.py` is an additive EA-NEXT-005 compatibility boundary. A
+controller may carry a verifier-scoped challenge through dispatch; the worker
+copies only its nonce/window observations into the receipt, and the controller
+consumes the challenge once in a separate durable local replay ledger. Fabric
+protocol request replay and MNCS freshness replay are deliberately distinct.
+
 ### Execution-bundle compatibility
 
 `bundles.py` verifies the current MNCS EA-NEXT-002 ZIP shape without extracting
@@ -51,6 +57,11 @@ untrusted content. It keeps the raw logical bundle identity distinct from the
 exact `sha256:` archive identity and binds receipts through a companion record.
 Bulk cross-host archive transfer is deferred; network dispatch uses
 pre-positioned verified artifacts.
+
+The bounded operator harness in `scripts/two_host_fedora_test.py` stages the
+exact source, trust material, and verified execution material over SSH, then
+uses direct Fabric mTLS for the request. SSH is not a candidate execution
+path, and the harness requires explicit host/key arguments.
 
 ### Artifact store
 

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .auth import Keyring
+from .challenges import validate_execution_challenge
 from .canonical import is_sha256_identity, sha256_identity, verify_identity
 from .errors import ProtocolError
 from .models import validate_job_plan
@@ -67,13 +68,20 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if plan["artifact_manifest_identity"] != manifest["manifest_identity"]:
             raise ProtocolError("dispatch plan and manifest identities differ")
         if value.get("request_identity") != sha256_identity({"job_plan": plan, "artifact_manifest": manifest}):
-            raise ProtocolError("dispatch request identity does not match its payload")
+            if "execution_challenge" not in value or value.get("request_identity") != sha256_identity({"job_plan": plan, "artifact_manifest": manifest, "execution_challenge": value.get("execution_challenge")}):
+                raise ProtocolError("dispatch request identity does not match its payload")
+        if "execution_challenge" in value and not validate_execution_challenge(value["execution_challenge"]).valid:
+            raise ProtocolError("dispatch execution challenge is invalid")
     elif message_type == "execution.result":
         record = value.get("record")
         if not isinstance(record, dict) or not is_sha256_identity(record.get("record_id")) or not verify_identity(record, "record_id"):
             raise ProtocolError("execution result must contain a self-identifying Fabric record")
         if value.get("result_identity") != record["record_id"]:
             raise ProtocolError("execution result identity does not match its record")
+        if "receipt" in value:
+            receipt = value["receipt"]
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("receipt_identity"), str) or len(receipt["receipt_identity"]) != 64 or any(char not in "0123456789abcdef" for char in receipt["receipt_identity"]):
+                raise ProtocolError("execution result receipt identity is invalid")
     elif message_type in {"status.request", "result.collect"}:
         if not is_sha256_identity(value.get("job_identity")):
             raise ProtocolError("status and collection requests require a job identity")
