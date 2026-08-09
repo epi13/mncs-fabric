@@ -37,3 +37,12 @@ shell or service manager. `scripts/two_host_windows_gpu_test.py` requires an
 explicit operator endpoint and uses strict SSH host-key checking for bootstrap
 preflight only. It does not create an SSH tunnel or execute candidate work over
 SSH.
+
+The first commissioned Windows worker used an explicit endpoint at
+`192.168.1.78` with strict key-only SSH bootstrap, then ran the Fabric worker
+from its operator-provisioned Python 3.11 GPU environment. A synchronized
+Torch 2.11.0+cu128 probe passed FP32, FP16, and BF16 operations on an NVIDIA
+GeForce RTX 4060 Laptop GPU. The runtime observation was ingested before
+dispatch and bound to the resource snapshot, admission decision, execution
+record, and receipt. This is bounded operator-controlled evidence; it is not
+attestation, semantic correctness, or independent evaluation.

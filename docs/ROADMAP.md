@@ -63,21 +63,22 @@ does not establish independent freshness or custody.
   explicit freshness and unknown-value handling;
 - [x] provider-neutral CPU/full-accelerator/sequential-offload admission
   fixtures with deterministic decision identities;
-- [~] placement evidence binding is implemented, but actual CUDA and
-  sequential-offload runtime evidence remains unavailable on the current
-  physical worker;
+- [x] a Windows NVIDIA worker produced synchronized CUDA runtime evidence that
+  was ingested and bound to resource-aware full-accelerator admission;
+- [~] sequential-offload runtime evidence remains unavailable; no Accelerate
+  environment is installed on the commissioned worker;
 - [ ] enforced resource reservations or production-grade accelerator sharing;
 
 ## Phase 3 — heterogeneous cohort
 
-- [~] Windows worker packaging and bounded native lifecycle helper; direct
-  physical Windows acceptance remains blocked until an explicit operator SSH
-  endpoint is configured;
-- [~] runtime-profile identity and optional synchronized CUDA probe workload;
-  no physical CUDA proof is claimed by this iteration;
+- [x] Windows worker packaging and bounded native lifecycle helper; direct
+  Fedora-to-Windows Fabric mTLS/native-bundle execution is recorded;
+- [x] runtime-profile identity and synchronized CUDA probe evidence for the
+  commissioned Windows Python environment;
 - Raspberry Pi OS ARM worker packaging;
 - portable frozen bundles;
-- cross-OS and cross-architecture result comparison;
+- [~] cross-OS result comparison and a two-node heterogeneous collection are
+  recorded; three-node collection and cross-architecture comparison remain;
 - slow-node, timeout, and resource-pressure profiles.
 
 ## Phase 4 — controlled fault injection

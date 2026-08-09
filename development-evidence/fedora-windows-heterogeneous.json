@@ -1,0 +1,38 @@
+{
+  "schema_version": "mncs-fabric.heterogeneous-cross-os.v0.1",
+  "record_type": "mncs-fabric.heterogeneous-cross-os",
+  "fabric_commit": "589f3e34a4c47e766a68b97565013c4f01e43655",
+  "direct_fabric_tls": true,
+  "ssh_tunnel_used": false,
+  "ssh_staged_candidate_material": false,
+  "bundle": {
+    "bundle_identity": "ee55c2193c538ac010a0404eb20f717b25e06a6cff30df561774e95a3d69d036",
+    "archive_identity": "sha256:7e4982531e97ac8fffc6c27f1902cf9001c120cd06142b8230de31f7b5257e54",
+    "transfer_history": ["COMMITTED", "ALREADY_PRESENT"]
+  },
+  "records": [
+    {
+      "worker_identity": "fedora-controller-local",
+      "disposition": "EXECUTED",
+      "record_identity": "sha256:6463677798489b0cd6203265519f29a1fa305530586fd16a678213532c361fc2",
+      "receipt_identity": "67b6020c61088db5ba53edde8fed741e169361488885a6bb4a8fa273e5f42cf7"
+    },
+    {
+      "worker_identity": "collamore02-windows",
+      "disposition": "DUPLICATE_IDEMPOTENT",
+      "record_identity": "sha256:ee5fbb06877c9b85356092414023ee3c7e87de00fdc900aa04295b3b1b1f9791",
+      "receipt_identity": "d8b5e2f5bacb9dd9f98bec6fbc7d7c09adfd7202c2ef5d575cd8e5254352880b"
+    }
+  ],
+  "cohort_identity": "sha256:045f66be24ee9979dba4cb01d3a8540d8af26fb14557f2a4e902329b60e05869",
+  "collection_identity": "sha256:15d8dfbe415ce6ee074c5299469372674fd009587e81e067de142048f3d31d85",
+  "reconciliation_outcome": "PASS",
+  "collection_outcome": "PASS",
+  "portable_result_agreement": "PASS",
+  "claim_boundary": "operator-controlled cross-OS development evidence; agreement is not attestation, correctness, protected custody, independence, or conformance",
+  "limitations": [
+    "Only Fedora local and Windows were included in this exact-revision cross-OS collection; the separate Fedora remote regression is retained as a distinct evidence run.",
+    "The collection does not establish semantic equivalence for arbitrary workloads or organizational independence.",
+    "Windows GPU runtime proof is scoped to the identified Python profile and freshness window."
+  ]
+}

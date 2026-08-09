@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from mncs_fabric.api import FabricClient, LocalWorkerConfig
+from mncs_fabric.api import FabricClient, LocalWorkerConfig, PlacementRequest
 from mncs_fabric.canonical import verify_identity
 from mncs_fabric.runtime import (
     build_runtime_observation,
@@ -14,6 +14,8 @@ from mncs_fabric.runtime import (
     validate_runtime_profile,
 )
 from mncs_fabric.worker import LocalWorker
+from mncs_fabric.artifacts import build_manifest
+from mncs_fabric.models import validate_job_plan
 
 
 class RuntimeContractTests(unittest.TestCase):
@@ -64,6 +66,30 @@ class RuntimeContractTests(unittest.TestCase):
             binding = client.bind_runtime_observation(result, observation)
             self.assertTrue(verify_identity(binding, "runtime_binding_identity"))
             self.assertEqual(binding["runtime_profile_identity"], profile["runtime_profile_identity"])
+
+    def test_public_dispatch_returns_runtime_observation_binding(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "task.py").write_text("from pathlib import Path\nPath('result.json').write_text('ok')\n", encoding="utf-8")
+            manifest = build_manifest(bundle)
+            plan = validate_job_plan({
+                "schema_version": "mncs-fabric.job-plan.v0.1", "job_id": "runtime:dispatch",
+                "candidate_identity": "sha256:" + "a" * 64, "evaluator_identity": None,
+                "artifact_manifest_identity": manifest["manifest_identity"], "argv": ["@python", "task.py"],
+                "working_directory": ".", "timeout_seconds": 5, "output_limit_bytes": 4096,
+                "environment": {}, "required_capabilities": ["python"], "result_paths": ["result.json"],
+                "network_policy": "DECLARED_OFFLINE",
+            })
+            client = FabricClient("runtime-dispatch-controller", root / "controller.jsonl")
+            client.register_local_worker(LocalWorkerConfig("runtime-dispatch-worker", bundle, root / "worker.jsonl"))
+            profile = client.runtime_profile("runtime-dispatch-worker")
+            observation = client.ingest_runtime_observation("runtime-dispatch-worker", {"execution_probe": "UNKNOWN", "precision_probes": {}, "accelerator_backend": None}, runtime_profile=profile)
+            result = client.execute(plan, manifest, worker_id="runtime-dispatch-worker", placement=PlacementRequest(execution_device="cpu"))[0]
+            self.assertEqual(result["disposition"], "EXECUTED")
+            self.assertEqual(result["runtime_observation"]["runtime_observation_identity"], observation["runtime_observation_identity"])
+            self.assertEqual(result["runtime_binding"]["record_identity"], result["record_identity"])
 
 
 if __name__ == "__main__":

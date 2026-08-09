@@ -56,6 +56,12 @@ def _status(value: object, field: str) -> str:
     return str(value)
 
 
+def _receipt_identity(value: object) -> bool:
+    """MNCS receipts use a bare hexadecimal digest for historical reasons."""
+
+    return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
+
+
 @dataclass(frozen=True, slots=True)
 class RuntimeProfile:
     worker_identity: str
@@ -270,7 +276,7 @@ def validate_runtime_binding(value: object, *, expected_worker_id: str | None = 
             raise ValidationError(f"{field} is invalid")
     _optional_text(value["request_identity"], "request_identity", 256)
     for field in ("record_identity", "receipt_identity"):
-        if value[field] is not None and not is_sha256_identity(value[field]):
+        if value[field] is not None and not (is_sha256_identity(value[field]) or (field == "receipt_identity" and _receipt_identity(value[field]))):
             raise ValidationError(f"{field} is invalid")
     _text(value["claim_boundary"], "claim_boundary", 512)
     return dict(value)

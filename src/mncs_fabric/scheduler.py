@@ -18,6 +18,7 @@ class WorkerSlot:
     concurrency_limit: int = 1
     available: bool = True
     resource_snapshot: dict[str, object] | None = None
+    runtime_observation: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ def schedule(plan: object, workers: Iterable[WorkerSlot], *, replicas: int = 1, 
             if worker.resource_snapshot is None:
                 admission = {"worker_identity": worker.worker_id, "disposition": "UNKNOWN", "reason_code": "RESOURCE_OBSERVATION_UNKNOWN", "reason": "worker has no resource snapshot"}
             else:
-                admission = evaluate_placement(placement, worker.resource_snapshot, worker.capabilities)
+                admission = evaluate_placement(placement, worker.resource_snapshot, worker.capabilities, worker.runtime_observation)
             admissions.append({"worker_id": worker.worker_id, **admission})
             if admission.get("disposition") == "PASS":
                 admitted.append(worker)

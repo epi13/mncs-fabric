@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0a6 - runtime-aware placement admission and Windows CUDA evidence
+
+- bind a validated worker runtime observation to accelerator admission without
+  changing the machine resource snapshot meaning;
+- carry runtime profile/observation identities through dispatch replay,
+  worker results, and runtime bindings; and
+- add an explicit local Windows operator configuration path with strict
+  public-key-only bootstrap diagnostics and case-insensitive Windows hostname
+  comparison.
+
+The physical Windows CUDA result is recorded as operator-controlled
+development evidence only; sequential CPU-offload evidence remains unavailable.
+
 ## 0.2.0a5 - runtime profiles and Windows worker preparation
 
 - added identity-addressable Python runtime profiles to authenticated worker

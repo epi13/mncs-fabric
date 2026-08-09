@@ -36,8 +36,9 @@ PUBLIC_FEATURES = {
     "execution_collections": True,
     "runtime_profile": True,
     "runtime_observation": True,
+    "runtime_aware_admission": True,
     "windows_worker_launcher": True,
-    "cuda_execution_probe": False,
+    "cuda_execution_probe": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {

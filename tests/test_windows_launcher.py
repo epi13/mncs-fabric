@@ -19,7 +19,7 @@ class WindowsLauncherTests(unittest.TestCase):
     def test_launcher_requires_explicit_bounded_command(self) -> None:
         args = build_parser().parse_args(["start", "--state", "state.json", "--worker-id", "worker", "--stdout", "out.log", "--stderr", "err.log", "--", sys.executable, "-m", "mncs_fabric"])
         self.assertEqual(args.worker_id, "worker")
-        self.assertEqual(args.command[-2:], ["-m", "mncs_fabric"])
+        self.assertEqual(args.worker_command[-2:], ["-m", "mncs_fabric"])
 
 
 if __name__ == "__main__":

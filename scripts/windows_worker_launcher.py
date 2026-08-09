@@ -86,7 +86,9 @@ def start(args: argparse.Namespace) -> int:
         old = _load(state_path)
         if _alive(old):
             raise RuntimeError(f"worker is already running with pid {old['pid']}")
-    command = list(args.command or [])
+    command = list(args.worker_command or [])
+    if command and command[0] == "--":
+        command.pop(0)
     if not command:
         raise RuntimeError("start requires a bounded worker command after --")
     stdout_path = Path(args.stdout).resolve()
@@ -95,7 +97,14 @@ def start(args: argparse.Namespace) -> int:
     stderr_path.parent.mkdir(parents=True, exist_ok=True)
     creationflags = 0
     if os.name == "nt":
-        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(subprocess, "DETACHED_PROCESS", 0)
+        creationflags = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+            # OpenSSH sessions may place children in a job object. Request a
+            # breakaway where the host policy permits it; the launcher still
+            # owns and validates the resulting PID token.
+            | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+        )
     with stdout_path.open("ab") as stdout, stderr_path.open("ab") as stderr:
         process = subprocess.Popen(command, cwd=str(Path(args.cwd).resolve()) if args.cwd else None, stdin=subprocess.DEVNULL, stdout=stdout, stderr=stderr, shell=False, creationflags=creationflags, start_new_session=(os.name == "posix"))
     token = _token(process.pid)
@@ -144,14 +153,14 @@ def logs(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="bounded Fabric worker lifecycle helper")
-    sub = parser.add_subparsers(dest="command", required=True)
+    sub = parser.add_subparsers(dest="action", required=True)
     start_parser = sub.add_parser("start")
     start_parser.add_argument("--state", required=True)
     start_parser.add_argument("--worker-id", required=True)
     start_parser.add_argument("--stdout", required=True)
     start_parser.add_argument("--stderr", required=True)
     start_parser.add_argument("--cwd")
-    start_parser.add_argument("command", nargs=argparse.REMAINDER, help="worker command; place -- before it")
+    start_parser.add_argument("worker_command", nargs=argparse.REMAINDER, help="worker command; place -- before it")
     sub.add_parser("status").add_argument("--state", required=True)
     sub.add_parser("stop").add_argument("--state", required=True)
     log_parser = sub.add_parser("logs")
@@ -163,11 +172,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.command == "start":
+        if args.action == "start":
             return start(args)
-        if args.command == "status":
+        if args.action == "status":
             return status(args)
-        if args.command == "stop":
+        if args.action == "stop":
             return stop(args)
         return logs(args)
     except (OSError, RuntimeError, ValueError) as exc:

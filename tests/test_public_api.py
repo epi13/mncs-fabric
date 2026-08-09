@@ -92,4 +92,4 @@ class PublicContractTests(unittest.TestCase):
             self.assertEqual(result["placement_admission"]["worker_identity"], "worker-placement")
             reference = result["receipt"]["placement"]["execution_placement_reference"]
             self.assertEqual(reference["placement_request_identity"], PlacementRequest(execution_device="cpu").placement_request_identity)
-            self.assertEqual(result["receipt"]["runner"]["runner_version"], "0.2.0a5")
+            self.assertEqual(result["receipt"]["runner"]["runner_version"], "0.2.0a6")

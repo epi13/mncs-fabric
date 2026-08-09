@@ -19,7 +19,7 @@ from .protocol import dispatch_binding_identity, make_envelope, validate_envelop
 from .store import FabricLedger
 from .receipts import build_execution_receipt
 from .worker_state import build_worker_description
-from .runtime import build_runtime_profile
+from .runtime import build_runtime_binding, build_runtime_profile, validate_runtime_observation
 
 
 class LocalWorker:
@@ -33,6 +33,10 @@ class LocalWorker:
         self.ledger = FabricLedger(Path(state_path))
         self.concurrency_limit = concurrency_limit
         self.bundle_cache = BundleCache(Path(bundle_cache_root)) if bundle_cache_root is not None else None
+        # The profile describes the interpreter that launched this worker
+        # process. Capture it once so repeated descriptions do not rotate the
+        # profile identity merely because contact time changed.
+        self._runtime_profile = build_runtime_profile(self.worker_id)
 
     def node(self) -> dict[str, Any]:
         return collect_node_capabilities(self.worker_id)
@@ -47,7 +51,7 @@ class LocalWorker:
     def runtime_profile(self) -> dict[str, Any]:
         """Describe the exact Python environment that launched this worker."""
 
-        return build_runtime_profile(self.worker_id)
+        return dict(self._runtime_profile)
 
     def description(self) -> dict[str, Any]:
         """Return a fresh bounded description owned by this worker."""
@@ -99,6 +103,11 @@ class LocalWorker:
             raise ProtocolError("dispatch execution challenge is invalid")
         dispatch_binding = dispatch_binding_identity(message)
         placement_request = payload.get("placement_request")
+        runtime_observation = payload.get("runtime_observation")
+        if runtime_observation is not None:
+            if placement_request is None:
+                raise ProtocolError("runtime observation requires a placement request")
+            validate_runtime_observation(runtime_observation, expected_worker_id=self.worker_id, expected_profile_identity=self.runtime_profile()["runtime_profile_identity"])
         placement_admission = None
         resource_snapshot = None
         prior, result = self._prior_dispatch(request_id)
@@ -118,12 +127,15 @@ class LocalWorker:
                 for field in ("placement_admission", "resource_snapshot"):
                     if result.get(field) is not None:
                         duplicate_payload[field] = result[field]
+                for field in ("runtime_observation", "runtime_binding"):
+                    if result.get(field) is not None:
+                        duplicate_payload[field] = result[field]
                 return self._response(message, "execution.result", duplicate_payload)
             return self._response(message, "dispatch.ack", {"disposition": "DUPLICATE_IN_PROGRESS", "dispatch_identity": dispatch_binding})
         if placement_request is not None:
             validate_placement_request(placement_request)
             resource_snapshot = self.resource_snapshot()
-            placement_admission = evaluate_placement(placement_request, resource_snapshot, self.capabilities())
+            placement_admission = evaluate_placement(placement_request, resource_snapshot, self.capabilities(), runtime_observation)
             if placement_admission["disposition"] != "PASS":
                 return self._response(message, "dispatch.ack", {"disposition": "UNKNOWN", "reason": placement_admission["reason_code"], "placement_admission": placement_admission, "resource_snapshot": resource_snapshot})
         bundle_info = payload.get("execution_bundle")
@@ -150,11 +162,17 @@ class LocalWorker:
         if placement_admission is not None:
             response_payload["placement_admission"] = placement_admission
             response_payload["resource_snapshot"] = resource_snapshot
+        if runtime_observation is not None:
+            response_payload["runtime_observation"] = runtime_observation
+            response_payload["runtime_binding"] = build_runtime_binding(observation=runtime_observation, worker_identity=self.worker_id, request_identity=payload["request_identity"], record_identity=record["record_id"], receipt_identity=receipt["receipt_identity"] if receipt is not None else None)
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         for field in ("execution_bundle", "bundle_binding"):
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         for field in ("placement_admission", "resource_snapshot"):
+            if response_payload.get(field) is not None:
+                result_record[field] = response_payload[field]
+        for field in ("runtime_observation", "runtime_binding"):
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         self.ledger.append("protocol.result", result_record)

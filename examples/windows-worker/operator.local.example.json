@@ -1,0 +1,8 @@
+{
+  "ssh_host": "<explicit-windows-host-or-ssh-alias>",
+  "ssh_user": "<windows-ssh-user>",
+  "ssh_key": "~/.ssh/<windows-worker-key>",
+  "expected_hostname": "Collamore02",
+  "worker_id": "collamore02-windows",
+  "controller_id": "fabric-controller-01"
+}
