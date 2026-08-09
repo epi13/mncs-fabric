@@ -189,7 +189,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "persistent_pid_stable": pid_stable,
         "persistent_pid_after_recovery": pid_after_replication,
         "bundle": {"logical_identity": bundle.bundle_identity, "archive_identity": bundle.archive_identity, "transfer_status": transfer["status"]},
-        "worker_description": description_state,
+        "worker_description": description_state.get("description") if isinstance(description_state, dict) else None,
         "resource_snapshot": first[0].get("resource_snapshot", remote_resources),
         "resource_snapshot_preflight": remote_resources,
         "placement": {"request_identity": placement.placement_request_identity, "resource_snapshot_identity": first[0].get("resource_snapshot", {}).get("resource_snapshot_identity"), "admission_decision_identity": first[0].get("placement_admission", {}).get("decision_identity"), "mode": first[0].get("placement_admission", {}).get("admission_mode")},

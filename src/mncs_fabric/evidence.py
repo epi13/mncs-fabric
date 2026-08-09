@@ -240,7 +240,7 @@ def validate_physical_worker_state_evidence(evidence: object) -> dict[str, Any]:
     except (FabricError, ValueError, TypeError):
         issues.append("execution collection is invalid")
     fault = evidence.get("fault_corpus")
-    if not isinstance(fault, dict) or fault.get("loss", {}).get("disposition") != "UNKNOWN" or fault.get("incomplete_replication", {}).get("disposition") != "UNKNOWN" or fault.get("duplicate_after_restart") != "DUPLICATE_IDEMPOTENT":
+    if not isinstance(fault, dict) or fault.get("worker_loss", {}).get("disposition") != "UNKNOWN" or fault.get("incomplete_replication", {}).get("disposition") != "UNKNOWN" or fault.get("duplicate_after_restart") != "DUPLICATE_IDEMPOTENT":
         issues.append("loss/recovery fault dispositions are invalid")
     boundary = evidence.get("claim_boundary")
     for term in ("sandbox", "correctness", "custody", "independence", "conformance", "certification"):
