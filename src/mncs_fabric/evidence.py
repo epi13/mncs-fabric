@@ -251,6 +251,8 @@ def validate_windows_gpu_evidence(evidence: object) -> dict[str, Any]:
         issues.append("required precision probes are incomplete")
     if evidence.get("execution_outcome") != "PASS" or evidence.get("admission_reason_code") != "FULL_ACCELERATOR_ELIGIBLE":
         issues.append("physical CUDA execution/admission did not pass")
+    if evidence.get("revoked_controller_disposition") != "FAIL_CLOSED" or evidence.get("revocation_recovery") != "AVAILABLE":
+        issues.append("Windows revocation/re-enrollment evidence is incomplete")
     if evidence.get("sequential_cpu_offload_evidence") is not False:
         issues.append("sequential-offload status is overstated")
     _validate_claim_boundary(evidence, issues)

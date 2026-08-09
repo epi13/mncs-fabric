@@ -54,6 +54,8 @@
   "admission_reason_code": "FULL_ACCELERATOR_ELIGIBLE",
   "duplicate_disposition": "DUPLICATE_IDEMPOTENT",
   "conflicting_replay_disposition": "CONFLICTING_REPLAY",
+  "revoked_controller_disposition": "FAIL_CLOSED",
+  "revocation_recovery": "AVAILABLE",
   "impossible_placement_disposition": "UNKNOWN",
   "impossible_placement_reason_code": "INSUFFICIENT_VRAM",
   "sequential_cpu_offload_evidence": false,
