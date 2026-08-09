@@ -148,6 +148,10 @@ def _consumer_result(response: Mapping[str, Any], context: ConsumerContext | Non
         result["placement_admission"] = dict(payload["placement_admission"])
     if isinstance(payload.get("resource_snapshot"), dict):
         result["resource_snapshot"] = dict(payload["resource_snapshot"])
+    if isinstance(payload.get("runtime_observation"), dict):
+        result["runtime_observation"] = dict(payload["runtime_observation"])
+    if isinstance(payload.get("runtime_binding"), dict):
+        result["runtime_binding"] = dict(payload["runtime_binding"])
     if context is not None:
         result["consumer_context_identity"] = context.context_identity
         result["provenance_binding"] = build_provenance_binding(
@@ -176,6 +180,7 @@ class FabricClient:
         self.network = NetworkController(controller_id, self.state_path.with_name(self.state_path.stem + "-network" + self.state_path.suffix))
         self.remote_configs: dict[str, RemoteWorkerConfig] = {}
         self.bundle_links: dict[str, dict[str, str]] = {}
+        self.runtime_observations: dict[str, dict[str, Any]] = {}
 
     @staticmethod
     def contract() -> dict[str, Any]:
@@ -237,6 +242,9 @@ class FabricClient:
         profile = runtime_profile or self.runtime_profile(worker_id)
         observation = build_runtime_observation(worker_identity=worker_id, runtime_profile=profile, probe=probe, captured_at=captured_at)
         self.local.ledger.append("runtime.observation", observation) if worker_id in self.local.workers else self.network.ledger.append("runtime.observation", observation)
+        self.runtime_observations[worker_id] = observation
+        if worker_id in self.network.remote_workers:
+            self.network.set_runtime_observation(worker_id, observation)
         return observation
 
     @staticmethod
@@ -271,6 +279,7 @@ class FabricClient:
         consumer_context: ConsumerContext | Mapping[str, Any] | None = None,
         execution_bundle: dict[str, str] | None = None,
         placement: PlacementRequest | Mapping[str, Any] | None = None,
+        runtime_observation: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
@@ -280,8 +289,9 @@ class FabricClient:
             outputs = []
             worker = self.local.workers[worker_id]
             for index in range(replicas):
-                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value) + f":{index}"
-                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value))
+                selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
+                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime) + f":{index}"
+                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime))
             return [_consumer_result(response, context) for response in outputs]
         if worker_id is None and self.local.workers and self.remote_configs:
             return self._execute_registered(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, context=context, context_value=context_value, execution_bundle=execution_bundle, placement_value=placement_value)
@@ -290,11 +300,12 @@ class FabricClient:
                 raise ProtocolError(f"worker is not registered: {worker_id}")
             if worker_id is not None:
                 transport, _ = self.network.remote_workers[worker_id]
-                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+                selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
+                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
                 return [_consumer_result(response, context)]
-            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=runtime_observation)
             return [_consumer_result(response, context) for response in responses]
-        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None)
         return [_consumer_result(response, context) for response in responses]
 
     def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, placement_value: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -303,22 +314,23 @@ class FabricClient:
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None)) for worker_id, worker in self.local.workers.items()]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id))) for worker_id, worker in self.local.workers.items()]
         remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items()]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
             return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]
         outputs: list[dict[str, Any]] = []
         for worker_id in decision.worker_ids:
-            rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+            selected_runtime = dict(self.runtime_observations.get(worker_id)) if worker_id in self.runtime_observations else None
+            rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
             rid = rid + ":" + worker_id
             try:
                 if worker_id in self.local.workers:
-                    response = self.local.dispatch_via(InProcessTransport(self.local.workers[worker_id]), checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+                    response = self.local.dispatch_via(InProcessTransport(self.local.workers[worker_id]), checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
                 else:
                     transport, _ = self.network.remote_workers[worker_id]
                     remote_bundle = execution_bundle or self.bundle_links.get(worker_id)
-                    response = self.network.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value)
+                    response = self.network.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
                 outputs.append(_consumer_result(response, context))
             except (ProtocolError, OSError, TimeoutError) as exc:
                 if worker_id in self.remote_configs:
@@ -326,8 +338,8 @@ class FabricClient:
                 outputs.append({"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": "UNKNOWN", "worker_identity": worker_id, "request_identity": rid, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": "WORKER_UNAVAILABLE", "diagnostic": str(exc)})
         return outputs
 
-    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement)
+    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement, runtime_observation=runtime_observation)
 
     def ensure_bundle(self, worker_id: str, archive: Path, *, expected_bundle_identity: str | None = None) -> dict[str, Any]:
         """Verify and transfer one typed bundle; arbitrary files are rejected."""

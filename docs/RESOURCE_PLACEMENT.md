@@ -28,6 +28,15 @@ entrypoint. Existing calls without placement remain compatible. A request
 identity changes when device, offload, precision, memory estimate, reserve, or
 runtime capability declarations change.
 
+When a placement request consumes accelerator evidence, the controller may
+also carry a validated `mncs-fabric.runtime-observation.v0.1`. Admission
+overlays the probe and precision facts from that observation while retaining
+the immutable machine resource snapshot identity. This binds a CUDA decision
+to the exact worker interpreter that produced the probe; `nvidia-smi` and
+machine discovery alone remain insufficient. A runtime observation is
+invalidated when the worker runtime profile changes or its freshness bound
+expires.
+
 ## Resource observations
 
 Host RAM and CPU observations are dependency-free. NVIDIA discovery through
@@ -46,7 +55,8 @@ accelerator discovery as UNKNOWN and makes no CUDA or offload claim.
 ## Admission
 
 CPU admission checks host-memory requirements. Full accelerator admission
-requires executable accelerator and precision probes plus an effective budget:
+requires executable accelerator and precision probes from the current worker
+runtime profile plus an effective budget:
 
 ```text
 min(observed free VRAM, configured maximum) - reserve

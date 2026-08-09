@@ -380,77 +380,98 @@ def _precision_status(accelerator: Mapping[str, Any], precision: str) -> str:
     return precision if accelerator.get("precision_probes", {}).get(precision) == "PASS" else "unknown"
 
 
-def _decision(*, snapshot: Mapping[str, Any], request: PlacementRequest, disposition: str, mode: str, reason_code: str, reason: str, precision: str = "unknown", accelerator: Mapping[str, Any] | None = None, effective_gpu_budget: int | None = None, required_gpu: int = 0, required_host: int = 0) -> dict[str, Any]:
+def _decision(*, snapshot: Mapping[str, Any], request: PlacementRequest, disposition: str, mode: str, reason_code: str, reason: str, precision: str = "unknown", accelerator: Mapping[str, Any] | None = None, effective_gpu_budget: int | None = None, required_gpu: int = 0, required_host: int = 0, runtime_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
     value = {"schema_version": ADMISSION_SCHEMA, "worker_identity": snapshot["worker_identity"], "placement_request_identity": request.placement_request_identity, "resource_snapshot_identity": snapshot["resource_snapshot_identity"], "disposition": disposition, "admission_mode": mode, "precision": precision, "reason_code": reason_code, "reason": reason, "selected_accelerator_identity": accelerator.get("hardware_identity") if accelerator else None, "effective_accelerator_budget_bytes": effective_gpu_budget, "required_accelerator_bytes": required_gpu, "required_host_memory_bytes": required_host, "claim_boundary": "resource admission observation; not runtime execution proof, attestation, correctness, or assurance"}
+    if runtime_observation is not None:
+        value["runtime_profile_identity"] = runtime_observation["runtime_profile_identity"]
+        value["runtime_observation_identity"] = runtime_observation["runtime_observation_identity"]
     return attach_identity(value, "decision_identity")
 
 
-def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snapshot_value: Mapping[str, Any], worker_capabilities: frozenset[str] = frozenset()) -> dict[str, Any]:
+def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snapshot_value: Mapping[str, Any], worker_capabilities: frozenset[str] = frozenset(), runtime_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
     request = placement_request_from(request_value)
     snapshot = validate_resource_snapshot(snapshot_value)
+    if runtime_observation is not None:
+        from .runtime import runtime_observation_is_fresh, validate_runtime_observation
+
+        runtime_observation = validate_runtime_observation(runtime_observation, expected_worker_id=snapshot["worker_identity"])
+        if not runtime_observation_is_fresh(runtime_observation, max_age_seconds=request.resource_max_age_seconds):
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_STALE", reason="runtime observation exceeds the placement freshness bound", runtime_observation=runtime_observation)
     required_capabilities = set(request.required_capabilities)
     missing = sorted(required_capabilities - set(worker_capabilities))
     if missing:
-        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="CAPABILITY_UNAVAILABLE", reason=str(missing))
+        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="CAPABILITY_UNAVAILABLE", reason=str(missing), runtime_observation=runtime_observation)
     if not resource_snapshot_is_fresh(snapshot, max_age_seconds=request.resource_max_age_seconds):
-        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_STALE", reason="resource snapshot exceeds freshness bound")
+        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_STALE", reason="resource snapshot exceeds freshness bound", runtime_observation=runtime_observation)
     host_available = snapshot.get("host_memory_available_bytes")
     accelerator = _accelerator(snapshot, request)
     host_unknown = host_available is None
 
+    # A machine snapshot can establish discovery and volatile memory, but a
+    # runtime observation is the evidence that the exact worker interpreter
+    # executed the accelerator probe.  Overlay only probe facts; preserve the
+    # machine snapshot identity and hardware measurements.
+    if accelerator is not None and runtime_observation is not None:
+        runtime_backend = runtime_observation.get("accelerator_backend")
+        if runtime_backend is not None and runtime_backend != accelerator.get("backend"):
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="ACCELERATOR_UNAVAILABLE", reason="runtime accelerator backend does not match the observed worker accelerator", accelerator=accelerator, runtime_observation=runtime_observation)
+        accelerator = dict(accelerator)
+        accelerator["execution_probe"] = runtime_observation["runtime_execution_probe"]
+        accelerator["precision_probes"] = dict(runtime_observation["precision_probes"])
+
     def cpu_decision() -> dict[str, Any]:
         precision = "float32" if request.precision == "auto" else request.precision
         if precision != "float32" and f"placement:cpu-precision:{precision}" not in worker_capabilities:
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="PRECISION_UNAVAILABLE", reason="CPU precision is not observed", precision=precision)
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="PRECISION_UNAVAILABLE", reason="CPU precision is not observed", precision=precision, runtime_observation=runtime_observation)
         required_host = _host_requirement(request, "cpu")
         if required_host and host_unknown:
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="host memory is unknown", precision=precision, required_host=required_host)
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="host memory is unknown", precision=precision, required_host=required_host, runtime_observation=runtime_observation)
         if required_host and int(host_available or 0) < required_host:
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_HOST_RAM", reason="available host memory is below the request", precision=precision, required_host=required_host)
-        return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="cpu", reason_code="CPU_ELIGIBLE", reason="CPU resource requirements are satisfied", precision=precision, required_host=required_host)
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_HOST_RAM", reason="available host memory is below the request", precision=precision, required_host=required_host, runtime_observation=runtime_observation)
+        return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="cpu", reason_code="CPU_ELIGIBLE", reason="CPU resource requirements are satisfied", precision=precision, required_host=required_host, runtime_observation=runtime_observation)
 
     if request.execution_device == "cpu":
         return cpu_decision()
     if accelerator is None:
         if request.execution_device == "accelerator" or request.offload == "sequential-cpu":
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="ACCELERATOR_UNAVAILABLE", reason="requested accelerator backend is not observed")
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="ACCELERATOR_UNAVAILABLE", reason="requested accelerator backend is not observed", runtime_observation=runtime_observation)
         return cpu_decision()
     if accelerator.get("execution_probe") != "PASS":
         if request.execution_device == "accelerator" or request.offload == "sequential-cpu":
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="ACCELERATOR_EXECUTION_UNVERIFIED", reason="accelerator was discovered but executable probe did not pass", accelerator=accelerator)
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="ACCELERATOR_EXECUTION_UNVERIFIED", reason="accelerator was discovered but executable probe did not pass", accelerator=accelerator, runtime_observation=runtime_observation)
         return cpu_decision()
     precision = _precision_status(accelerator, request.precision)
     if precision == "unknown":
-        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="PRECISION_UNAVAILABLE", reason="requested accelerator precision was not probed", accelerator=accelerator)
+        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="PRECISION_UNAVAILABLE", reason="requested accelerator precision was not probed", accelerator=accelerator, runtime_observation=runtime_observation)
     free = accelerator.get("free_memory_bytes")
     if free is None:
-        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="accelerator free memory is unknown", precision=precision, accelerator=accelerator)
+        return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="accelerator free memory is unknown", precision=precision, accelerator=accelerator, runtime_observation=runtime_observation)
     effective = min(free, request.maximum_vram_bytes) if request.maximum_vram_bytes is not None else free
     effective = max(0, effective - request.gpu_reserve_bytes)
     required = _precision_bytes(request.model_storage_bytes, precision) + request.estimated_workspace_bytes
     full_fits = required <= effective
     if request.offload == "none" or (request.offload == "auto" and full_fits):
         if full_fits:
-            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="full-accelerator", reason_code="FULL_ACCELERATOR_ELIGIBLE", reason="full accelerator fits the effective observed budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, required_host=_host_requirement(request, "full-accelerator"))
+            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="full-accelerator", reason_code="FULL_ACCELERATOR_ELIGIBLE", reason="full accelerator fits the effective observed budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, required_host=_host_requirement(request, "full-accelerator"), runtime_observation=runtime_observation)
         if request.execution_device == "accelerator":
-            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="full accelerator exceeds the effective observed budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required)
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="full accelerator exceeds the effective observed budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
     if request.offload == "sequential-cpu" or (request.offload == "auto" and not full_fits):
         if request.runtime_supports_sequential_cpu_offload is not True:
             if request.offload == "sequential-cpu" or request.execution_device == "accelerator":
-                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED", reason="consumer runtime did not declare sequential offload support", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required)
+                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED", reason="consumer runtime did not declare sequential offload support", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
         else:
             working = request.minimum_accelerator_working_bytes or request.estimated_workspace_bytes
             required_host = _host_requirement(request, "sequential-cpu-offload")
             if host_unknown and required_host:
-                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="host memory is unknown for sequential offload", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host)
+                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_UNKNOWN", reason="host memory is unknown for sequential offload", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
             if required_host and int(host_available or 0) < required_host:
-                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_HOST_RAM", reason="host memory is insufficient for sequential offload", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host)
+                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_HOST_RAM", reason="host memory is insufficient for sequential offload", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
             if working > effective:
-                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="minimum accelerator working memory exceeds the effective budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host)
-            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="sequential-cpu-offload", reason_code="SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE", reason="sequential offload resources are sufficient", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host)
+                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="minimum accelerator working memory exceeds the effective budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
+            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="sequential-cpu-offload", reason_code="SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE", reason="sequential offload resources are sufficient", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
     if request.execution_device == "auto":
         return cpu_decision()
-    return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="requested accelerator placement is unavailable", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required)
+    return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="requested accelerator placement is unavailable", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
 
 
 def validate_admission(value: object, *, error_type: type[Exception] = ValidationError) -> dict[str, Any]:
@@ -463,6 +484,9 @@ def validate_admission(value: object, *, error_type: type[Exception] = Validatio
             raise ValidationError("placement admission disposition or reason is invalid")
         if not is_sha256_identity(value.get("placement_request_identity")) or not is_sha256_identity(value.get("resource_snapshot_identity")):
             raise ValidationError("placement admission identities are invalid")
+        for field in ("runtime_profile_identity", "runtime_observation_identity"):
+            if field in value and not is_sha256_identity(value[field]):
+                raise ValidationError(f"placement admission {field} is invalid")
         return dict(value)
     except ValidationError as exc:
         raise error_type(str(exc)) from exc

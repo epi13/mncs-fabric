@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a5` experimental execution substrate. Authenticated worker descriptions now include the identity of the worker's launching Python runtime, with optional normalized runtime-probe observations and a bounded Windows-native lifecycle helper. Accelerator discovery is not executable CUDA proof; production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a6` experimental execution substrate. Authenticated worker descriptions now include the identity of the worker's launching Python runtime, and fresh runtime observations can participate in identity-bound accelerator admission. A bounded Windows NVIDIA worker has now produced operator-controlled synchronized CUDA evidence; accelerator discovery remains distinct from executable CUDA proof. Production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 

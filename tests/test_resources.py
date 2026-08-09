@@ -12,6 +12,7 @@ from mncs_fabric.resources import (
     validate_resource_snapshot,
 )
 from mncs_fabric.scheduler import WorkerSlot, schedule
+from mncs_fabric.runtime import build_runtime_observation, build_runtime_profile
 
 
 def _snapshot(*, worker_id: str = "worker-a", free_vram: int | None = None, probe: str = "UNKNOWN", precision: dict[str, str] | None = None, host_available: int | None = 8 * 1024**3, captured_at: str | None = None) -> dict[str, object]:
@@ -60,6 +61,27 @@ class ResourcePlacementTests(unittest.TestCase):
         admission = evaluate_placement(request, _snapshot(free_vram=7 * 1024**3))
         self.assertEqual(admission["disposition"], "UNKNOWN")
         self.assertEqual(admission["reason_code"], "ACCELERATOR_EXECUTION_UNVERIFIED")
+
+    def test_runtime_observation_proves_the_worker_interpreter_for_admission(self) -> None:
+        snapshot = _snapshot(free_vram=7 * 1024**3, probe="UNKNOWN")
+        profile = build_runtime_profile("worker-a", captured_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
+        observation = build_runtime_observation(
+            worker_identity="worker-a",
+            runtime_profile=profile,
+            probe={"accelerator_backend": "cuda", "execution_probe": "PASS", "precision_probes": {"float32": "PASS"}},
+        )
+        request = PlacementRequest(execution_device="accelerator", accelerator_backend="cuda")
+        admission = evaluate_placement(request, snapshot, runtime_observation=observation)
+        self.assertEqual(admission["disposition"], "PASS")
+        self.assertEqual(admission["runtime_profile_identity"], profile["runtime_profile_identity"])
+        self.assertEqual(admission["runtime_observation_identity"], observation["runtime_observation_identity"])
+
+    def test_runtime_observation_mismatch_and_staleness_fail_closed(self) -> None:
+        snapshot = _snapshot(worker_id="worker-a", free_vram=7 * 1024**3, probe="UNKNOWN")
+        other_profile = build_runtime_profile("worker-b", captured_at="2026-01-01T00:00:00Z")
+        other = build_runtime_observation(worker_identity="worker-b", runtime_profile=other_profile, probe={"accelerator_backend": "cuda", "execution_probe": "PASS", "precision_probes": {"float32": "PASS"}}, captured_at="2026-01-01T00:00:00Z")
+        with self.assertRaises(Exception):
+            evaluate_placement(PlacementRequest(execution_device="accelerator", accelerator_backend="cuda"), snapshot, runtime_observation=other)
 
     def test_full_accelerator_and_sequential_offload_are_distinct(self) -> None:
         snapshot = _snapshot(free_vram=2 * 1024**3, probe="PASS")

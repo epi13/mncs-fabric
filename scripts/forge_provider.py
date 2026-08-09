@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.6"}
-SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "placement-evidence", "remote-worker-description", "remote-resource-refresh", "worker-liveness", "execution-collection", "collection-completeness", "physical-fault-corpus", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity", "runtime-profile-validation", "runtime-observation-validation", "windows-worker-launcher-static-validation"]
+PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.7"}
+SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "runtime-aware-placement", "placement-evidence", "remote-worker-description", "remote-resource-refresh", "worker-liveness", "execution-collection", "collection-completeness", "physical-fault-corpus", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity", "runtime-profile-validation", "runtime-observation-validation", "windows-worker-launcher-static-validation"]
 
 
 def response(request: dict[str, object], status: str, summary: str, *, limitations: list[str] | None = None, witnesses: list[object] | None = None) -> dict[str, object]:
@@ -57,6 +57,12 @@ def run_validation() -> tuple[str, str, list[object]]:
     admission = evaluate_placement(PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=1024), snapshot)
     if admission["disposition"] != "PASS":
         return "FAIL", "resource placement fixture did not admit bounded CPU execution", [{"admission": admission}]
+    gpu_snapshot = ResourceSnapshot(worker_identity="forge-gpu", captured_at="2099-01-01T00:00:00Z", host_memory_total_bytes=16 * 1024**3, host_memory_available_bytes=8 * 1024**3, cpu_logical_count=4, architecture="fixture", accelerators=({"index": 0, "vendor": "nvidia", "backend": "cuda", "device_name": "forge-gpu", "hardware_identity": "sha256:" + "a" * 64, "total_memory_bytes": 8 * 1024**3, "free_memory_bytes": 7 * 1024**3, "driver_version": "fixture", "runtime_version": "fixture", "execution_probe": "UNKNOWN", "precision_probes": {}, "observation_source": "forge-fixture"},), observation_source="forge-fixture").to_dict()
+    runtime_profile = build_runtime_profile("forge-gpu", captured_at="2099-01-01T00:00:00Z")
+    runtime_observation = build_runtime_observation(worker_identity="forge-gpu", runtime_profile=runtime_profile, probe={"accelerator_backend": "cuda", "execution_probe": "PASS", "precision_probes": {"float32": "PASS"}}, captured_at="2099-01-01T00:00:00Z")
+    runtime_admission = evaluate_placement(PlacementRequest(execution_device="accelerator", accelerator_backend="cuda"), gpu_snapshot, runtime_observation=runtime_observation)
+    if runtime_admission["disposition"] != "PASS" or runtime_admission.get("runtime_observation_identity") != runtime_observation["runtime_observation_identity"]:
+        return "FAIL", "runtime-aware accelerator admission fixture did not bind the runtime observation", [{"admission": runtime_admission}]
     with tempfile.TemporaryDirectory(prefix="mncs-fabric-state-forge-") as directory:
         root = Path(directory)
         bundle_root = root / "bundle"
