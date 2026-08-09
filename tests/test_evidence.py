@@ -65,3 +65,12 @@ class PhysicalEvidenceTests(unittest.TestCase):
         tampered = copy.deepcopy(windows)
         tampered["runtime"]["execution_probe"] = "UNKNOWN"
         self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")
+
+    def test_offload_three_node_and_fault_evidence_validate(self) -> None:
+        root = Path(__file__).parents[1] / "development-evidence"
+        for name in ("windows-sequential-offload.json", "three-node-heterogeneous.json", "heterogeneous-fault-profiles.json"):
+            evidence = json.loads((root / name).read_text(encoding="utf-8"))
+            self.assertEqual(validate_physical_evidence(evidence)["outcome"], "PASS", name)
+        offload = json.loads((root / "windows-sequential-offload.json").read_text(encoding="utf-8"))
+        offload["offload_capability"]["actual_mode"] = "cpu"
+        self.assertEqual(validate_physical_evidence(offload)["outcome"], "FAIL")

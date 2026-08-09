@@ -101,5 +101,7 @@ generic concepts needed by MNEL and RAVEL—host memory, accelerator discovery,
 precision, reserves, model/workspace estimates, and placement identity—without
 importing either consumer's runtime policy. CUDA discovery is not a CUDA
 execution capability until a real runtime probe passes. Sequential CPU offload
-is a consumer/provider runtime behavior; Fabric only checks resource admission
-and retains a runtime observation if supplied.
+is a consumer/provider runtime behavior; Fabric retains the consumer
+declaration but strong admission additionally requires a fresh,
+identity-bound `runtime-capability-observation.v0.1` from that exact runtime.
+Fabric still does not implement layer movement or interpret provider semantics.

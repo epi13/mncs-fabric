@@ -20,7 +20,16 @@ from .errors import FabricError, IntegrityError, ValidationError
 from .models import EXECUTION_SCHEMA, validate_job_plan
 from .node import capability_names, collect_node_capabilities, utc_now
 
-_INHERITED_ENV = ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE", "LANG", "LC_ALL", "PATH")
+# Keep the child environment bounded, but retain the standard identity
+# variables used by platform-native runtimes.  In particular, Windows
+# Python's ``getpass.getuser()`` uses USERNAME when the POSIX ``pwd`` module
+# is unavailable; Accelerate/Torch can reach that path while installing
+# CPU-offload hooks.  Omitting it makes a valid Windows runtime fail only
+# when launched through Fabric.
+_INHERITED_ENV = (
+    "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR", "HOME", "USERPROFILE",
+    "USERNAME", "USER", "LOGNAME", "LANG", "LC_ALL", "PATH",
+)
 
 
 @dataclass

@@ -1,9 +1,10 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from mncs_fabric.artifacts import build_manifest
-from mncs_fabric.executor import execute_local
+from mncs_fabric.executor import _minimal_environment, execute_local
 
 
 def identity(char: str) -> str:
@@ -57,3 +58,20 @@ class ExecutorTests(unittest.TestCase):
         record = self._run('print("x" * 10000)\n', limit=128)
         self.assertEqual(record["outcome"], "UNKNOWN")
         self.assertEqual(record["termination_reason"], "OUTPUT_LIMIT")
+
+    def test_bounded_environment_retains_platform_user_identity(self):
+        original = {key: os.environ.get(key) for key in ("USERNAME", "USER", "LOGNAME")}
+        try:
+            os.environ["USERNAME"] = "fabric-test-user"
+            os.environ["USER"] = "fabric-test-user"
+            os.environ["LOGNAME"] = "fabric-test-user"
+            environment = _minimal_environment({})
+        finally:
+            for key, value in original.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        self.assertEqual(environment["USERNAME"], "fabric-test-user")
+        self.assertEqual(environment["USER"], "fabric-test-user")
+        self.assertEqual(environment["LOGNAME"], "fabric-test-user")

@@ -7,10 +7,15 @@ import unittest
 from mncs_fabric.api import FabricClient, LocalWorkerConfig, PlacementRequest
 from mncs_fabric.canonical import verify_identity
 from mncs_fabric.runtime import (
+    build_runtime_capability_binding,
+    build_runtime_capability_observation,
+    build_runtime_environment,
     build_runtime_observation,
     build_runtime_profile,
     runtime_observation_is_fresh,
     validate_runtime_observation,
+    validate_runtime_capability_observation,
+    validate_runtime_environment,
     validate_runtime_profile,
 )
 from mncs_fabric.worker import LocalWorker
@@ -19,6 +24,31 @@ from mncs_fabric.models import validate_job_plan
 
 
 class RuntimeContractTests(unittest.TestCase):
+    def test_runtime_environment_and_offload_capability_are_identity_bound(self) -> None:
+        profile = build_runtime_profile("offload-worker", captured_at="2026-01-01T00:00:00Z")
+        environment = build_runtime_environment(runtime_profile=profile, components={"accelerate": "1.0", "torch": "2.11"}, captured_at="2026-01-01T00:00:00Z")
+        observation = build_runtime_capability_observation(
+            worker_identity="offload-worker",
+            runtime_profile=profile,
+            runtime_environment=environment,
+            capability="sequential-cpu-offload",
+            status="PASS",
+            evidence={"actual_mode": "sequential-cpu-offload", "mechanism": "fixture", "cuda_execution": "PASS", "offload_hook_count": 3, "result_digest": "sha256:" + "a" * 64},
+            captured_at="2026-01-01T00:00:00Z",
+        )
+        self.assertTrue(verify_identity(environment, "runtime_environment_identity"))
+        self.assertTrue(verify_identity(observation, "runtime_capability_observation_identity"))
+        validate_runtime_environment(environment, expected_worker_id="offload-worker", expected_profile_identity=profile["runtime_profile_identity"])
+        validate_runtime_capability_observation(observation, expected_worker_id="offload-worker", expected_environment_identity=environment["runtime_environment_identity"])
+        binding = build_runtime_capability_binding(observation=observation, worker_identity="offload-worker", request_identity="request", record_identity="sha256:" + "b" * 64, receipt_identity="sha256:" + "c" * 64)
+        self.assertTrue(verify_identity(binding, "runtime_capability_binding_identity"))
+
+    def test_runtime_capability_substitution_is_rejected(self) -> None:
+        profile = build_runtime_profile("offload-worker", captured_at="2026-01-01T00:00:00Z")
+        environment = build_runtime_environment(runtime_profile=profile, components={"accelerate": "1.0"}, captured_at="2026-01-01T00:00:00Z")
+        observation = build_runtime_capability_observation(worker_identity="offload-worker", runtime_profile=profile, runtime_environment=environment, capability="sequential-cpu-offload", status="PASS", evidence={"actual_mode": "sequential-cpu-offload"}, captured_at="2026-01-01T00:00:00Z")
+        with self.assertRaises(Exception):
+            validate_runtime_capability_observation(observation, expected_environment_identity="sha256:" + "f" * 64)
     def test_profile_is_portable_and_identity_addressable(self) -> None:
         profile = build_runtime_profile("worker", executable=Path(__import__("sys").executable), captured_at="2026-01-01T00:00:00Z")
         self.assertNotIn("executable", profile)

@@ -14,7 +14,7 @@ from .models import validate_job_plan
 from .node import utc_now
 from .protocol import dispatch_request_identity, make_envelope, validate_envelope
 from .resources import validate_admission, validate_resource_snapshot, validate_placement_request
-from .runtime import validate_runtime_observation
+from .runtime import validate_runtime_capability_observation, validate_runtime_observation
 from .scheduler import WorkerSlot, schedule
 from .store import FabricLedger
 from .transport import EnvelopeTransport, InProcessTransport
@@ -55,13 +55,13 @@ class LocalController:
             result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True, "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"]})
         return result
 
-    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
         if placement_request is not None:
             validate_placement_request(placement_request)
-        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
+        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
         if decision.disposition != "PASS":
             return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": [dict(item) for item in decision.admissions]}]
         outputs = []
@@ -70,12 +70,12 @@ class LocalController:
                 InProcessTransport(self.workers[worker_id]), checked, manifest,
                 worker_id=worker_id,
                 request_id=request_id or sha256_identity({"job_identity": checked["job_identity"], "worker_id": worker_id, "replica": len(outputs)}),
-                consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation,
+                consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation,
             )
             outputs.append(response)
         return outputs
 
-    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None) -> dict[str, Any]:
+    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> dict[str, Any]:
         """Dispatch through a transport without moving protocol semantics into it."""
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
@@ -86,7 +86,9 @@ class LocalController:
             validate_placement_request(placement_request)
         if runtime_observation is not None:
             validate_runtime_observation(runtime_observation, expected_worker_id=worker_id)
-        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": dispatch_request_identity(plan=checked, manifest=manifest, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation)}
+        if runtime_capability_observation is not None:
+            validate_runtime_capability_observation(runtime_capability_observation, expected_worker_id=worker_id)
+        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": dispatch_request_identity(plan=checked, manifest=manifest, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)}
         if challenge is not None:
             payload["execution_challenge"] = challenge
         if consumer_context is not None:
@@ -97,14 +99,16 @@ class LocalController:
             payload["placement_request"] = placement_request
         if runtime_observation is not None:
             payload["runtime_observation"] = runtime_observation
+        if runtime_capability_observation is not None:
+            payload["runtime_capability_observation"] = runtime_capability_observation
         envelope = make_envelope("dispatch.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request_id, job_id=checked["job_id"], nonce="dispatch-" + sha256_identity({"request": request_id, "worker": worker_id})[7:55], payload=payload, created_at=created, expires_at=expires)
         self.ledger.append("protocol.controller-dispatch", envelope)
         response = transport.request(envelope)
         if response.get("message_type") == "execution.result":
-            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation)
+            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
         return validate_envelope(response)
 
-    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None) -> dict[str, Any]:
+    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> dict[str, Any]:
         value = validate_envelope(response)
         record = value["payload"].get("record", {})
         if value["worker_id"] != worker_id or record.get("job_identity") != job_identity or (candidate_identity is not None and record.get("candidate_identity") != candidate_identity) or (artifact_manifest_identity is not None and record.get("artifact_manifest_identity") != artifact_manifest_identity):
@@ -145,6 +149,15 @@ class LocalController:
             binding = value["payload"].get("runtime_binding")
             if not isinstance(binding, dict) or binding.get("runtime_observation_identity") != expected["runtime_observation_identity"] or not verify_identity(binding, "runtime_binding_identity"):
                 raise ProtocolError("controller response runtime binding is invalid")
+        if runtime_capability_observation is not None:
+            expected = validate_runtime_capability_observation(runtime_capability_observation, expected_worker_id=worker_id)
+            returned = value["payload"].get("runtime_capability_observation")
+            if not isinstance(returned, dict) or returned.get("runtime_capability_observation_identity") != expected["runtime_capability_observation_identity"]:
+                raise ProtocolError("controller response runtime capability observation does not match the dispatch")
+            validate_runtime_capability_observation(returned, expected_worker_id=worker_id, expected_profile_identity=expected["runtime_profile_identity"], expected_environment_identity=expected["runtime_environment_identity"])
+            binding = value["payload"].get("runtime_capability_binding")
+            if not isinstance(binding, dict) or binding.get("runtime_capability_observation_identity") != expected["runtime_capability_observation_identity"] or not verify_identity(binding, "runtime_capability_binding_identity"):
+                raise ProtocolError("controller response runtime capability binding is invalid")
         return value
 
 
@@ -160,6 +173,7 @@ class NetworkController(LocalController):
         self.remote_workers: dict[str, tuple[EnvelopeTransport, WorkerSlot]] = {}
         self.remote_descriptions: dict[str, dict[str, Any]] = {}
         self.runtime_observations: dict[str, dict[str, Any]] = {}
+        self.runtime_capability_observations: dict[str, dict[str, Any]] = {}
         self.remote_liveness: dict[str, dict[str, Any]] = {}
         self._remote_lock = threading.Lock()
 
@@ -183,6 +197,19 @@ class NetworkController(LocalController):
         transport, slot = self.remote_workers[worker_id]
         self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=checked))
         self.ledger.append("runtime.observation", checked)
+
+    def set_runtime_capability_observation(self, worker_id: str, observation: dict[str, Any]) -> None:
+        if worker_id not in self.remote_workers:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        checked = validate_runtime_capability_observation(observation, expected_worker_id=worker_id)
+        description = self.remote_descriptions.get(worker_id)
+        profile = description.get("runtime_profile") if description else None
+        if not isinstance(profile, dict) or profile.get("runtime_profile_identity") != checked["runtime_profile_identity"]:
+            raise ProtocolError("runtime capability observation does not match the current worker runtime profile")
+        self.runtime_capability_observations[worker_id] = checked
+        transport, slot = self.remote_workers[worker_id]
+        self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=checked))
+        self.ledger.append("runtime.capability-observation", checked)
 
     def describe_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None) -> dict[str, Any]:
         """Request one authenticated, bounded worker description."""
@@ -212,15 +239,19 @@ class NetworkController(LocalController):
             from .node import capability_names
             snapshot = description["resource_snapshot"]
             current_runtime = self.runtime_observations.get(worker_id)
+            current_capability = self.runtime_capability_observations.get(worker_id)
             profile = description.get("runtime_profile")
             if current_runtime is not None and (not isinstance(profile, dict) or current_runtime.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
                 self.runtime_observations.pop(worker_id, None)
                 current_runtime = None
-            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime)
+            if current_capability is not None and (not isinstance(profile, dict) or current_capability.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
+                self.runtime_capability_observations.pop(worker_id, None)
+                current_capability = None
+            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime, runtime_capability_observation=current_capability)
             self.remote_workers[worker_id] = (transport, slot)
             self.ledger.append("worker.state", {"worker_id": worker_id, "description": description, "liveness": liveness})
         else:
-            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation)
+            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation)
             self.remote_workers[worker_id] = (transport, slot)
             self.ledger.append("worker.liveness", liveness)
         return self.worker_state(worker_id)
@@ -244,7 +275,7 @@ class NetworkController(LocalController):
         _, slot = self.remote_workers[worker_id]
         description = self.remote_descriptions.get(worker_id)
         liveness = validate_liveness(self.remote_liveness[worker_id], expected_worker_id=worker_id)
-        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": liveness["state"] if liveness_is_fresh(liveness) else (liveness["state"] if liveness["state"] != "AVAILABLE" else "UNKNOWN"), "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None, "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
+        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": liveness["state"] if liveness_is_fresh(liveness) else (liveness["state"] if liveness["state"] != "AVAILABLE" else "UNKNOWN"), "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None, "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None, "runtime_capability_observation": dict(slot.runtime_capability_observation) if slot.runtime_capability_observation else None, "runtime_capability_observation_identity": slot.runtime_capability_observation.get("runtime_capability_observation_identity") if slot.runtime_capability_observation else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
 
     def refresh_all(self) -> list[dict[str, Any]]:
         states = []
@@ -255,7 +286,7 @@ class NetworkController(LocalController):
                 states.append(self.worker_state(worker_id))
         return states
 
-    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
@@ -268,7 +299,7 @@ class NetworkController(LocalController):
             if decision.disposition == "PASS":
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active + 1, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation))
+                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active + 1, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation))
         if decision.disposition != "PASS":
             return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids)}]
         outputs: list[dict[str, Any]] = []
@@ -277,7 +308,7 @@ class NetworkController(LocalController):
                 transport, _ = self.remote_workers[worker_id]
                 request = request_id or sha256_identity({"job_identity": checked["job_identity"], "worker_id": worker_id, "replica": len(outputs)})
                 try:
-                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation or self.runtime_observations.get(worker_id)))
+                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation or self.runtime_observations.get(worker_id), runtime_capability_observation=runtime_capability_observation or self.runtime_capability_observations.get(worker_id)))
                 except (ProtocolError, OSError, TimeoutError) as exc:
                     self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
                     outputs.append({"disposition": "UNKNOWN", "reason": "WORKER_UNAVAILABLE", "worker_id": worker_id, "diagnostic": str(exc)})
@@ -285,7 +316,7 @@ class NetworkController(LocalController):
             with self._remote_lock:
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=max(0, slot.active - 1), concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation))
+                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=max(0, slot.active - 1), concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation))
         return outputs
 
     def reconcile_dispatch(self, responses: list[dict[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:

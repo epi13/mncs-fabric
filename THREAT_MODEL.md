@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a6` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a7` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -181,6 +181,14 @@ iteration:
   launcher binds stop operations to a recorded process-start token; and
 - `nvidia-smi` discovery and `torch.cuda.is_available()` are insufficient proof
   of executable CUDA kernels.
+- consumer-declared sequential-offload support is not proof that the provider
+  runtime can execute it;
+- runtime-capability evidence can be substituted, become stale, or describe a
+  different Torch/Accelerate environment unless its profile and environment
+  identities are checked; and
+- the Windows bounded child environment must preserve only the platform
+  identity variables needed by the provider runtime; broad environment
+  inheritance would weaken the execution boundary.
 
 The boundaries are intentionally separate: TLS protects transport; HMAC
 authenticates a message; bundle verification protects package integrity;

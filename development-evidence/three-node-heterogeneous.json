@@ -1,0 +1,30 @@
+{
+  "schema_version": "mncs-fabric.three-node-heterogeneous.v0.1",
+  "record_type": "mncs-fabric.three-node-heterogeneous",
+  "claim_boundary": "operator-controlled three-physical-node development evidence; not attestation, correctness, protected custody, independence, conformance, or certification",
+  "limitations": [
+    "The controller, Fedora worker, and Windows worker share one operator trust domain.",
+    "Portable result agreement is not independent evaluation or cross-OS certification.",
+    "No resource reservation or hostile-code sandbox was established."
+  ],
+  "fabric_commit": "cbab38bf82378f4e8c0169b9e28721cda50643fd",
+  "direct_fabric_tls": true,
+  "ssh_tunnel_used": false,
+  "ssh_staged_candidate_material": false,
+  "nodes": ["fabric-controller-local", "fabric-worker-01", "collamore02-windows"],
+  "bundle": {
+    "bundle_identity": "796a3dfb041342565c6e97270815b94e679707a8df53b450bb87cfdbd320fbde",
+    "archive_identity": "sha256:9594984c225cfa8259870752c38ba999e0c56c557e026e137d0ecc2bb1de244a"
+  },
+  "native_bundle_transfer": {"fabric-worker-01": "COMMITTED", "collamore02-windows": "COMMITTED"},
+  "records": [
+    {"worker_identity": "fabric-controller-local", "disposition": "EXECUTED", "record_identity": "sha256:d49b65cce12e7f4a9db6b01779ae8c65426f780520112111908c4a3daf3893f2", "receipt_identity": "24e391a717a78fa576fcc51907fc82c145188e899ccca7f761fcd1f7fe37e88a"},
+    {"worker_identity": "fabric-worker-01", "disposition": "EXECUTED", "record_identity": "sha256:07362523e28ee54b168070ec89b5923de7aea698d32af783f5a4eb891ffecd01", "receipt_identity": "77cc48bd38403041d0ad053fa72ebec757336d39b934dc5d114f6e67bb670353"},
+    {"worker_identity": "collamore02-windows", "disposition": "EXECUTED", "record_identity": "sha256:11b8954e164c12067230e9b2d92b100c142f0534f162273dcb48cd354a4446ef", "receipt_identity": "efe84433b0a80353923122733f0b9f5c6c963a94c3930e6738b9c39579fb3a7b"}
+  ],
+  "collection_identity": "sha256:ee5fc433b09015fc3415f9cdb1e2aea948f946bbace991727eb36fcc659a3395",
+  "reconciliation_identity": "sha256:66093d086e8f9f3d67d028021d6e2e37d28b6e82c72fc379ad2f73c8c8560fb7",
+  "collection_outcome": "PASS",
+  "reconciliation_outcome": "PASS",
+  "result_identity": "sha256:4523028bdb5a17804bdb299e6019122ee6866fb513a3e961a8fd19374072c1b7"
+}

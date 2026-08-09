@@ -12,7 +12,7 @@ from mncs_fabric.resources import (
     validate_resource_snapshot,
 )
 from mncs_fabric.scheduler import WorkerSlot, schedule
-from mncs_fabric.runtime import build_runtime_observation, build_runtime_profile
+from mncs_fabric.runtime import build_runtime_capability_observation, build_runtime_environment, build_runtime_observation, build_runtime_profile
 
 
 def _snapshot(*, worker_id: str = "worker-a", free_vram: int | None = None, probe: str = "UNKNOWN", precision: dict[str, str] | None = None, host_available: int | None = 8 * 1024**3, captured_at: str | None = None) -> dict[str, object]:
@@ -48,6 +48,18 @@ def _snapshot(*, worker_id: str = "worker-a", free_vram: int | None = None, prob
 
 
 class ResourcePlacementTests(unittest.TestCase):
+    def _offload_proof(self, worker_id: str = "worker-a") -> dict[str, object]:
+        profile = build_runtime_profile(worker_id)
+        environment = build_runtime_environment(runtime_profile=profile, components={"torch": "fixture", "accelerate": "fixture"})
+        return build_runtime_capability_observation(
+            worker_identity=worker_id,
+            runtime_profile=profile,
+            runtime_environment=environment,
+            capability="sequential-cpu-offload",
+            status="PASS",
+            evidence={"actual_mode": "sequential-cpu-offload", "mechanism": "fixture", "cuda_execution": "PASS", "offload_hook_count": 2},
+        )
+
     def test_cpu_admission_is_identity_addressable(self) -> None:
         request = PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=1024)
         admission = evaluate_placement(request, _snapshot())
@@ -87,18 +99,24 @@ class ResourcePlacementTests(unittest.TestCase):
         snapshot = _snapshot(free_vram=2 * 1024**3, probe="PASS")
         full = evaluate_placement(PlacementRequest(execution_device="accelerator", offload="none", model_storage_bytes=3 * 1024**3), snapshot)
         self.assertEqual(full["reason_code"], "INSUFFICIENT_VRAM")
-        offload = evaluate_placement(PlacementRequest(execution_device="accelerator", offload="sequential-cpu", model_storage_bytes=3 * 1024**3, estimated_workspace_bytes=128 * 1024**2, minimum_accelerator_working_bytes=128 * 1024**2, runtime_supports_sequential_cpu_offload=True), snapshot)
+        offload = evaluate_placement(PlacementRequest(execution_device="accelerator", offload="sequential-cpu", model_storage_bytes=3 * 1024**3, estimated_workspace_bytes=128 * 1024**2, minimum_accelerator_working_bytes=128 * 1024**2, runtime_supports_sequential_cpu_offload=True), snapshot, runtime_capability_observation=self._offload_proof())
         self.assertEqual(offload["disposition"], "PASS")
         self.assertEqual(offload["admission_mode"], "sequential-cpu-offload")
         self.assertEqual(offload["reason_code"], "SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE")
 
     def test_auto_can_choose_offload_but_explicit_requests_do_not_fallback(self) -> None:
         snapshot = _snapshot(free_vram=2 * 1024**3, probe="PASS")
-        auto = evaluate_placement(PlacementRequest(execution_device="auto", offload="auto", model_storage_bytes=3 * 1024**3, runtime_supports_sequential_cpu_offload=True), snapshot)
+        auto = evaluate_placement(PlacementRequest(execution_device="auto", offload="auto", model_storage_bytes=3 * 1024**3, runtime_supports_sequential_cpu_offload=True), snapshot, runtime_capability_observation=self._offload_proof())
         self.assertEqual(auto["admission_mode"], "sequential-cpu-offload")
         unsupported = evaluate_placement(PlacementRequest(execution_device="accelerator", offload="sequential-cpu", model_storage_bytes=3 * 1024**3), snapshot)
         self.assertEqual(unsupported["disposition"], "UNKNOWN")
         self.assertEqual(unsupported["reason_code"], "SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED")
+
+    def test_offload_declaration_without_runtime_proof_is_unknown(self) -> None:
+        request = PlacementRequest(execution_device="accelerator", offload="sequential-cpu", model_storage_bytes=3 * 1024**3, runtime_supports_sequential_cpu_offload=True)
+        admission = evaluate_placement(request, _snapshot(free_vram=2 * 1024**3, probe="PASS"))
+        self.assertEqual(admission["disposition"], "UNKNOWN")
+        self.assertEqual(admission["reason_code"], "SEQUENTIAL_OFFLOAD_EXECUTION_UNVERIFIED")
 
     def test_stale_and_unknown_resources_are_not_treated_as_zero(self) -> None:
         old = "2000-01-01T00:00:00Z"
