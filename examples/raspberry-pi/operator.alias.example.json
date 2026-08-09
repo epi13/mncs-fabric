@@ -1,0 +1,8 @@
+{
+  "ssh_alias": "REPLACE_WITH_EXPLICIT_OPENSSH_PI_ALIAS",
+  "worker_host": "REPLACE_WITH_FABRIC_TLS_HOST_OR_RESOLVED_ALIAS_HOSTNAME",
+  "expected_hostname": "REPLACE_WITH_PI_HOSTNAME",
+  "worker_id": "raspberry-pi",
+  "controller_id": "fabric-controller-01",
+  "worker_port": 7443
+}

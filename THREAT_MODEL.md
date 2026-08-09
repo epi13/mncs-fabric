@@ -47,9 +47,12 @@ and launcher attempts to stop an unrelated process are explicitly considered.
 The Linux/ARM preflight adds no discovery or trust shortcut. It requires an
 explicit operator endpoint, strict known-host verification, and public-key-only
 SSH. A host-key entry without a usable account/key mapping is an UNKNOWN
-bootstrap result. The native Linux/ARM harness uses SSH only for source,
-certificate, trust, and worker lifecycle bootstrap; candidate execution
-material remains on the Fabric bundle-transfer path.
+bootstrap result. An explicitly named OpenSSH alias may supply the configured
+user, key, proxy, or agent path; the helper retains only bounded effective
+endpoint facts and never stores private key or agent material. The native
+Linux/ARM harness uses SSH only for source, certificate, trust, and worker
+lifecycle bootstrap; candidate execution material remains on the Fabric
+bundle-transfer path.
 
 ## Protected assets
 

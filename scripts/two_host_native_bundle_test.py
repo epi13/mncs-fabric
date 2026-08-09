@@ -65,7 +65,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     output.mkdir(parents=True, exist_ok=True)
     (output / "pki").mkdir(mode=0o700)
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    remote = Remote(host=args.ssh_host, user=args.ssh_user, key=Path(args.ssh_key).expanduser())
+    remote = Remote(
+        host=args.ssh_host,
+        user=args.ssh_user,
+        key=Path(args.ssh_key).expanduser() if args.ssh_key else None,
+        alias=args.ssh_alias,
+    )
     preflight = remote.ssh("hostname; id -un; python3 --version; uname -a")
     if preflight.splitlines()[0].strip() != args.expected_hostname:
         raise RuntimeError("remote hostname mismatch")
@@ -212,9 +217,10 @@ def run(args: argparse.Namespace) -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run native EA-NEXT-002 transfer through public Fabric API")
-    parser.add_argument("--ssh-host", required=True)
-    parser.add_argument("--ssh-user", required=True)
-    parser.add_argument("--ssh-key", required=True)
+    parser.add_argument("--ssh-alias")
+    parser.add_argument("--ssh-host")
+    parser.add_argument("--ssh-user")
+    parser.add_argument("--ssh-key")
     parser.add_argument("--worker-host", required=True)
     parser.add_argument("--worker-port", type=int, default=7443)
     parser.add_argument("--expected-hostname", required=True)
@@ -223,6 +229,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args(argv)
     try:
+        if args.ssh_alias is None and not all((args.ssh_host, args.ssh_user, args.ssh_key)):
+            raise ValueError("explicit SSH host, user, and key are required without --ssh-alias")
+        if args.ssh_alias is not None and any((args.ssh_host, args.ssh_user, args.ssh_key)):
+            raise ValueError("--ssh-alias cannot be combined with explicit SSH host/user/key")
         evidence = run(args)
         print(json.dumps({"outcome": evidence["reconciliation"]["outcome"], "bundle_transfer": evidence["bundle"]["transfer_status"], "direct_fabric_tls": evidence["direct_fabric_tls"], "adversarial": evidence["adversarial"]}, sort_keys=True, separators=(",", ":")))
         return 0 if evidence["reconciliation"]["outcome"] == "PASS" else 2

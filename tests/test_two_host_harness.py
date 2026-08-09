@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.two_host_fedora_test import build_parser, _shell_quote
+from scripts.two_host_fedora_test import Remote
 from scripts.two_host_windows_gpu_test import build_parser as build_windows_parser
 
 
@@ -24,6 +25,14 @@ class TwoHostHarnessTests(unittest.TestCase):
         self.assertNotIn("ssh -L", source)
         self.assertNotIn("ExitOnForwardFailure", source)
         self.assertIn("remote_worker_launcher.py", source)
+
+    def test_alias_bootstrap_keeps_public_key_only_transport(self) -> None:
+        remote = Remote(alias="explicit-pi")
+        self.assertEqual(remote.destination, "explicit-pi")
+        self.assertIn("IdentitiesOnly=no", remote.options)
+        self.assertIn("PreferredAuthentications=publickey", remote.options)
+        self.assertIn("PasswordAuthentication=no", remote.options)
+        self.assertNotIn("-i", remote.options)
 
     def test_windows_harness_requires_explicit_endpoint_and_stays_out_of_band(self) -> None:
         parser_text = build_windows_parser().format_help()
