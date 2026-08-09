@@ -22,3 +22,4 @@ class TwoHostHarnessTests(unittest.TestCase):
         self.assertNotIn("UserKnownHostsFile=/dev/null", source)
         self.assertNotIn("ssh -L", source)
         self.assertNotIn("ExitOnForwardFailure", source)
+        self.assertIn("remote_worker_launcher.py", source)

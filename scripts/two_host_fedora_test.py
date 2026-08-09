@@ -112,8 +112,8 @@ def _remote_node(remote: Remote, run_root: str, worker_id: str) -> dict[str, Any
 
 def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int) -> int:
     command = (
-        f"mkdir -p {_shell_quote(run_root + '/logs')} && "
-        f"setsid nohup {_shell_quote(run_root + '/venv/bin/python')} -m mncs_fabric worker serve "
+        f"{_shell_quote(run_root + '/venv/bin/python')} "
+        f"{_shell_quote(run_root + '/repo/scripts/remote_worker_launcher.py')} "
         f"--worker-id {_shell_quote(worker_id)} --controller-id {_shell_quote(controller_id)} "
         f"--bundle-root {_shell_quote(run_root + '/repo/examples/portable-python/bundle')} "
         f"--state {_shell_quote(run_root + '/state/worker-ledger.jsonl')} "
@@ -124,8 +124,7 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         # The endpoint is still one-request/bounded, but physical startup and
         # repeated SSH readiness probes must not consume its accept window.
         f"--host {_shell_quote(host)} --port {port} --timeout 30 "
-        f">{_shell_quote(run_root + '/logs/worker.log')} 2>&1 </dev/null & "
-        f"pid=$!; disown \"$pid\" 2>/dev/null || true; printf '%s\\n' \"$pid\""
+        f"--log {_shell_quote(run_root + '/logs/worker.log')}"
     )
     output = remote.ssh(command).strip().splitlines()
     if not output or not output[-1].isdigit():
