@@ -18,11 +18,12 @@ fabric.replay
 fabric.fault.inject
 ```
 
-Implemented local operations are exposed by `FabricService.nodes`,
-`capabilities`, `validate_plan`, `execute_local`, `verify_record`, `collect`,
-and `reconcile`. CLI commands delegate to this boundary. Local controller and
-worker dispatch is available through the typed protocol services; network
-dispatch and fault injection remain future work.
+Implemented operations are exposed by `FabricService.nodes`, `capabilities`,
+`validate_plan`, `execute_local`, `verify_record`, `collect`, `reconcile`,
+`verify_execution_bundle`, and `bind_receipt_to_execution_bundle`. CLI
+commands delegate to this boundary. `LocalController.dispatch_via` accepts the
+same public transport interface used by `NetworkController`; Forge need not
+import private transport or worker modules.
 
 ## Project-local Forge workflow
 
@@ -30,6 +31,9 @@ dispatch and fault injection remain future work.
 Protocol 0.1 provider and the `fabric-validation` development workflow. Forge
 executes the provider in a bounded copied workspace. The provider runs the
 Fabric unit/integration suite, source compilation, the portable example and
-reconciliation, and the self-contained compatibility snapshot. Forge records
-the result as operator-controlled development evidence. It is not independent
-certification or an MNCS conformance decision.
+reconciliation, receipt and EA-NEXT-002 compatibility snapshots, bounded
+protocol/framing tests, TLS loopback, enrollment/revocation, replay, scheduler,
+and storage checks. Forge records the result as operator-controlled development
+evidence. It is not independent certification or an MNCS conformance decision.
+Real second-host operation and bulk bundle transfer remain explicit unsupported
+constructs.

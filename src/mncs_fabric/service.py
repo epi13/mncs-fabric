@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .bundles import bind_receipt_to_bundle, verify_bundle_archive
 from .canonical import verify_identity
 from .errors import ValidationError
 from .executor import execute_local
@@ -45,3 +46,10 @@ class FabricService:
 
     def reconcile(self, records: list[dict[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:
         return reconcile_records(records, require_distinct_nodes=require_distinct_nodes)
+
+    def verify_execution_bundle(self, archive: Path, *, expected_bundle_identity: str | None = None, expected_archive_identity: str | None = None) -> dict[str, Any]:
+        return verify_bundle_archive(archive, expected_bundle_identity=expected_bundle_identity, expected_archive_identity=expected_archive_identity).as_dict()
+
+    def bind_receipt_to_execution_bundle(self, receipt: object, archive: Path) -> dict[str, Any]:
+        bundle = verify_bundle_archive(archive)
+        return bind_receipt_to_bundle(receipt, bundle).as_dict()

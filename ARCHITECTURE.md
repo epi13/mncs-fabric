@@ -8,13 +8,22 @@ MNCS Fabric is the execution plane between a development control plane such as M
 
 ### Controller
 
-`LocalController` currently maintains an in-process worker registry, deterministic capability admission, immutable dispatch identities, and durable dispatch history. It is a development foundation, not a network daemon or conformance authority. Enrollment is represented by explicit worker announcements; authenticated network enrollment remains deferred.
+`LocalController` maintains an in-process worker registry, deterministic
+capability admission, immutable dispatch identities, and durable dispatch
+history. `NetworkController` registers capability snapshots with a typed
+transport and reuses the same dispatch/replay logic. It is an operator service,
+not a conformance authority. Remote worker loss is returned as `UNKNOWN` and
+never fabricated into a result.
 
 ### Worker
 
 A worker verifies a job bundle and manifest, checks required capabilities, creates an isolated working copy, executes a fixed argv without a shell, captures bounded observations, and returns a self-identifying execution record.
 
-The current alpha implements this worker behavior locally and through `LocalWorker.handle`. It deliberately does not expose a network daemon: HMAC message authentication is available to in-process callers, but encryption and mutual host authentication are not yet present.
+The current alpha implements this behavior locally through `LocalWorker.handle`
+and exposes an explicit `TLSWorkerServer` endpoint. The endpoint requires a
+client certificate, verifies the enrolled controller fingerprint and logical
+identity, accepts one bounded canonical envelope, and closes the connection.
+It does not offer plaintext or HMAC-only fallback.
 
 ### Public application boundary
 
@@ -22,11 +31,26 @@ The current alpha implements this worker behavior locally and through `LocalWork
 
 ### Protocol and durable state
 
-`protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `store.py` provides a Fabric-owned append-only JSONL ledger with sequence and SHA-256 linkage, exclusive writer locking, bounded reads, `fsync`, corruption detection, and explicit tail recovery. `controller.py` and `worker.py` use the ledger to distinguish idempotent duplicate delivery from conflicting replay.
+`protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `transport.py`
+adds bounded four-byte-length framing, canonical JSON validation, timeouts, and
+TLS. `enrollment.py` provides an operator-managed append-only identity trust
+ledger. `store.py` provides a Fabric-owned append-only JSONL ledger with
+sequence and SHA-256 linkage, exclusive writer locking, bounded reads, `fsync`,
+corruption detection, and explicit tail recovery. `controller.py` and
+`worker.py` use the ledger to distinguish idempotent duplicate delivery from
+conflicting replay.
 
 ### Family receipt adapter
 
 `receipts.py` produces the current experimental MNCS typed execution receipt as a companion observation. It maps only facts present in a Fabric execution record and emits UNKNOWN or `not-asserted` for sandboxing, network isolation, custody, independence, attestation, correctness, and conformance. See [docs/FAMILY_COMPATIBILITY.md](docs/FAMILY_COMPATIBILITY.md).
+
+### Execution-bundle compatibility
+
+`bundles.py` verifies the current MNCS EA-NEXT-002 ZIP shape without extracting
+untrusted content. It keeps the raw logical bundle identity distinct from the
+exact `sha256:` archive identity and binds receipts through a companion record.
+Bulk cross-host archive transfer is deferred; network dispatch uses
+pre-positioned verified artifacts.
 
 ### Artifact store
 
@@ -62,8 +86,6 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - independent certification;
 - protected holdout custody;
 - network or kernel sandboxing;
-- hardware attestation; and
-- a distributed RAVEL mechanism.
-- an unauthenticated or encrypted network worker;
-- protected custody, hardware attestation, or independent evaluation; and
-- claiming Phase-1 multi-host completion without TLS/certificates and a real second host.
+- hardware attestation;
+- a distributed RAVEL mechanism; and
+- claiming Phase-1 multi-host completion without a real second host.

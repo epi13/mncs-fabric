@@ -6,8 +6,11 @@ from pathlib import Path
 from .artifacts import build_manifest, verify_manifest
 from .canonical import verify_identity
 from .errors import FabricError
+from .enrollment import TrustStore
 from .io import load_json, write_json
 from .service import FabricService
+from .transport import TLSWorkerServer
+from .worker import LocalWorker
 
 _SERVICE = FabricService()
 
@@ -35,6 +38,14 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("root", type=_path)
     verify.add_argument("manifest", type=_path)
 
+    bundle = sub.add_parser("bundle", help="verify MNCS experimental immutable execution bundles")
+    bundle_sub = bundle.add_subparsers(dest="bundle_command", required=True)
+    bundle_verify = bundle_sub.add_parser("verify", help="verify a bundle archive without extraction")
+    bundle_verify.add_argument("archive", type=_path)
+    bundle_verify.add_argument("--expected-bundle-identity")
+    bundle_verify.add_argument("--expected-archive-identity")
+    bundle_verify.add_argument("--output", type=_path)
+
     plan = sub.add_parser("plan", help="validate a job plan")
     plan_sub = plan.add_subparsers(dest="plan_command", required=True)
     validate = plan_sub.add_parser("validate", help="validate and identify a job plan")
@@ -61,6 +72,21 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile.add_argument("records", nargs="+", type=_path)
     reconcile.add_argument("--output", type=_path)
     reconcile.add_argument("--allow-repeated-node", action="store_true")
+
+    worker = sub.add_parser("worker", help="serve a worker endpoint explicitly")
+    worker_sub = worker.add_subparsers(dest="worker_command", required=True)
+    serve = worker_sub.add_parser("serve", help="serve one bounded mutually-authenticated TLS request")
+    serve.add_argument("--worker-id", required=True)
+    serve.add_argument("--controller-id", required=True)
+    serve.add_argument("--bundle-root", type=_path, required=True)
+    serve.add_argument("--state", type=_path, required=True)
+    serve.add_argument("--trust-state", type=_path, required=True)
+    serve.add_argument("--ca", type=_path, required=True)
+    serve.add_argument("--certificate", type=_path, required=True)
+    serve.add_argument("--key", type=_path, required=True)
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, required=True)
+    serve.add_argument("--timeout", type=float, default=5.0)
     return parser
 
 
@@ -81,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
             manifest = verify_manifest(args.root, load_json(args.manifest))
             write_json(None, {"outcome": "PASS", "manifest_identity": manifest["manifest_identity"]})
             return 0
+        if args.command == "bundle" and args.bundle_command == "verify":
+            result = _SERVICE.verify_execution_bundle(args.archive, expected_bundle_identity=args.expected_bundle_identity, expected_archive_identity=args.expected_archive_identity)
+            write_json(args.output, result)
+            return _status_code(result["category"])
         if args.command == "plan":
             write_json(args.output, _SERVICE.validate_plan(load_json(args.plan)))
             return 0
@@ -100,6 +130,13 @@ def main(argv: list[str] | None = None) -> int:
             cohort = _SERVICE.reconcile([load_json(path) for path in args.records], require_distinct_nodes=not args.allow_repeated_node)
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
+        if args.command == "worker" and args.worker_command == "serve":
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state)
+            endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
+            endpoint.serve_once()
+            result = {"outcome": "PASS" if endpoint.last_error is None else "UNKNOWN", "worker_id": args.worker_id, "host": args.host, "port": args.port, "diagnostic": endpoint.last_error}
+            write_json(None, result)
+            return _status_code(result["outcome"])
         raise AssertionError("unreachable command")
     except (FabricError, OSError, ValueError) as exc:
         write_json(None, {"outcome": "UNKNOWN", "error": str(exc)})

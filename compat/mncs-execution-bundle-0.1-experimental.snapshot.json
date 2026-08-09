@@ -1,0 +1,19 @@
+{
+  "producer": "machine-native-complexity-standard",
+  "source_commit": "49400a41f3b7b36de8a25e6cac1141d3980878be",
+  "schema_version": "0.1-experimental",
+  "record_type": "mncs-execution-bundle",
+  "bundle_format": "mncs-execution-bundle-zip-0.1",
+  "logical_identity": "JCS SHA-256 of manifest without bundle_identity; raw 64-hex digest",
+  "archive_identity": "SHA-256 of exact ZIP transport bytes; sha256:-prefixed Fabric identity",
+  "verification": [
+    "bounded archive and member sizes",
+    "canonical manifest bytes",
+    "portable path and Unicode/case collision checks",
+    "regular-file-only members",
+    "entry, reference, logical identity, and archive identity binding",
+    "no extraction or execution before verification"
+  ],
+  "unsupported_version_behavior": "explicit UNKNOWN; never silently accepted",
+  "claim_boundary": "bundle integrity and identity linkage do not establish sandboxing, execution assurance, correctness, conformance, protected custody, independence, or attestation"
+}

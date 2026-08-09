@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, typed receipt adaptation, Forge-controlled validation, an in-process controller/worker protocol, durable local ledgers, replay protection, and deterministic capability-aware admission are implemented. Network transport remains deferred.
+> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, and a TLS/mutual-certificate loopback transport are implemented. A real second-host run and bulk bundle transfer remain incomplete.
 
 ## Authority boundary
 
@@ -32,14 +32,17 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - explicit `PASS`, `FAIL`, and `UNKNOWN` execution outcomes;
 - deterministic local or operator-controlled cross-host reconciliation;
 - companion adapters for the current experimental MNCS typed execution receipt and execution-assurance shape;
+- offline verification and receipt binding for the current experimental MNCS immutable execution-bundle shape, retaining logical and archive transport identities separately;
 - a stable `FabricService` boundary shared by the CLI and future Forge adapters;
 - fixed, canonical controller/worker envelopes with optional operator-supplied HMAC authentication;
 - durable append-only controller/worker ledgers with explicit recovery diagnostics and duplicate protection; and
 - deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
+- a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
+- explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
 
-The executor is bounded but is **not a security sandbox**. Network policy is recorded but not yet enforced. HMAC authenticates message contents but does not encrypt transport. See [THREAT_MODEL.md](THREAT_MODEL.md).
+The executor is bounded but is **not a security sandbox**. Network policy is recorded but not enforced. TLS protects the transport and certificate enrollment authenticates the configured peer; neither establishes independent evaluation, protected custody, attestation, conformance, or correctness. HMAC authenticates message contents but does not encrypt transport. See [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Quick start
 
@@ -87,7 +90,15 @@ mncs-fabric plan validate PLAN.json
 mncs-fabric run local PLAN.json --root ROOT --manifest MANIFEST.json --label NAME
 mncs-fabric record verify RECORD.json
 mncs-fabric reconcile RECORD.json [RECORD.json ...]
+mncs-fabric bundle verify BUNDLE.zip
+mncs-fabric worker serve --worker-id ID --controller-id ID --bundle-root ROOT \
+  --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
+  --certificate worker.pem --key worker.key --port PORT
 ```
+
+`worker serve` is explicit and serves one bounded TLS request; it defaults to
+loopback only when `--host` is omitted and never falls back to plaintext. The
+controller-side Python API is `NetworkController` plus `TLSNetworkTransport`.
 
 The public application boundary is `mncs_fabric.service.FabricService`:
 `nodes`, `capabilities`, `validate_plan`, `execute_local`, `verify_record`,
@@ -96,7 +107,7 @@ or the bounded CLI, never private implementation modules.
 
 ## Repository map
 
-- `src/mncs_fabric/` — canonical identities, manifests, node capture, execution, receipts, service boundary, protocol, controller/worker, scheduler, and ledger;
+- `src/mncs_fabric/` — canonical identities, manifests, node capture, execution, receipts, bundle compatibility, service boundary, protocol, transports, enrollment, scheduler, and ledger;
 - `schemas/` — versioned interchange schemas;
 - `examples/portable-python/` — a deterministic cross-platform example bundle;
 - `docs/` — protocol, integration, and roadmap documents; and
