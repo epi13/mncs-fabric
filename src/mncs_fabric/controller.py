@@ -23,6 +23,7 @@ from .worker_state import (
     build_liveness_observation,
     liveness_is_fresh,
     validate_liveness,
+    worker_description_is_fresh,
     validate_worker_description,
 )
 
@@ -200,6 +201,8 @@ class NetworkController(LocalController):
         except (ProtocolError, OSError, TimeoutError) as exc:
             self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
             raise
+        if not worker_description_is_fresh(description):
+            return self._set_remote_state(worker_id, description=None, state="UNKNOWN", failure="worker description is stale")
         return self._set_remote_state(worker_id, description=description, state="AVAILABLE")
 
     def worker_state(self, worker_id: str) -> dict[str, Any]:

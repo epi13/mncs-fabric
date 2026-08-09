@@ -153,3 +153,12 @@ def liveness_is_fresh(value: Mapping[str, Any], *, now: str | None = None) -> bo
     current = datetime.now(timezone.utc) if now is None else datetime.fromisoformat(now.replace("Z", "+00:00"))
     observed = datetime.fromisoformat(checked["observed_at"].replace("Z", "+00:00"))
     return (current.astimezone(timezone.utc) - observed.astimezone(timezone.utc)).total_seconds() <= float(checked["lease_seconds"])
+
+
+def worker_description_is_fresh(value: Mapping[str, Any], *, max_age_seconds: float = DESCRIPTION_LEASE_SECONDS, now: str | None = None) -> bool:
+    checked = validate_worker_description(dict(value))
+    if max_age_seconds < 0:
+        raise ValidationError("worker description freshness bound cannot be negative")
+    current = datetime.now(timezone.utc) if now is None else datetime.fromisoformat(now.replace("Z", "+00:00"))
+    captured = datetime.fromisoformat(checked["captured_at"].replace("Z", "+00:00"))
+    return (current.astimezone(timezone.utc) - captured.astimezone(timezone.utc)).total_seconds() <= max_age_seconds
