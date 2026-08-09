@@ -23,8 +23,18 @@ from .errors import ValidationError
 RUNTIME_PROFILE_SCHEMA = "mncs-fabric.runtime-profile.v0.1"
 RUNTIME_OBSERVATION_SCHEMA = "mncs-fabric.runtime-observation.v0.1"
 RUNTIME_BINDING_SCHEMA = "mncs-fabric.runtime-binding.v0.1"
+RUNTIME_ENVIRONMENT_SCHEMA = "mncs-fabric.runtime-environment.v0.1"
+RUNTIME_CAPABILITY_OBSERVATION_SCHEMA = "mncs-fabric.runtime-capability-observation.v0.1"
+RUNTIME_CAPABILITY_BINDING_SCHEMA = "mncs-fabric.runtime-capability-binding.v0.1"
 MAX_RUNTIME_AGE_SECONDS = 3600.0
 _STATUSES = {"PASS", "FAIL", "UNKNOWN"}
+_RUNTIME_CAPABILITIES = {"cuda-execution", "sequential-cpu-offload"}
+_CAPABILITY_EVIDENCE_FIELDS = {
+    "actual_mode", "mechanism", "cuda_execution", "precision", "offload_hook_count",
+    "persistent_accelerator_parameter_bytes", "cpu_or_meta_parameter_bytes",
+    "peak_allocated_bytes", "peak_reserved_bytes", "host_memory_bytes",
+    "duration_seconds", "result_digest", "tolerance",
+}
 
 
 def _text(value: object, field: str, maximum: int = 256) -> str:
@@ -151,6 +161,63 @@ def validate_runtime_profile(value: object, *, expected_worker_id: str | None = 
     return dict(value)
 
 
+def build_runtime_environment(
+    *,
+    runtime_profile: Mapping[str, Any],
+    components: Mapping[str, str],
+    captured_at: str | None = None,
+    observation_source: str = "runtime-probe",
+) -> dict[str, Any]:
+    """Bind a small set of material runtime components without freezing a package lock."""
+
+    profile = validate_runtime_profile(runtime_profile)
+    if not isinstance(components, Mapping) or not components or len(components) > 16:
+        raise ValidationError("runtime components must be a bounded non-empty mapping")
+    normalized = []
+    for name, version in sorted(components.items(), key=lambda item: str(item[0])):
+        normalized.append({"name": _text(name, "components.name", 64), "version": _text(version, "components.version", 128)})
+    value: dict[str, Any] = {
+        "schema_version": RUNTIME_ENVIRONMENT_SCHEMA,
+        "worker_identity": profile["worker_identity"],
+        "runtime_profile_identity": profile["runtime_profile_identity"],
+        "components": normalized,
+        "captured_at": _timestamp(captured_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
+        "observation_source": _text(observation_source, "observation_source"),
+        "claim_boundary": "operator-observed runtime components; not package provenance, attestation, or semantic correctness",
+    }
+    return attach_identity(value, "runtime_environment_identity")
+
+
+def validate_runtime_environment(value: object, *, expected_worker_id: str | None = None, expected_profile_identity: str | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("schema_version") != RUNTIME_ENVIRONMENT_SCHEMA:
+        raise ValidationError("unsupported runtime environment schema")
+    required = {"schema_version", "worker_identity", "runtime_profile_identity", "components", "captured_at", "observation_source", "claim_boundary", "runtime_environment_identity"}
+    if set(value) != required or not verify_identity(value, "runtime_environment_identity"):
+        raise ValidationError("runtime environment fields or identity are invalid")
+    worker = _text(value["worker_identity"], "worker_identity")
+    if expected_worker_id is not None and worker != expected_worker_id:
+        raise ValidationError("runtime environment is bound to another worker")
+    if expected_profile_identity is not None and value["runtime_profile_identity"] != expected_profile_identity:
+        raise ValidationError("runtime environment profile identity does not match")
+    if not is_sha256_identity(value["runtime_profile_identity"]):
+        raise ValidationError("runtime environment profile identity is invalid")
+    if not isinstance(value["components"], list) or not 1 <= len(value["components"]) <= 16:
+        raise ValidationError("runtime environment components are invalid")
+    names: set[str] = set()
+    for component in value["components"]:
+        if not isinstance(component, dict) or set(component) != {"name", "version"}:
+            raise ValidationError("runtime environment component fields are invalid")
+        name = _text(component["name"], "components.name", 64)
+        _text(component["version"], "components.version", 128)
+        if name in names:
+            raise ValidationError("runtime environment components must be unique")
+        names.add(name)
+    _timestamp(value["captured_at"])
+    _text(value["observation_source"], "observation_source")
+    _text(value["claim_boundary"], "claim_boundary", 512)
+    return dict(value)
+
+
 def build_runtime_observation(
     *,
     worker_identity: str,
@@ -238,6 +305,104 @@ def validate_runtime_observation(value: object, *, expected_worker_id: str | Non
     return dict(value)
 
 
+def build_runtime_capability_observation(
+    *,
+    worker_identity: str,
+    runtime_profile: Mapping[str, Any],
+    runtime_environment: Mapping[str, Any],
+    capability: str,
+    status: str,
+    evidence: Mapping[str, Any],
+    captured_at: str | None = None,
+    observation_source: str = "runtime-capability-probe",
+) -> dict[str, Any]:
+    profile = validate_runtime_profile(runtime_profile, expected_worker_id=worker_identity)
+    environment = validate_runtime_environment(runtime_environment, expected_worker_id=worker_identity, expected_profile_identity=profile["runtime_profile_identity"])
+    capability = _text(capability, "capability", 64)
+    if capability not in _RUNTIME_CAPABILITIES:
+        raise ValidationError("unsupported runtime capability")
+    status = _status(status, "status")
+    if not isinstance(evidence, Mapping) or set(evidence) - _CAPABILITY_EVIDENCE_FIELDS:
+        raise ValidationError("runtime capability evidence fields are invalid")
+    normalized = dict(evidence)
+    for key in ("actual_mode", "mechanism", "precision", "tolerance"):
+        if key in normalized:
+            _text(normalized[key], f"evidence.{key}", 128)
+    for key in ("cuda_execution",):
+        if key in normalized:
+            _status(normalized[key], f"evidence.{key}")
+    for key in ("offload_hook_count", "persistent_accelerator_parameter_bytes", "cpu_or_meta_parameter_bytes", "peak_allocated_bytes", "peak_reserved_bytes", "host_memory_bytes"):
+        if key in normalized and (not isinstance(normalized[key], int) or isinstance(normalized[key], bool) or normalized[key] < 0):
+            raise ValidationError(f"evidence.{key} must be a non-negative integer")
+    if "duration_seconds" in normalized and (not isinstance(normalized["duration_seconds"], (int, float)) or normalized["duration_seconds"] < 0):
+        raise ValidationError("evidence.duration_seconds must be non-negative")
+    if "result_digest" in normalized and not is_sha256_identity(normalized["result_digest"]):
+        raise ValidationError("evidence.result_digest must be a sha256 identity")
+    value: dict[str, Any] = {
+        "schema_version": RUNTIME_CAPABILITY_OBSERVATION_SCHEMA,
+        "worker_identity": worker_identity,
+        "runtime_profile_identity": profile["runtime_profile_identity"],
+        "runtime_environment_identity": environment["runtime_environment_identity"],
+        "capability": capability,
+        "status": status,
+        "evidence": normalized,
+        "captured_at": _timestamp(captured_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")),
+        "observation_source": _text(observation_source, "observation_source"),
+        "claim_boundary": "operator-controlled runtime capability observation; not hardware attestation, worker honesty, or semantic correctness",
+    }
+    return attach_identity(value, "runtime_capability_observation_identity")
+
+
+def validate_runtime_capability_observation(value: object, *, expected_worker_id: str | None = None, expected_profile_identity: str | None = None, expected_environment_identity: str | None = None, expected_capability: str | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("schema_version") != RUNTIME_CAPABILITY_OBSERVATION_SCHEMA:
+        raise ValidationError("unsupported runtime capability observation schema")
+    required = {"schema_version", "worker_identity", "runtime_profile_identity", "runtime_environment_identity", "capability", "status", "evidence", "captured_at", "observation_source", "claim_boundary", "runtime_capability_observation_identity"}
+    if set(value) != required or not verify_identity(value, "runtime_capability_observation_identity"):
+        raise ValidationError("runtime capability observation fields or identity are invalid")
+    worker = _text(value["worker_identity"], "worker_identity")
+    if expected_worker_id is not None and worker != expected_worker_id:
+        raise ValidationError("runtime capability observation is bound to another worker")
+    if expected_profile_identity is not None and value["runtime_profile_identity"] != expected_profile_identity:
+        raise ValidationError("runtime capability observation profile identity does not match")
+    if expected_environment_identity is not None and value["runtime_environment_identity"] != expected_environment_identity:
+        raise ValidationError("runtime capability observation environment identity does not match")
+    if not is_sha256_identity(value["runtime_profile_identity"]) or not is_sha256_identity(value["runtime_environment_identity"]):
+        raise ValidationError("runtime capability observation identities are invalid")
+    if value["capability"] not in _RUNTIME_CAPABILITIES:
+        raise ValidationError("unsupported runtime capability")
+    _status(value["status"], "status")
+    if not isinstance(value["evidence"], dict) or set(value["evidence"]) - _CAPABILITY_EVIDENCE_FIELDS:
+        raise ValidationError("runtime capability evidence fields are invalid")
+    # Reuse the builder's strict scalar checks without changing the identity.
+    for key in ("actual_mode", "mechanism", "precision", "tolerance"):
+        if key in value["evidence"]:
+            _text(value["evidence"][key], f"evidence.{key}", 128)
+    if "cuda_execution" in value["evidence"]:
+        _status(value["evidence"]["cuda_execution"], "evidence.cuda_execution")
+    for key in ("offload_hook_count", "persistent_accelerator_parameter_bytes", "cpu_or_meta_parameter_bytes", "peak_allocated_bytes", "peak_reserved_bytes", "host_memory_bytes"):
+        if key in value["evidence"] and (not isinstance(value["evidence"][key], int) or isinstance(value["evidence"][key], bool) or value["evidence"][key] < 0):
+            raise ValidationError(f"evidence.{key} must be a non-negative integer")
+    if "duration_seconds" in value["evidence"] and (not isinstance(value["evidence"]["duration_seconds"], (int, float)) or value["evidence"]["duration_seconds"] < 0):
+        raise ValidationError("evidence.duration_seconds must be non-negative")
+    if "result_digest" in value["evidence"] and not is_sha256_identity(value["evidence"]["result_digest"]):
+        raise ValidationError("evidence.result_digest must be a sha256 identity")
+    _timestamp(value["captured_at"])
+    _text(value["observation_source"], "observation_source")
+    _text(value["claim_boundary"], "claim_boundary", 512)
+    if expected_capability is not None and value["capability"] != expected_capability:
+        raise ValidationError("runtime capability observation does not match the requested capability")
+    return dict(value)
+
+
+def runtime_capability_observation_is_fresh(value: Mapping[str, Any], *, max_age_seconds: float = MAX_RUNTIME_AGE_SECONDS, now: str | None = None) -> bool:
+    checked = validate_runtime_capability_observation(dict(value))
+    if max_age_seconds < 0:
+        raise ValidationError("runtime capability freshness bound cannot be negative")
+    current = datetime.now(timezone.utc) if now is None else datetime.fromisoformat(now.replace("Z", "+00:00"))
+    captured = datetime.fromisoformat(checked["captured_at"].replace("Z", "+00:00"))
+    return (current.astimezone(timezone.utc) - captured.astimezone(timezone.utc)).total_seconds() <= max_age_seconds
+
+
 def runtime_observation_is_fresh(value: Mapping[str, Any], *, max_age_seconds: float = MAX_RUNTIME_AGE_SECONDS, now: str | None = None) -> bool:
     checked = validate_runtime_observation(dict(value))
     if max_age_seconds < 0:
@@ -272,6 +437,42 @@ def validate_runtime_binding(value: object, *, expected_worker_id: str | None = 
     if expected_worker_id is not None and worker != expected_worker_id:
         raise ValidationError("runtime binding is bound to another worker")
     for field in ("runtime_profile_identity", "runtime_observation_identity"):
+        if not is_sha256_identity(value[field]):
+            raise ValidationError(f"{field} is invalid")
+    _optional_text(value["request_identity"], "request_identity", 256)
+    for field in ("record_identity", "receipt_identity"):
+        if value[field] is not None and not (is_sha256_identity(value[field]) or (field == "receipt_identity" and _receipt_identity(value[field]))):
+            raise ValidationError(f"{field} is invalid")
+    _text(value["claim_boundary"], "claim_boundary", 512)
+    return dict(value)
+
+
+def build_runtime_capability_binding(*, observation: Mapping[str, Any], worker_identity: str, request_identity: str | None, record_identity: str | None, receipt_identity: str | None) -> dict[str, Any]:
+    checked = validate_runtime_capability_observation(observation, expected_worker_id=worker_identity)
+    value = {
+        "schema_version": RUNTIME_CAPABILITY_BINDING_SCHEMA,
+        "worker_identity": worker_identity,
+        "runtime_profile_identity": checked["runtime_profile_identity"],
+        "runtime_environment_identity": checked["runtime_environment_identity"],
+        "runtime_capability_observation_identity": checked["runtime_capability_observation_identity"],
+        "request_identity": request_identity,
+        "record_identity": record_identity,
+        "receipt_identity": receipt_identity,
+        "claim_boundary": "identity linkage only; runtime capability remains operator-controlled evidence",
+    }
+    return attach_identity(value, "runtime_capability_binding_identity")
+
+
+def validate_runtime_capability_binding(value: object, *, expected_worker_id: str | None = None) -> dict[str, Any]:
+    if not isinstance(value, dict) or value.get("schema_version") != RUNTIME_CAPABILITY_BINDING_SCHEMA:
+        raise ValidationError("unsupported runtime capability binding schema")
+    required = {"schema_version", "worker_identity", "runtime_profile_identity", "runtime_environment_identity", "runtime_capability_observation_identity", "request_identity", "record_identity", "receipt_identity", "claim_boundary", "runtime_capability_binding_identity"}
+    if set(value) != required or not verify_identity(value, "runtime_capability_binding_identity"):
+        raise ValidationError("runtime capability binding fields or identity are invalid")
+    worker = _text(value["worker_identity"], "worker_identity")
+    if expected_worker_id is not None and worker != expected_worker_id:
+        raise ValidationError("runtime capability binding is bound to another worker")
+    for field in ("runtime_profile_identity", "runtime_environment_identity", "runtime_capability_observation_identity"):
         if not is_sha256_identity(value[field]):
             raise ValidationError(f"{field} is invalid")
     _optional_text(value["request_identity"], "request_identity", 256)

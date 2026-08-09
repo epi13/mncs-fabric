@@ -35,7 +35,11 @@ from .resources import (
 )
 from .runtime import (
     build_runtime_binding,
+    build_runtime_capability_observation,
+    build_runtime_environment,
     build_runtime_observation,
+    validate_runtime_capability_observation,
+    validate_runtime_environment,
     validate_runtime_observation,
     validate_runtime_profile,
 )
@@ -152,6 +156,10 @@ def _consumer_result(response: Mapping[str, Any], context: ConsumerContext | Non
         result["runtime_observation"] = dict(payload["runtime_observation"])
     if isinstance(payload.get("runtime_binding"), dict):
         result["runtime_binding"] = dict(payload["runtime_binding"])
+    if isinstance(payload.get("runtime_capability_observation"), dict):
+        result["runtime_capability_observation"] = dict(payload["runtime_capability_observation"])
+    if isinstance(payload.get("runtime_capability_binding"), dict):
+        result["runtime_capability_binding"] = dict(payload["runtime_capability_binding"])
     if context is not None:
         result["consumer_context_identity"] = context.context_identity
         result["provenance_binding"] = build_provenance_binding(
@@ -181,6 +189,7 @@ class FabricClient:
         self.remote_configs: dict[str, RemoteWorkerConfig] = {}
         self.bundle_links: dict[str, dict[str, str]] = {}
         self.runtime_observations: dict[str, dict[str, Any]] = {}
+        self.runtime_capability_observations: dict[str, dict[str, Any]] = {}
 
     @staticmethod
     def contract() -> dict[str, Any]:
@@ -247,6 +256,29 @@ class FabricClient:
             self.network.set_runtime_observation(worker_id, observation)
         return observation
 
+    def ingest_runtime_capability_observation(
+        self,
+        worker_id: str,
+        capability: str,
+        status: str,
+        evidence: Mapping[str, Any],
+        *,
+        components: Mapping[str, str],
+        runtime_profile: Mapping[str, Any] | None = None,
+        captured_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Ingest proof for a capability of one exact operator-provisioned runtime."""
+
+        profile = runtime_profile or self.runtime_profile(worker_id)
+        environment = build_runtime_environment(runtime_profile=profile, components=components, captured_at=captured_at)
+        observation = build_runtime_capability_observation(worker_identity=worker_id, runtime_profile=profile, runtime_environment=environment, capability=capability, status=status, evidence=evidence, captured_at=captured_at)
+        validate_runtime_environment(environment, expected_worker_id=worker_id, expected_profile_identity=profile["runtime_profile_identity"])
+        self.local.ledger.append("runtime.capability-observation", observation) if worker_id in self.local.workers else self.network.ledger.append("runtime.capability-observation", observation)
+        self.runtime_capability_observations[worker_id] = observation
+        if worker_id in self.network.remote_workers:
+            self.network.set_runtime_capability_observation(worker_id, observation)
+        return observation
+
     @staticmethod
     def bind_runtime_observation(result: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
         worker_id = result.get("worker_identity")
@@ -280,6 +312,7 @@ class FabricClient:
         execution_bundle: dict[str, str] | None = None,
         placement: PlacementRequest | Mapping[str, Any] | None = None,
         runtime_observation: Mapping[str, Any] | None = None,
+        runtime_capability_observation: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
@@ -290,47 +323,50 @@ class FabricClient:
             worker = self.local.workers[worker_id]
             for index in range(replicas):
                 selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
-                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime) + f":{index}"
-                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime))
+                selected_capability = dict(runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) if (runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) else None
+                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability) + f":{index}"
+                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability))
             return [_consumer_result(response, context) for response in outputs]
         if worker_id is None and self.local.workers and self.remote_configs:
-            return self._execute_registered(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, context=context, context_value=context_value, execution_bundle=execution_bundle, placement_value=placement_value)
+            return self._execute_registered(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, context=context, context_value=context_value, execution_bundle=execution_bundle, placement_value=placement_value, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
         if worker_id is not None or self.remote_configs:
             if worker_id is not None and worker_id not in self.remote_configs:
                 raise ProtocolError(f"worker is not registered: {worker_id}")
             if worker_id is not None:
                 transport, _ = self.network.remote_workers[worker_id]
                 selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
-                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
+                selected_capability = dict(runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) if (runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) else None
+                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability)
                 return [_consumer_result(response, context)]
-            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=runtime_observation)
+            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
             return [_consumer_result(response, context) for response in responses]
-        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None)
+        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None, runtime_capability_observation=dict(runtime_capability_observation) if runtime_capability_observation else None)
         return [_consumer_result(response, context) for response in responses]
 
-    def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, placement_value: dict[str, Any] | None) -> list[dict[str, Any]]:
+    def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, placement_value: dict[str, Any] | None, runtime_observation: Mapping[str, Any] | None, runtime_capability_observation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         """Schedule across registered local and remote workers deterministically."""
 
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id))) for worker_id, worker in self.local.workers.items()]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id))) for worker_id, worker in self.local.workers.items()]
         remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items()]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
             return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]
         outputs: list[dict[str, Any]] = []
         for worker_id in decision.worker_ids:
-            selected_runtime = dict(self.runtime_observations.get(worker_id)) if worker_id in self.runtime_observations else None
-            rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
+            selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
+            selected_capability = dict(runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) if (runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) else None
+            rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability)
             rid = rid + ":" + worker_id
             try:
                 if worker_id in self.local.workers:
-                    response = self.local.dispatch_via(InProcessTransport(self.local.workers[worker_id]), checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
+                    response = self.local.dispatch_via(InProcessTransport(self.local.workers[worker_id]), checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability)
                 else:
                     transport, _ = self.network.remote_workers[worker_id]
                     remote_bundle = execution_bundle or self.bundle_links.get(worker_id)
-                    response = self.network.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value, runtime_observation=selected_runtime)
+                    response = self.network.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability)
                 outputs.append(_consumer_result(response, context))
             except (ProtocolError, OSError, TimeoutError) as exc:
                 if worker_id in self.remote_configs:
@@ -338,8 +374,8 @@ class FabricClient:
                 outputs.append({"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": "UNKNOWN", "worker_identity": worker_id, "request_identity": rid, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": "WORKER_UNAVAILABLE", "diagnostic": str(exc)})
         return outputs
 
-    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement, runtime_observation=runtime_observation)
+    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
 
     def ensure_bundle(self, worker_id: str, archive: Path, *, expected_bundle_identity: str | None = None) -> dict[str, Any]:
         """Verify and transfer one typed bundle; arbitrary files are rejected."""

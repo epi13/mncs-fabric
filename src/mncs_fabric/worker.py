@@ -19,7 +19,7 @@ from .protocol import dispatch_binding_identity, make_envelope, validate_envelop
 from .store import FabricLedger
 from .receipts import build_execution_receipt
 from .worker_state import build_worker_description
-from .runtime import build_runtime_binding, build_runtime_profile, validate_runtime_observation
+from .runtime import build_runtime_binding, build_runtime_capability_binding, build_runtime_profile, validate_runtime_capability_observation, validate_runtime_observation
 
 
 class LocalWorker:
@@ -104,10 +104,15 @@ class LocalWorker:
         dispatch_binding = dispatch_binding_identity(message)
         placement_request = payload.get("placement_request")
         runtime_observation = payload.get("runtime_observation")
+        runtime_capability_observation = payload.get("runtime_capability_observation")
         if runtime_observation is not None:
             if placement_request is None:
                 raise ProtocolError("runtime observation requires a placement request")
             validate_runtime_observation(runtime_observation, expected_worker_id=self.worker_id, expected_profile_identity=self.runtime_profile()["runtime_profile_identity"])
+        if runtime_capability_observation is not None:
+            if placement_request is None:
+                raise ProtocolError("runtime capability observation requires a placement request")
+            validate_runtime_capability_observation(runtime_capability_observation, expected_worker_id=self.worker_id, expected_profile_identity=self.runtime_profile()["runtime_profile_identity"])
         placement_admission = None
         resource_snapshot = None
         prior, result = self._prior_dispatch(request_id)
@@ -127,7 +132,7 @@ class LocalWorker:
                 for field in ("placement_admission", "resource_snapshot"):
                     if result.get(field) is not None:
                         duplicate_payload[field] = result[field]
-                for field in ("runtime_observation", "runtime_binding"):
+                for field in ("runtime_observation", "runtime_binding", "runtime_capability_observation", "runtime_capability_binding"):
                     if result.get(field) is not None:
                         duplicate_payload[field] = result[field]
                 return self._response(message, "execution.result", duplicate_payload)
@@ -135,7 +140,7 @@ class LocalWorker:
         if placement_request is not None:
             validate_placement_request(placement_request)
             resource_snapshot = self.resource_snapshot()
-            placement_admission = evaluate_placement(placement_request, resource_snapshot, self.capabilities(), runtime_observation)
+            placement_admission = evaluate_placement(placement_request, resource_snapshot, self.capabilities(), runtime_observation, runtime_capability_observation)
             if placement_admission["disposition"] != "PASS":
                 return self._response(message, "dispatch.ack", {"disposition": "UNKNOWN", "reason": placement_admission["reason_code"], "placement_admission": placement_admission, "resource_snapshot": resource_snapshot})
         bundle_info = payload.get("execution_bundle")
@@ -165,6 +170,9 @@ class LocalWorker:
         if runtime_observation is not None:
             response_payload["runtime_observation"] = runtime_observation
             response_payload["runtime_binding"] = build_runtime_binding(observation=runtime_observation, worker_identity=self.worker_id, request_identity=payload["request_identity"], record_identity=record["record_id"], receipt_identity=receipt["receipt_identity"] if receipt is not None else None)
+        if runtime_capability_observation is not None:
+            response_payload["runtime_capability_observation"] = runtime_capability_observation
+            response_payload["runtime_capability_binding"] = build_runtime_capability_binding(observation=runtime_capability_observation, worker_identity=self.worker_id, request_identity=payload["request_identity"], record_identity=record["record_id"], receipt_identity=receipt["receipt_identity"] if receipt is not None else None)
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         for field in ("execution_bundle", "bundle_binding"):
             if response_payload.get(field) is not None:
@@ -172,7 +180,7 @@ class LocalWorker:
         for field in ("placement_admission", "resource_snapshot"):
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
-        for field in ("runtime_observation", "runtime_binding"):
+        for field in ("runtime_observation", "runtime_binding", "runtime_capability_observation", "runtime_capability_binding"):
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         self.ledger.append("protocol.result", result_record)

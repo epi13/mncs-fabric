@@ -84,7 +84,7 @@ def dispatch_binding_identity(envelope: dict[str, Any]) -> str:
     )
 
 
-def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any], challenge: object = None, consumer_context: object = None, execution_bundle: object = None, placement_request: object = None, runtime_observation: object = None) -> str:
+def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any], challenge: object = None, consumer_context: object = None, execution_bundle: object = None, placement_request: object = None, runtime_observation: object = None, runtime_capability_observation: object = None) -> str:
     """Derive the stable semantic request identity used by controller and worker."""
 
     value: dict[str, Any] = {"job_plan": plan, "artifact_manifest": manifest}
@@ -98,6 +98,8 @@ def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any],
         value["placement_request"] = placement_request
     if runtime_observation is not None:
         value["runtime_observation"] = runtime_observation
+    if runtime_capability_observation is not None:
+        value["runtime_capability_observation"] = runtime_capability_observation
     return sha256_identity(value)
 
 
@@ -130,7 +132,11 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if runtime_observation is not None:
             from .runtime import validate_runtime_observation
             validate_runtime_observation(runtime_observation)
-        if value.get("request_identity") != dispatch_request_identity(plan=plan, manifest=manifest, challenge=value.get("execution_challenge"), consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation):
+        runtime_capability_observation = value.get("runtime_capability_observation")
+        if runtime_capability_observation is not None:
+            from .runtime import validate_runtime_capability_observation
+            validate_runtime_capability_observation(runtime_capability_observation)
+        if value.get("request_identity") != dispatch_request_identity(plan=plan, manifest=manifest, challenge=value.get("execution_challenge"), consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation):
             raise ProtocolError("dispatch request identity does not match its payload")
         if "execution_challenge" in value and not validate_execution_challenge(value["execution_challenge"]).valid:
             raise ProtocolError("dispatch execution challenge is invalid")
@@ -174,6 +180,12 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if "runtime_binding" in value:
             from .runtime import validate_runtime_binding
             validate_runtime_binding(value["runtime_binding"])
+        if "runtime_capability_observation" in value:
+            from .runtime import validate_runtime_capability_observation
+            validate_runtime_capability_observation(value["runtime_capability_observation"])
+        if "runtime_capability_binding" in value:
+            from .runtime import validate_runtime_capability_binding
+            validate_runtime_capability_binding(value["runtime_capability_binding"])
     elif message_type in {"status.request", "result.collect"}:
         if not is_sha256_identity(value.get("job_identity")):
             raise ProtocolError("status and collection requests require a job identity")

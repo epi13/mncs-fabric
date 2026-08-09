@@ -43,6 +43,7 @@ REASONS = {
     "INSUFFICIENT_VRAM",
     "INSUFFICIENT_HOST_RAM",
     "SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED",
+    "SEQUENTIAL_OFFLOAD_EXECUTION_UNVERIFIED",
     "RESOURCE_OBSERVATION_STALE",
     "RESOURCE_OBSERVATION_UNKNOWN",
     "CAPABILITY_UNAVAILABLE",
@@ -380,15 +381,18 @@ def _precision_status(accelerator: Mapping[str, Any], precision: str) -> str:
     return precision if accelerator.get("precision_probes", {}).get(precision) == "PASS" else "unknown"
 
 
-def _decision(*, snapshot: Mapping[str, Any], request: PlacementRequest, disposition: str, mode: str, reason_code: str, reason: str, precision: str = "unknown", accelerator: Mapping[str, Any] | None = None, effective_gpu_budget: int | None = None, required_gpu: int = 0, required_host: int = 0, runtime_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def _decision(*, snapshot: Mapping[str, Any], request: PlacementRequest, disposition: str, mode: str, reason_code: str, reason: str, precision: str = "unknown", accelerator: Mapping[str, Any] | None = None, effective_gpu_budget: int | None = None, required_gpu: int = 0, required_host: int = 0, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
     value = {"schema_version": ADMISSION_SCHEMA, "worker_identity": snapshot["worker_identity"], "placement_request_identity": request.placement_request_identity, "resource_snapshot_identity": snapshot["resource_snapshot_identity"], "disposition": disposition, "admission_mode": mode, "precision": precision, "reason_code": reason_code, "reason": reason, "selected_accelerator_identity": accelerator.get("hardware_identity") if accelerator else None, "effective_accelerator_budget_bytes": effective_gpu_budget, "required_accelerator_bytes": required_gpu, "required_host_memory_bytes": required_host, "claim_boundary": "resource admission observation; not runtime execution proof, attestation, correctness, or assurance"}
     if runtime_observation is not None:
         value["runtime_profile_identity"] = runtime_observation["runtime_profile_identity"]
         value["runtime_observation_identity"] = runtime_observation["runtime_observation_identity"]
+    if runtime_capability_observation is not None:
+        value["runtime_environment_identity"] = runtime_capability_observation["runtime_environment_identity"]
+        value["runtime_capability_observation_identity"] = runtime_capability_observation["runtime_capability_observation_identity"]
     return attach_identity(value, "decision_identity")
 
 
-def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snapshot_value: Mapping[str, Any], worker_capabilities: frozenset[str] = frozenset(), runtime_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snapshot_value: Mapping[str, Any], worker_capabilities: frozenset[str] = frozenset(), runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> dict[str, Any]:
     request = placement_request_from(request_value)
     snapshot = validate_resource_snapshot(snapshot_value)
     if runtime_observation is not None:
@@ -397,6 +401,12 @@ def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snap
         runtime_observation = validate_runtime_observation(runtime_observation, expected_worker_id=snapshot["worker_identity"])
         if not runtime_observation_is_fresh(runtime_observation, max_age_seconds=request.resource_max_age_seconds):
             return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_STALE", reason="runtime observation exceeds the placement freshness bound", runtime_observation=runtime_observation)
+    if runtime_capability_observation is not None:
+        from .runtime import runtime_capability_observation_is_fresh, validate_runtime_capability_observation
+
+        runtime_capability_observation = validate_runtime_capability_observation(runtime_capability_observation, expected_worker_id=snapshot["worker_identity"])
+        if not runtime_capability_observation_is_fresh(runtime_capability_observation, max_age_seconds=request.resource_max_age_seconds):
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="RESOURCE_OBSERVATION_STALE", reason="runtime capability observation exceeds the placement freshness bound", runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
     required_capabilities = set(request.required_capabilities)
     missing = sorted(required_capabilities - set(worker_capabilities))
     if missing:
@@ -458,7 +468,10 @@ def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snap
     if request.offload == "sequential-cpu" or (request.offload == "auto" and not full_fits):
         if request.runtime_supports_sequential_cpu_offload is not True:
             if request.offload == "sequential-cpu" or request.execution_device == "accelerator":
-                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED", reason="consumer runtime did not declare sequential offload support", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
+                return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="SEQUENTIAL_OFFLOAD_RUNTIME_UNSUPPORTED", reason="consumer runtime did not declare sequential offload support", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
+            return cpu_decision()
+        if runtime_capability_observation is None or runtime_capability_observation.get("capability") != "sequential-cpu-offload" or runtime_capability_observation.get("status") != "PASS":
+            return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="SEQUENTIAL_OFFLOAD_EXECUTION_UNVERIFIED", reason="the exact worker runtime has no fresh sequential-offload execution proof", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
         else:
             working = request.minimum_accelerator_working_bytes or request.estimated_workspace_bytes
             required_host = _host_requirement(request, "sequential-cpu-offload")
@@ -468,7 +481,7 @@ def evaluate_placement(request_value: PlacementRequest | Mapping[str, Any], snap
                 return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_HOST_RAM", reason="host memory is insufficient for sequential offload", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
             if working > effective:
                 return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="minimum accelerator working memory exceeds the effective budget", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
-            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="sequential-cpu-offload", reason_code="SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE", reason="sequential offload resources are sufficient", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation)
+            return _decision(snapshot=snapshot, request=request, disposition="PASS", mode="sequential-cpu-offload", reason_code="SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE", reason="sequential offload resources and exact runtime proof are sufficient", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=working, required_host=required_host, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation)
     if request.execution_device == "auto":
         return cpu_decision()
     return _decision(snapshot=snapshot, request=request, disposition="UNKNOWN", mode="unknown", reason_code="INSUFFICIENT_VRAM", reason="requested accelerator placement is unavailable", precision=precision, accelerator=accelerator, effective_gpu_budget=effective, required_gpu=required, runtime_observation=runtime_observation)
@@ -484,7 +497,7 @@ def validate_admission(value: object, *, error_type: type[Exception] = Validatio
             raise ValidationError("placement admission disposition or reason is invalid")
         if not is_sha256_identity(value.get("placement_request_identity")) or not is_sha256_identity(value.get("resource_snapshot_identity")):
             raise ValidationError("placement admission identities are invalid")
-        for field in ("runtime_profile_identity", "runtime_observation_identity"):
+        for field in ("runtime_profile_identity", "runtime_observation_identity", "runtime_environment_identity", "runtime_capability_observation_identity"):
             if field in value and not is_sha256_identity(value[field]):
                 raise ValidationError(f"placement admission {field} is invalid")
         return dict(value)
