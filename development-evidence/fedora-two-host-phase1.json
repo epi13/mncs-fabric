@@ -1,0 +1,62 @@
+{
+  "schema_version": "mncs-fabric.two-host-experiment.v0.1",
+  "record_type": "mncs-fabric.two-host-experiment",
+  "experiment_id": "fedora-two-host-20260809T162507Z",
+  "controller_fabric_commit": "642129bccc14b40196ab028b25a248f7fed2449e",
+  "worker_fabric_commit": "642129bccc14b40196ab028b25a248f7fed2449e",
+  "worker_fabric_source_archive_identity": "sha256:49d854793079b86f3335fc1aa603fbc506d5c684df410cd67068c400b85a4c71",
+  "direct_fabric_tls": true,
+  "ssh_tunnel_used": false,
+  "bootstrap_material_staged_by_ssh": true,
+  "controller_identity": "fabric-controller-01",
+  "worker_identity": "fabric-worker-01",
+  "worker_hostname": "fabric-worker-01",
+  "controller_certificate_fingerprint": "sha256:56391b39eea6ec0b9484da423b712f8a183a918e11014302f0d523783b312ace",
+  "worker_certificate_fingerprint": "sha256:868159be9bb26a4d34d4a332ec0d4d5ab75393d3a1a63c4ed98669fe8b648f48",
+  "node_records": {
+    "controller": {
+      "architecture": "x86_64",
+      "cpu_count": 8,
+      "machine_label": "fabric-controller-01",
+      "node_fingerprint": "sha256:f380c136e05760b88f8468f63bdfda99746a7ad34079ad0bd020e35cdbd04f80",
+      "record_id": "sha256:e05d927d0ae0f8c87b41a2b2c2bb5c5c3c330d67798a2d47f5e6c20ee5b12061"
+    },
+    "worker": {
+      "architecture": "x86_64",
+      "cpu_count": 8,
+      "machine_label": "fabric-worker-01",
+      "node_fingerprint": "sha256:81ec18acefdfc8a71c6fc26ea12733f784381e4fde97d9b4c77c1f5debb6fe33",
+      "record_id": "sha256:8e2457e45adfaeec927e464a35c95ef6d302f01ffb30992b6b7c3549eb50331a"
+    }
+  },
+  "execution": {
+    "job_identity": "sha256:82663d39fb3f107bfb09726a811b1c6c16ee6c725ba9b72650ed4a5959c664df",
+    "candidate_identity": "sha256:65e0e98a48fc207f9955a71232c72c1e93e8d939e90c18bd8dbfd23b31dba33d",
+    "artifact_manifest_identity": "sha256:b030e36d524a2e7c2201c5972e59860477822aeaaf5d16654e52a8292c461857",
+    "controller_record_id": "sha256:7a614dba63f7ee2fa121f04c34f13b1aa0e3d3e719dc7a5000c0a06cbfc0251a",
+    "worker_record_id": "sha256:1c2d54e0dcc014887a38c7cf1e58e2fd6cc2f729cf33a1a52c4ecfecfe545969",
+    "controller_receipt_identity": "9a4ef611f971289b43754c6a5ebbed16adfbda9a8f0f0cb81ab4e634c4d6d2bd",
+    "worker_receipt_identity": "940f8b856b47a6aed310507ef2623262cfc0f9cda1b49f0aca333fbff22f0cdf",
+    "result_identities": ["sha256:4523028bdb5a17804bdb299e6019122ee6866fb513a3e961a8fd19374072c1b7"],
+    "cohort_id": "sha256:489325f048cded6bbbfc3cb75466db45d50493b037ee6d7d127d01f3a0db3af3",
+    "cohort_outcome": "PASS"
+  },
+  "challenge": {
+    "challenge_identity": "94f60bb69afb6e5a2126e037b81e60fba08c61a55c155442facf342f49e2dd7e",
+    "replay_identity": "47404d9c32366d8779f8f3d85f7453bbaebdf0309435eacf3ad6abf523729aee",
+    "replay_store_entry_identity": "afd0dd6bddf563601861126049a0a3f5079d0e54f4a6b9fe471abc33a3e0ed59"
+  },
+  "adversarial": {
+    "duplicate_after_restart": "DUPLICATE_IDEMPOTENT",
+    "controller_restart_retry": "DUPLICATE_IDEMPOTENT",
+    "conflicting_replay": "CONFLICTING_REPLAY",
+    "revoked_worker": {"disposition": "FAIL_CLOSED", "diagnostic": "ProtocolError"}
+  },
+  "claim_boundary": "operator-controlled development evidence; direct mTLS and durable identity-linked execution observations only; no sandbox, correctness, custody, independence, conformance, or certification claim",
+  "limitations": [
+    "EA-NEXT-002 material was staged through the operator bootstrap channel; Fabric bulk bundle transfer was not exercised.",
+    "EA-NEXT-005 freshness is scoped to the controller's operator-controlled local replay store.",
+    "The worker service was a bounded one-request endpoint.",
+    "The two hosts share one operator trust domain."
+  ]
+}

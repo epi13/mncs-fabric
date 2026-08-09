@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any, BinaryIO, Iterator
 
 from .canonical import canonical_json_bytes, sha256_identity
 from .errors import StorageError
@@ -26,27 +27,53 @@ class LedgerDiagnostic:
 def _exclusive_lock(path: Path) -> Iterator[None]:
     lock_path = path.with_name(path.name + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    stream = lock_path.open("a+b")
+    deadline = time.monotonic() + 30.0
+    handle: BinaryIO | None = None
+    while True:
+        candidate: BinaryIO | None = None
+        try:
+            candidate = lock_path.open("a+b", buffering=0)
+            if os.name == "nt":
+                import msvcrt
+
+                # Lock one stable byte.  The file may grow during a racy
+                # first creation, but every holder uses byte zero.
+                candidate.seek(0, os.SEEK_END)
+                if candidate.tell() == 0:
+                    candidate.write(b"\0")
+                    candidate.flush()
+                candidate.seek(0)
+                msvcrt.locking(candidate.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(candidate.fileno(), fcntl.LOCK_EX)
+            handle = candidate
+            break
+        except PermissionError:
+            if candidate is not None:
+                candidate.close()
+            if os.name != "nt" or time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+
+    assert handle is not None
     try:
-        if os.name == "posix":
-            import fcntl
-            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
-        else:
-            import msvcrt
-            stream.seek(0)
-            stream.write(b"0")
-            stream.flush()
-            msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK, 1)
         yield
     finally:
-        if os.name == "posix":
-            import fcntl
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-        else:
-            import msvcrt
-            stream.seek(0)
-            msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
-        stream.close()
+        try:
+            if os.name == "posix":
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            else:
+                # Windows releases the region when this exact handle closes.
+                # Explicit LK_UNLCK is unreliable on hosted Windows runners.
+                handle.flush()
+        finally:
+            # Handle closure must happen even when release/flush reports an
+            # error, otherwise the lock file remains undeletable on Windows.
+            handle.close()
 
 
 class FabricLedger:

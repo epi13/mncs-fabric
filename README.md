@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, and a TLS/mutual-certificate loopback transport are implemented. A real second-host run and bulk bundle transfer remain incomplete.
+> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, and mutually authenticated TLS transport are implemented. The first direct Fedora-to-Fedora development evidence run is recorded; persistent production lifecycle and bulk bundle transfer remain incomplete.
 
 ## Authority boundary
 

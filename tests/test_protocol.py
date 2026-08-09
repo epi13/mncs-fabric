@@ -11,7 +11,7 @@ from mncs_fabric.challenges import issue_execution_challenge
 from mncs_fabric.controller import LocalController
 from mncs_fabric.errors import ProtocolError
 from mncs_fabric.models import validate_job_plan
-from mncs_fabric.protocol import make_envelope, validate_envelope
+from mncs_fabric.protocol import dispatch_binding_identity, make_envelope, validate_envelope
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.receipts import execution_policy_identity_for_plan
 from mncs_fabric.transport import InProcessTransport
@@ -63,6 +63,10 @@ class ProtocolTests(unittest.TestCase):
         second = worker.handle(envelope, now="2026-01-01T00:00:10Z")
         self.assertEqual(first["message_type"], "execution.result")
         self.assertEqual(second["payload"]["disposition"], "DUPLICATE_IDEMPOTENT")
+        reconstructed = make_envelope("dispatch.request", controller_id="controller", worker_id="worker-a", request_id="request-1", job_id=plan["job_id"], nonce="dispatch-retry-123456789", payload={"job_plan": plan, "artifact_manifest": manifest, "request_identity": sha256_identity({"job_plan": plan, "artifact_manifest": manifest})}, created_at="2026-01-01T00:00:20Z", expires_at="2026-01-01T00:01:20Z")
+        self.assertNotEqual(reconstructed["message_id"], envelope["message_id"])
+        self.assertEqual(dispatch_binding_identity(reconstructed), dispatch_binding_identity(envelope))
+        self.assertEqual(worker.handle(reconstructed, now="2026-01-01T00:00:21Z")["payload"]["disposition"], "DUPLICATE_IDEMPOTENT")
         changed = copy.deepcopy(envelope)
         changed["payload"]["job_plan"]["candidate_identity"] = identity("b")
         changed["payload"]["job_plan"] = validate_job_plan(changed["payload"]["job_plan"])

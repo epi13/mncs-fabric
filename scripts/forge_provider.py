@@ -34,6 +34,7 @@ def run_validation() -> tuple[str, str, list[object]]:
     if not compileall.compile_dir(str(ROOT / "src"), quiet=1):
         return "FAIL", "Fabric source compilation failed", []
     from mncs_fabric.artifacts import verify_manifest
+    from mncs_fabric.evidence import validate_two_host_evidence
     from mncs_fabric.io import load_json
     from mncs_fabric.service import FabricService
     service = FabricService()
@@ -52,14 +53,19 @@ def run_validation() -> tuple[str, str, list[object]]:
     challenge_snapshot = json.loads((ROOT / "compat/mncs-execution-challenge-0.1-experimental.snapshot.json").read_text(encoding="utf-8"))
     if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted" or challenge_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
         return "FAIL", "compatibility snapshots are not fail-closed", []
-    return "PASS", "Fabric suite, compilation, portable example, receipt/bundle/challenge compatibility, TLS loopback, and replay checks passed", [{"operation": "fabric-validation", "tests": result.testsRun, "tls": "covered by unittest", "challenge": "covered by unittest"}]
+    evidence_path = ROOT / "development-evidence/fedora-two-host-phase1.json"
+    if evidence_path.exists():
+        evidence_report = validate_two_host_evidence(json.loads(evidence_path.read_text(encoding="utf-8")))
+        if evidence_report["outcome"] != "PASS":
+            return "FAIL", "sanitized Fedora two-host evidence failed validation", [{"operation": "two-host-evidence-validation", "report": evidence_report}]
+    return "PASS", "Fabric suite, compilation, portable example, receipt/bundle/challenge compatibility, TLS loopback, replay checks, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "tls": "covered by unittest", "challenge": "covered by unittest", "two_host_evidence": "validated when committed evidence is present"}]
 
 
 def main() -> int:
     line = sys.stdin.readline()
     request = json.loads(line)
     if request.get("type") == "capabilities":
-        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation"], "unsupported_constructs": ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
+        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation", "two-host-evidence-validation"], "unsupported_constructs": ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
     elif request.get("type") == "analysis_request" and request.get("analysis") == "inspection":
         status, summary, witnesses = run_validation()
         result = response(request, status, summary, limitations=["Forge execution is development evidence, not independent certification."], witnesses=witnesses)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from mncs_fabric.errors import StorageError
 from mncs_fabric.scheduler import WorkerSlot, schedule
-from mncs_fabric.store import FabricLedger
+from mncs_fabric.store import FabricLedger, _exclusive_lock
 
 
 def identity(char: str) -> str:
@@ -20,6 +20,28 @@ def plan(capabilities=None):
 
 
 class StoreTests(unittest.TestCase):
+    def test_lock_handle_is_released_for_immediate_cleanup(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "ledger.jsonl"
+        ledger = FabricLedger(path)
+        ledger.append("test", {"value": 1})
+        lock_path = Path(str(path) + ".lock")
+        self.assertTrue(lock_path.exists())
+        lock_path.unlink()
+        self.assertFalse(lock_path.exists())
+
+    def test_lock_handle_closes_after_critical_section_exception(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "ledger.jsonl"
+        lock_path = Path(str(path) + ".lock")
+        with self.assertRaisesRegex(RuntimeError, "critical section"):
+            with _exclusive_lock(path):
+                raise RuntimeError("critical section")
+        lock_path.unlink()
+        self.assertFalse(lock_path.exists())
+
     def test_append_recovery_and_corruption_are_explicit(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)

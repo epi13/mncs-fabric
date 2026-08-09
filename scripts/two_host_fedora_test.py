@@ -65,7 +65,7 @@ class Remote:
         self.options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10"]
 
     def ssh(self, command: str) -> str:
-        return _run(["ssh", *self.options, self.destination, command], timeout=20)
+        return _run(["ssh", "-n", *self.options, self.destination, command], timeout=20)
 
     def scp_to(self, source: Path, destination: str) -> None:
         _run(["scp", *self.options, str(source), f"{self.destination}:{destination}"], timeout=60)
@@ -112,8 +112,8 @@ def _remote_node(remote: Remote, run_root: str, worker_id: str) -> dict[str, Any
 
 def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int) -> int:
     command = (
-        f"mkdir -p {_shell_quote(run_root + '/logs')} && "
-        f"nohup {_shell_quote(run_root + '/venv/bin/python')} -m mncs_fabric worker serve "
+        f"{_shell_quote(run_root + '/venv/bin/python')} "
+        f"{_shell_quote(run_root + '/repo/scripts/remote_worker_launcher.py')} "
         f"--worker-id {_shell_quote(worker_id)} --controller-id {_shell_quote(controller_id)} "
         f"--bundle-root {_shell_quote(run_root + '/repo/examples/portable-python/bundle')} "
         f"--state {_shell_quote(run_root + '/state/worker-ledger.jsonl')} "
@@ -121,14 +121,16 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         f"--ca {_shell_quote(run_root + '/certs/ca.pem')} "
         f"--certificate {_shell_quote(run_root + '/certs/worker.pem')} "
         f"--key {_shell_quote(run_root + '/certs/worker.key')} "
-        f"--host {_shell_quote(host)} --port {port} --timeout 8 "
-        f">{_shell_quote(run_root + '/logs/worker.log')} 2>&1 </dev/null & echo $!"
+        # The endpoint is still one-request/bounded, but physical startup and
+        # repeated SSH readiness probes must not consume its accept window.
+        f"--host {_shell_quote(host)} --port {port} --timeout 30 "
+        f"--log {_shell_quote(run_root + '/logs/worker.log')}"
     )
     output = remote.ssh(command).strip().splitlines()
     if not output or not output[-1].isdigit():
         raise RuntimeError("remote worker did not return a process ID")
     pid = int(output[-1])
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         listeners = remote.ssh(f"ss -ltn sport = :{port}")
         if f":{port}" in listeners:
@@ -254,7 +256,7 @@ def run_experiment(args: argparse.Namespace) -> dict[str, Any]:
         restarted_controller.register_remote(args.worker_id, frozenset(capability_names(node)), transport)
         pid = None
         pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port)
-        restarted_response = restarted_controller.dispatch_remote(plan, manifest)
+        restarted_response = restarted_controller.dispatch_remote(plan, manifest, challenge=challenge)
         adversarial["controller_restart_retry"] = restarted_response[0].get("payload", {}).get("disposition")
 
         # Revocation is checked over the real TLS connection before dispatch.

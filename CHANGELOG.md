@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- repaired Windows ledger locking using handle-scoped release and deterministic
+  cleanup, without an unlocked fallback;
+- made dispatch replay identity stable across reconstructed retries while
+  retaining the envelope message identity as an observation;
+- added a bounded remote worker launcher and recorded the first direct
+  Fedora-to-Fedora Fabric mTLS execution, restart/replay, revocation, and
+  reconciliation evidence;
+- added Forge validation for the sanitized physical-host evidence envelope.
+
 ## 0.2.0a0
 
 - Adopt the current MNCS EA-NEXT-002 immutable execution-bundle shape with

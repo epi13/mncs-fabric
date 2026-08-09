@@ -53,6 +53,29 @@ def _auth_payload(envelope: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in envelope.items() if key != "authentication"}
 
 
+def dispatch_binding_identity(envelope: dict[str, Any]) -> str:
+    """Return the stable identity of a dispatch's semantic request.
+
+    ``message_id`` intentionally includes the envelope timestamps and nonce,
+    so a freshly constructed retry has a different message identity.  Replay
+    protection must distinguish that harmless reconstruction from a changed
+    job, bundle, challenge, or authenticated peer binding.  This identity is
+    therefore derived only from the fixed dispatch scope and payload.
+    """
+
+    return sha256_identity(
+        {
+            "protocol_version": envelope.get("protocol_version"),
+            "message_type": envelope.get("message_type"),
+            "controller_id": envelope.get("controller_id"),
+            "worker_id": envelope.get("worker_id"),
+            "request_id": envelope.get("request_id"),
+            "job_id": envelope.get("job_id"),
+            "payload": envelope.get("payload"),
+        }
+    )
+
+
 def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ProtocolError("message payload must be an object")

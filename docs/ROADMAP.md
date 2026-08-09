@@ -20,13 +20,16 @@
 - [x] replay and duplicate rejection;
 - [x] local concurrency/admission limits;
 - [x] additive EA-NEXT-005 challenge/replay compatibility;
-- [ ] Fedora-to-Fedora two-node evidence run.
+- [x] Fedora-to-Fedora two-node evidence run (direct Fabric mTLS; see
+  `development-evidence/fedora-two-host-phase1.md`).
 
 - [~] one-request network service lifecycle; production multi-host operation
   and certificate provisioning remain operator responsibilities;
 
-Fabric does not claim Phase 1 complete: no real second-host run has occurred,
-and bulk execution-bundle transfer is not yet implemented.
+The experimental two-host acceptance run is complete. Fabric does not claim
+production Phase 1 lifecycle completion: the worker remains a bounded
+one-request service, certificate provisioning is operator-managed, and bulk
+execution-bundle transfer is not yet implemented.
 
 EA-NEXT-005 challenge/replay compatibility is implemented locally and in the
 transport envelope, but awaits a genuine physical-host run for deployment
