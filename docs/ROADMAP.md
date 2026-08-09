@@ -13,27 +13,31 @@
 ## Phase 1 — controller/worker foundation (partially implemented)
 
 - [x] in-process controller and worker services;
-- [ ] encrypted transport and mutual host authentication/enrollment;
+- [x] encrypted TLS transport and mutual certificate authentication in bounded loopback integration;
+- [x] operator-managed enrollment/revocation and certificate-to-logical-identity binding;
 - [x] fixed request/response envelopes;
 - [x] durable local controller/worker ledgers;
 - [x] replay and duplicate rejection;
 - [x] local concurrency/admission limits;
 - [ ] Fedora-to-Fedora two-node evidence run.
 
-The network and real second-host items remain blocked on TLS/certificate
-provisioning, enrollment/revocation, and adversarial deployment testing. Fabric
-does not claim Phase 1 complete.
+- [~] one-request network service lifecycle; production multi-host operation
+  and certificate provisioning remain operator responsibilities;
+- [ ] Fedora-to-Fedora two-node evidence run.
+
+Fabric does not claim Phase 1 complete: no real second-host run has occurred,
+and bulk execution-bundle transfer is not yet implemented.
 
 ## Phase 2 — scheduler foundation (partially implemented)
 
 - [x] exact capability-aware deterministic local admission;
 - [x] stable tie breaking and explicit unsupported disposition;
-- [x] simple in-process replicated dispatch ordering;
+- [x] simple in-process and registered-transport replicated dispatch ordering;
 - [ ] four-node Fedora fabric;
 - sharded experiment collection;
-- node-loss and delayed-result handling;
+- [~] node-loss and delayed-result handling (explicit UNKNOWN for transport loss);
 - scaling measurements separated from semantic evidence;
-- automatic result reconciliation.
+- [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
 
 ## Phase 3 — heterogeneous cohort
 
@@ -45,7 +49,7 @@ does not claim Phase 1 complete.
 
 ## Phase 4 — controlled fault injection
 
-- dropped, delayed, duplicated, and stale results;
+- [~] bounded dropped, delayed, and duplicated request controls at the transport test boundary;
 - corrupted bundles and checkpoints;
 - worker termination and restart;
 - capability disappearance;

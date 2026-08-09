@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric execution-bundle binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "record_type", "binding_identity", "job_identity", "candidate_identity", "bundle_identity", "archive_identity", "receipt_identity", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "0.1"},
+    "record_type": {"const": "mncs-fabric.execution-bundle-binding"},
+    "binding_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "job_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "candidate_identity": {"type": ["string", "null"]},
+    "bundle_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "archive_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "receipt_identity": {"type": "string"},
+    "claim_boundary": {"const": "package integrity and identity linkage only; no assurance, correctness, conformance, custody, or independence claim"}
+  }
+}

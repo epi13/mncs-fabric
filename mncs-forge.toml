@@ -40,13 +40,13 @@ useful_benefit_objective = "README.md"
 id = "mncs-fabric-local"
 name = "MNCS Fabric local validation"
 identity = "mncs-fabric-local-v1"
-version = "0.2"
+version = "0.3"
 command = ["python", "scripts/forge_provider.py"]
 transport = "stdio-jsonl"
 required = true
 capabilities = ["inspection"]
-supported_constructs = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility"]
-unsupported_constructs = ["remote-network-transport", "independent-certification"]
+supported_constructs = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation"]
+unsupported_constructs = ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"]
 limitations = ["operator-controlled local development evidence"]
 
 [[workflows]]

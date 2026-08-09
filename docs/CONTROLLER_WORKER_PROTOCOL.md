@@ -12,13 +12,21 @@ Implemented in this iteration:
   rejection; and
 - deterministic capability-aware local admission.
 
-The current transport is deliberately in-process. Fabric does not open a
-network listener, provide an unauthenticated fallback, or claim encrypted
-transport. HMAC authenticates message contents only. A later network transport
-requires mutually authenticated encrypted transport, enrollment, rotation,
-revocation, and real second-host tests.
+The protocol is transport-independent. `InProcessTransport` preserves local
+behavior, while `TLSNetworkTransport` and `TLSWorkerServer` move one bounded
+canonical envelope per mutually authenticated TLS connection. TLS 1.2+
+certificate verification, enrolled certificate fingerprints, explicit logical
+controller/worker IDs, bounded framing, and timeouts are required. There is no
+plaintext or HMAC-only remote fallback. HMAC remains a separate optional
+message-authentication facility; it is not encryption.
 
 Dispatch payloads contain a validated fixed argv job plan and a verified
 content-addressed manifest identity. They do not contain arbitrary shell
 commands. A duplicate request with the same request identity is idempotent;
 the same request ID bound to a different dispatch is `CONFLICTING_REPLAY`.
+
+`TrustStore` is an operator-managed append-only enrollment/revocation ledger,
+not a public CA. Unknown, revoked, mismatched, or substituted certificate
+identities fail closed. Network dispatch currently assumes the worker already
+has the artifact manifest and execution copy; EA-NEXT-002 bulk archive transfer
+is intentionally deferred until a bounded transfer profile is implemented.

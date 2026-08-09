@@ -36,6 +36,19 @@ replay disposition. Optional HMAC-SHA256 uses an operator-supplied key ID and
 rejects unknown, inactive, revoked, wrong, or tampered keys. It is message
 authentication, not encrypted transport.
 
+`InProcessTransport` and `TLSNetworkTransport` implement the same envelope
+interface. The TLS variant requires a CA-validated client/server certificate,
+enrolled certificate fingerprints, explicit controller/worker identity
+agreement, timeouts, and a bounded four-byte length frame. One request and one
+response are allowed per connection; truncated, oversized, noncanonical, or
+trailing data is rejected. TLS protects transport only. It does not establish
+independence, protected custody, attestation, correctness, or conformance.
+
+EA-NEXT-002 execution bundles are verified by a separate companion boundary.
+Their raw logical identity and exact archive transport identity are retained
+separately. Network dispatch currently uses pre-positioned verified artifacts;
+bulk archive transfer is deferred until a bounded transfer profile exists.
+
 ## Receipt compatibility
 
 Fabric v0.2 adds a companion adapter for the experimental MNCS typed execution
