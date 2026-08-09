@@ -44,6 +44,13 @@ replacement, driver changes, Python-environment drift, stale probe evidence,
 Torch architecture incompatibility, Windows PID reuse, path/case collisions,
 and launcher attempts to stop an unrelated process are explicitly considered.
 
+The Linux/ARM preflight adds no discovery or trust shortcut. It requires an
+explicit operator endpoint, strict known-host verification, and public-key-only
+SSH. A host-key entry without a usable account/key mapping is an UNKNOWN
+bootstrap result. The native Linux/ARM harness uses SSH only for source,
+certificate, trust, and worker lifecycle bootstrap; candidate execution
+material remains on the Fabric bundle-transfer path.
+
 ## Protected assets
 
 - candidate and evaluator identities;

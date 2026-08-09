@@ -77,6 +77,12 @@ comparison. The three-node evidence record validates the Fedora local,
 reconciliation. These are offline checks of operator-controlled development
 records, not independent physical verification.
 
+The provider also validates the explicit Raspberry Pi/Linux ARM preflight
+profile offline. A `PASS` preflight establishes only a strict SSH bootstrap
+and observed Linux/ARM substrate; an `UNKNOWN` preflight, such as the current
+record with no usable account/key mapping, remains valid evidence of an
+unresolved operator prerequisite and is not promoted to worker execution.
+
 The checked-in `development-evidence/fedora-resource-placement.json` is a
 bounded direct-mTLS CPU-placement run with native bundle transfer and a
 sanitized worker resource snapshot. It records the Quadro P620 as discovery

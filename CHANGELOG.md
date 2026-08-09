@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased - Raspberry Pi commissioning path
+
+- add an explicit Linux/ARM worker preflight and config-aware native-bundle
+  harness without LAN discovery, password fallback, or SSH candidate staging;
+- validate sanitized Raspberry Pi bootstrap evidence offline through Forge;
+- preserve the current `0.2.0a7` version because the Raspberry Pi was not
+  physically commissioned in this session.
+
 ## 0.2.0a7 - physical sequential offload and three-node heterogeneous evidence
 
 - add identity-addressable runtime-environment and runtime-capability evidence

@@ -1,0 +1,10 @@
+{
+  "ssh_host": "mncs-pi.local",
+  "ssh_user": "REPLACE_WITH_OPERATOR_ACCOUNT",
+  "ssh_key": "~/.ssh/REPLACE_WITH_PI_KEY",
+  "worker_host": "mncs-pi.local",
+  "expected_hostname": "REPLACE_WITH_PI_HOSTNAME",
+  "worker_id": "raspberry-pi",
+  "controller_id": "fabric-controller-01",
+  "worker_port": 7443
+}
