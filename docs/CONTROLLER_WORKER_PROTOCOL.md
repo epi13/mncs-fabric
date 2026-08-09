@@ -30,3 +30,8 @@ not a public CA. Unknown, revoked, mismatched, or substituted certificate
 identities fail closed. Network dispatch currently assumes the worker already
 has the artifact manifest and execution copy; EA-NEXT-002 bulk archive transfer
 is intentionally deferred until a bounded transfer profile is implemented.
+
+An optional `execution_challenge` dispatch field uses the current MNCS
+EA-NEXT-005 experimental shape. It is not a replacement for the protocol
+nonce/request replay layer: the challenge binds freshness scope and is consumed
+separately by the controller's local replay store.

@@ -1,0 +1,12 @@
+{
+  "producer": "machine-native-complexity-standard",
+  "source_commit": "80f08d312dce963265c7f69ac5b4bae8245bd692",
+  "schema_version": "0.1-experimental",
+  "challenge_record_type": "mncs-execution-challenge",
+  "request_record_type": "mncs-execution-challenge-request",
+  "replay_record_type": "mncs-replay-receipt",
+  "scope_fields": ["subject_identity", "candidate_id", "bundle_identity", "execution_policy_identity", "runner_identity"],
+  "freshness": "verifier-issued cryptographically secure nonce, exact scope, validity window, single-use local replay consumption, persisted watermark",
+  "unsupported_version_behavior": "explicit UNKNOWN; never silently accepted",
+  "claim_boundary": "freshness is scoped to an operator-controlled local replay store and does not establish correctness, isolation, custody, independence, conformance, or promotion"
+}

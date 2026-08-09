@@ -9,6 +9,8 @@
   library TLS 1.2+ mutual certificate transport, operator-managed enrollment
   and revocation, registered remote dispatch, explicit worker-loss UNKNOWN,
   and bounded transport fault controls.
+- Add additive EA-NEXT-005 challenge/replay compatibility with scoped nonces,
+  receipt binding, and a durable single-use Fabric replay ledger.
 - Add current experimental MNCS typed execution-receipt and companion
   execution-assurance adapters without changing Fabric v0.1 record meaning.
 - Add the public `FabricService` boundary and project-local Forge Provider

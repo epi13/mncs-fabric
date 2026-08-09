@@ -49,6 +49,14 @@ Their raw logical identity and exact archive transport identity are retained
 separately. Network dispatch currently uses pre-positioned verified artifacts;
 bulk archive transfer is deferred until a bounded transfer profile exists.
 
+An optional EA-NEXT-005 challenge is carried as a validated dispatch companion.
+Its exact subject/candidate/bundle/policy/runner scope, nonce, and validity
+window are identity-bound into the request payload. The worker copies the
+challenge observations into the returned receipt; the controller verifies the
+receipt binding. `ChallengeReplayStore` consumes the challenge once in a
+durable Fabric-owned ledger. This freshness layer is distinct from protocol
+request replay protection and remains local operator-controlled evidence.
+
 ## Receipt compatibility
 
 Fabric v0.2 adds a companion adapter for the experimental MNCS typed execution

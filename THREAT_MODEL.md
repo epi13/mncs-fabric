@@ -39,6 +39,8 @@ The current implementation detects or bounds:
   certificate-fingerprint enrollment, logical identity binding, revocation,
   bounded frames, and truncated/oversized/canonical framing rejection; and
 - remote worker loss and incomplete replicated responses as explicit `UNKNOWN`.
+- scoped EA-NEXT-005 challenge identity, nonce/window copying into receipts,
+  single-use replay consumption, and persisted replay-store linkage;
 
 The optional protocol HMAC boundary detects message tampering and unknown or
 revoked key IDs. It authenticates canonical contents only; it does not provide
@@ -92,6 +94,9 @@ iteration:
   trusted until revocation;
 - replayed valid TLS request: durable request identity and worker replay state
   prevent duplicate execution, but TLS itself provides no replay semantics;
+- replayed valid MNCS challenge: the separate challenge replay ledger rejects a
+  consumed challenge, but this remains bounded by the operator-controlled local
+  store;
 - authenticated malicious worker/controller: Fabric records observations and
   identity mismatches, but cannot make an authenticated peer truthful;
 - connection exhaustion, oversized frame, slow sender, dropped connection, and

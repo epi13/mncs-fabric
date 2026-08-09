@@ -31,9 +31,12 @@ import private transport or worker modules.
 Protocol 0.1 provider and the `fabric-validation` development workflow. Forge
 executes the provider in a bounded copied workspace. The provider runs the
 Fabric unit/integration suite, source compilation, the portable example and
-reconciliation, receipt and EA-NEXT-002 compatibility snapshots, bounded
+reconciliation, receipt, EA-NEXT-002 bundle, and EA-NEXT-005 challenge
+compatibility snapshots, bounded
 protocol/framing tests, TLS loopback, enrollment/revocation, replay, scheduler,
 and storage checks. Forge records the result as operator-controlled development
 evidence. It is not independent certification or an MNCS conformance decision.
-Real second-host operation and bulk bundle transfer remain explicit unsupported
-constructs.
+The two-host harness has static safety coverage in this workflow, but the
+Forge workflow does not impersonate a remote operator or claim that it ran a
+second host. Real second-host operation and bulk bundle transfer remain
+explicit unsupported constructs.

@@ -12,6 +12,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.3"}
@@ -27,7 +28,8 @@ def run_validation() -> tuple[str, str, list[object]]:
         result_stream = io.StringIO()
         result = unittest.TextTestRunner(stream=result_stream, verbosity=0).run(suite)
     if not result.wasSuccessful():
-        return "FAIL", "Fabric unit/integration suite failed", [{"failures": len(result.failures), "errors": len(result.errors)}]
+        failures = [{"test": str(test), "diagnostic": error.splitlines()[-1] if error.splitlines() else ""} for test, error in result.failures + result.errors]
+        return "FAIL", "Fabric unit/integration suite failed", [{"failures": len(result.failures), "errors": len(result.errors), "cases": failures}]
     import compileall
     if not compileall.compile_dir(str(ROOT / "src"), quiet=1):
         return "FAIL", "Fabric source compilation failed", []
@@ -47,16 +49,17 @@ def run_validation() -> tuple[str, str, list[object]]:
             return "FAIL", "portable example reconciliation failed", [{"operation": "reconcile", "outcome": cohort["outcome"]}]
     receipt_snapshot = json.loads((ROOT / "compat/mncs-execution-receipt-0.1.snapshot.json").read_text(encoding="utf-8"))
     bundle_snapshot = json.loads((ROOT / "compat/mncs-execution-bundle-0.1-experimental.snapshot.json").read_text(encoding="utf-8"))
-    if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
+    challenge_snapshot = json.loads((ROOT / "compat/mncs-execution-challenge-0.1-experimental.snapshot.json").read_text(encoding="utf-8"))
+    if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted" or challenge_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
         return "FAIL", "compatibility snapshots are not fail-closed", []
-    return "PASS", "Fabric suite, compilation, portable example, receipt compatibility, bundle compatibility, TLS loopback, and replay checks passed", [{"operation": "fabric-validation", "tests": result.testsRun, "tls": "covered by unittest"}]
+    return "PASS", "Fabric suite, compilation, portable example, receipt/bundle/challenge compatibility, TLS loopback, and replay checks passed", [{"operation": "fabric-validation", "tests": result.testsRun, "tls": "covered by unittest", "challenge": "covered by unittest"}]
 
 
 def main() -> int:
     line = sys.stdin.readline()
     request = json.loads(line)
     if request.get("type") == "capabilities":
-        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation"], "unsupported_constructs": ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
+        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation"], "unsupported_constructs": ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
     elif request.get("type") == "analysis_request" and request.get("analysis") == "inspection":
         status, summary, witnesses = run_validation()
         result = response(request, status, summary, limitations=["Forge execution is development evidence, not independent certification."], witnesses=witnesses)
