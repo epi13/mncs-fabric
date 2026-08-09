@@ -57,14 +57,21 @@ def _shell_quote(value: str) -> str:
 
 
 class Remote:
-    def __init__(self, *, host: str, user: str, key: Path) -> None:
+    def __init__(self, *, host: str | None = None, user: str | None = None, key: Path | None = None, alias: str | None = None) -> None:
+        if alias is None and (not host or not user or key is None):
+            raise ValueError("explicit SSH host, user, and key are required without an alias")
+        if alias is not None and (not alias or any(value is not None for value in (host, user))):
+            raise ValueError("SSH alias mode cannot be combined with host or user")
+        if alias is None and key is None:
+            raise ValueError("explicit SSH key is required without an alias")
         self.host = host
         self.user = user
         self.key = key
-        self.destination = f"{user}@{host}"
+        self.alias = alias
+        self.destination = alias or f"{user}@{host}"
         self.options = [
-            "-i", str(key),
-            "-o", "IdentitiesOnly=yes",
+            *([] if alias is not None else ["-i", str(key)]),
+            "-o", "IdentitiesOnly=" + ("no" if alias is not None else "yes"),
             "-o", "PreferredAuthentications=publickey",
             "-o", "PasswordAuthentication=no",
             "-o", "KbdInteractiveAuthentication=no",

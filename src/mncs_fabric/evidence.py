@@ -436,9 +436,16 @@ def validate_raspberry_pi_preflight_evidence(evidence: object) -> dict[str, Any]
         issues.append("record type is invalid")
     if evidence.get("outcome") not in {"PASS", "UNKNOWN"}:
         issues.append("preflight outcome must be PASS or UNKNOWN")
-    for field in ("worker_identity", "controller_identity", "endpoint_configuration_source", "ssh_host_supplied", "expected_hostname"):
+    for field in ("worker_identity", "controller_identity", "endpoint_configuration_source", "expected_hostname"):
         if not isinstance(evidence.get(field), str) or not evidence[field] or len(evidence[field]) > 256:
             issues.append(f"invalid:{field}")
+    alias = evidence.get("ssh_alias")
+    ssh_host = evidence.get("ssh_host_supplied")
+    if alias is not None and (not isinstance(alias, str) or not alias or len(alias) > 256):
+        issues.append("invalid:ssh_alias")
+    if not isinstance(ssh_host, str) or not ssh_host or len(ssh_host) > 256:
+        if not isinstance(alias, str) or not alias:
+            issues.append("invalid:ssh_host_supplied")
     if evidence.get("strict_host_key_checking") is not True or evidence.get("public_key_only") is not True:
         issues.append("SSH host-key/public-key boundary is invalid")
     if evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False or evidence.get("fabric_execution_attempted") is not False:

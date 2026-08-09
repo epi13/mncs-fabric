@@ -21,6 +21,19 @@ The same values may be supplied with explicit CLI arguments or the
 guess a username, key, hostname, or address. The SSH host key must already be
 present in the operator's `known_hosts` under strict verification.
 
+When the working connection is an existing OpenSSH alias or agent-backed
+configuration, use the alias example instead:
+
+```bash
+cp examples/raspberry-pi/operator.alias.example.json \
+  .fabric/operator/raspberry-pi-worker.local.json
+```
+
+Alias mode resolves only bounded effective host/user/port and boolean
+configuration facts through `ssh -G`; it does not store identity-file paths,
+agent data, or unrelated SSH configuration. The alias remains the SSH
+bootstrap endpoint. `worker_host` is the separate direct Fabric TLS address.
+
 ## Preflight and native execution
 
 Run the bounded diagnostic first:

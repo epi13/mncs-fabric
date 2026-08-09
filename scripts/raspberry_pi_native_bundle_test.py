@@ -16,11 +16,13 @@ from two_host_native_bundle_test import main as native_main
 
 from linux_worker_preflight import DEFAULT_CONFIG
 from linux_worker_preflight import _operator_values
+from linux_worker_preflight import _resolve_alias
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="run native Fabric transfer against an explicitly configured Raspberry Pi/Linux worker")
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--ssh-alias", help="explicit OpenSSH alias; uses the operator's configured key/agent")
     parser.add_argument("--ssh-host")
     parser.add_argument("--ssh-user")
     parser.add_argument("--ssh-key", type=Path)
@@ -35,10 +37,16 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _operator_values(build_parser().parse_args(argv))
-    native_args = [
+    if args.ssh_alias and not args.worker_host:
+        resolved, result = _resolve_alias(args.ssh_alias)
+        if resolved is None:
+            raise SystemExit("SSH alias did not resolve: " + (result.stderr or result.stdout).strip())
+        args.worker_host = str(resolved["hostname"])
+    native_args = (["--ssh-alias", args.ssh_alias] if args.ssh_alias else [
         "--ssh-host", args.ssh_host,
         "--ssh-user", args.ssh_user,
         "--ssh-key", str(args.ssh_key),
+    ]) + [
         "--worker-host", args.worker_host,
         "--worker-port", str(args.worker_port),
         "--expected-hostname", args.expected_hostname,

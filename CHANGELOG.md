@@ -4,6 +4,9 @@
 
 - add an explicit Linux/ARM worker preflight and config-aware native-bundle
   harness without LAN discovery, password fallback, or SSH candidate staging;
+- accept an explicitly operator-selected OpenSSH alias or configured agent for
+  Linux/ARM bootstrap while retaining strict public-key-only authentication and
+  bounded, secret-free diagnostics;
 - validate sanitized Raspberry Pi bootstrap evidence offline through Forge;
 - preserve the current `0.2.0a7` version because the Raspberry Pi was not
   physically commissioned in this session.
