@@ -11,6 +11,8 @@ import json
 import socket
 import ssl
 import struct
+import threading
+import time
 from pathlib import Path
 from typing import Protocol
 
@@ -114,10 +116,16 @@ class TLSNetworkTransport:
 
 
 class TLSWorkerServer:
-    """Explicit TLS worker endpoint; callers choose when to serve or stop."""
+    """Explicit bounded TLS worker endpoint.
 
-    def __init__(self, worker: object, host: str, port: int, *, ca_file: Path, server_cert: Path, server_key: Path, controller_id: str, worker_id: str, trust_store: TrustStore, timeout: float = 5.0, max_frame_bytes: int = MAX_FRAME_BYTES) -> None:
-        if not 0 <= port <= 65535 or timeout <= 0:
+    ``serve_once`` remains the conservative compatibility mode.  The
+    ``serve_forever`` path keeps the listener open between requests but always
+    requires explicit operational bounds; it is not an unbounded daemon by
+    accident.
+    """
+
+    def __init__(self, worker: object, host: str, port: int, *, ca_file: Path, server_cert: Path, server_key: Path, controller_id: str, worker_id: str, trust_store: TrustStore, timeout: float = 5.0, max_frame_bytes: int = MAX_FRAME_BYTES, max_concurrent_connections: int = 1, graceful_shutdown_timeout: float = 5.0) -> None:
+        if not 0 <= port <= 65535 or timeout <= 0 or max_frame_bytes <= 0 or max_concurrent_connections < 1 or graceful_shutdown_timeout <= 0:
             raise ValueError("invalid TLS worker endpoint")
         self.worker = worker
         self.host = host
@@ -127,12 +135,18 @@ class TLSWorkerServer:
         self.trust_store = trust_store
         self.timeout = timeout
         self.max_frame_bytes = max_frame_bytes
+        self.max_concurrent_connections = max_concurrent_connections
+        self.graceful_shutdown_timeout = graceful_shutdown_timeout
         self.last_error: str | None = None
         self.context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH, cafile=str(ca_file))
         self.context.minimum_version = ssl.TLSVersion.TLSv1_2
         self.context.verify_mode = ssl.CERT_REQUIRED
         self.context.load_cert_chain(certfile=str(server_cert), keyfile=str(server_key))
         self._listener: socket.socket | None = None
+        self._stop_event = threading.Event()
+        self._threads: set[threading.Thread] = set()
+        self._threads_lock = threading.Lock()
+        self.handled_requests = 0
 
     def bind(self) -> int:
         if self._listener is not None:
@@ -141,7 +155,7 @@ class TLSWorkerServer:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.settimeout(self.timeout)
         listener.bind((self.host, self.port))
-        listener.listen(1)
+        listener.listen(self.max_concurrent_connections)
         self._listener = listener
         self.port = listener.getsockname()[1]
         return self.port
@@ -155,6 +169,112 @@ class TLSWorkerServer:
         self.last_error = None
         try:
             raw, _ = listener.accept()
+            self._handle_connection(raw)
+        except (ProtocolError, OSError, ssl.SSLError) as exc:
+            # A rejected peer is an explicit endpoint diagnostic, not a
+            # successful fallback or an unobserved exception in a daemon.
+            self.last_error = str(exc)
+        finally:
+            self.close()
+
+    def serve_forever(
+        self,
+        *,
+        max_requests: int | None = None,
+        idle_timeout: float | None = None,
+        max_concurrent_connections: int | None = None,
+        graceful_shutdown_timeout: float | None = None,
+    ) -> None:
+        """Serve bounded sequential or concurrent requests until stopped.
+
+        ``max_requests`` is required by the CLI, but the library accepts
+        ``None`` for an explicitly managed service.  ``idle_timeout`` stops a
+        quiet service cleanly; it never turns a missing request into PASS.
+        Trust authorization is performed for every connection, so revocation
+        becomes effective between requests without restarting the process.
+        """
+
+        if max_requests is not None and max_requests < 1:
+            raise ValueError("max_requests must be positive when supplied")
+        limit = max_concurrent_connections if max_concurrent_connections is not None else self.max_concurrent_connections
+        shutdown = graceful_shutdown_timeout if graceful_shutdown_timeout is not None else self.graceful_shutdown_timeout
+        if limit < 1 or shutdown <= 0 or (idle_timeout is not None and idle_timeout <= 0):
+            raise ValueError("invalid bounded worker service limits")
+        self.max_concurrent_connections = limit
+        self.last_error = None
+        self.handled_requests = 0
+        listener = self._listener
+        if listener is None:
+            self.bind()
+            listener = self._listener
+        assert listener is not None
+        if self._stop_event.is_set():
+            self._close_listener()
+            return
+        try:
+            listener.listen(limit)
+        except OSError:
+            if self._stop_event.is_set():
+                return
+            raise
+        listener.settimeout(idle_timeout if idle_timeout is not None else self.timeout)
+        semaphore = threading.BoundedSemaphore(limit)
+        accepted = 0
+        try:
+            while not self._stop_event.is_set() and (max_requests is None or accepted < max_requests):
+                try:
+                    raw, _ = listener.accept()
+                except socket.timeout:
+                    if idle_timeout is not None:
+                        break
+                    continue
+                except OSError:
+                    if self._stop_event.is_set():
+                        break
+                    raise
+                accepted += 1
+                if not semaphore.acquire(timeout=self.timeout):
+                    self.last_error = "connection concurrency limit reached"
+                    raw.close()
+                    continue
+                if limit == 1:
+                    try:
+                        self._handle_connection(raw)
+                    finally:
+                        semaphore.release()
+                    continue
+                thread = threading.Thread(target=self._threaded_connection, args=(raw, semaphore), daemon=False)
+                with self._threads_lock:
+                    self._threads.add(thread)
+                thread.start()
+        except (ProtocolError, OSError, ssl.SSLError) as exc:
+            self.last_error = str(exc)
+        finally:
+            self._stop_event.set()
+            self._close_listener()
+            deadline = time.monotonic() + shutdown
+            with self._threads_lock:
+                threads = list(self._threads)
+            for thread in threads:
+                thread.join(max(0.0, deadline - time.monotonic()))
+
+    def request_stop(self) -> None:
+        """Request bounded service shutdown without changing ledger state."""
+
+        self._stop_event.set()
+        self._close_listener()
+
+    def _threaded_connection(self, raw: socket.socket, semaphore: threading.BoundedSemaphore) -> None:
+        current = threading.current_thread()
+        try:
+            self._handle_connection(raw)
+        finally:
+            semaphore.release()
+            with self._threads_lock:
+                self._threads.discard(current)
+
+    def _handle_connection(self, raw: socket.socket) -> None:
+        try:
             raw.settimeout(self.timeout)
             with raw:
                 with self.context.wrap_socket(raw, server_side=True) as stream:
@@ -164,6 +284,7 @@ class TLSWorkerServer:
                     message = validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes))
                     if message["controller_id"] != self.controller_id or message["worker_id"] != self.worker_id:
                         raise ProtocolError("message logical identity does not match TLS endpoint")
+                    # Reloads the append-only trust ledger on every request.
                     self.trust_store.authorize("controller", self.controller_id, certificate_fingerprint(peer))
                     response = self.worker.handle(message)  # type: ignore[attr-defined]
                     send_frame(stream, validate_envelope(response), max_frame_bytes=self.max_frame_bytes)
@@ -174,14 +295,22 @@ class TLSWorkerServer:
                         extra = b""
                     if extra:
                         raise ProtocolError("controller sent trailing frame data")
+                    self.handled_requests += 1
         except (ProtocolError, OSError, ssl.SSLError) as exc:
-            # A rejected peer is an explicit endpoint diagnostic, not a
-            # successful fallback or an unobserved exception in a daemon.
+            # Rejected requests do not stop a bounded service.  The diagnostic
+            # is retained for the operator and the next connection is still
+            # independently authenticated.
             self.last_error = str(exc)
-        finally:
-            self.close()
 
     def close(self) -> None:
+        self._stop_event.set()
+        self._close_listener()
+
+    def _close_listener(self) -> None:
         if self._listener is not None:
-            self._listener.close()
-            self._listener = None
+            listener, self._listener = self._listener, None
+            try:
+                listener.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            listener.close()

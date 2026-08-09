@@ -110,7 +110,7 @@ def _remote_node(remote: Remote, run_root: str, worker_id: str) -> dict[str, Any
     return value
 
 
-def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int) -> int:
+def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int, max_requests: int = 1, idle_timeout: float | None = None, max_concurrent_connections: int = 1) -> int:
     command = (
         f"{_shell_quote(run_root + '/venv/bin/python')} "
         f"{_shell_quote(run_root + '/repo/scripts/remote_worker_launcher.py')} "
@@ -121,11 +121,14 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         f"--ca {_shell_quote(run_root + '/certs/ca.pem')} "
         f"--certificate {_shell_quote(run_root + '/certs/worker.pem')} "
         f"--key {_shell_quote(run_root + '/certs/worker.key')} "
-        # The endpoint is still one-request/bounded, but physical startup and
-        # repeated SSH readiness probes must not consume its accept window.
+        # Physical startup and repeated SSH readiness probes must not consume
+        # the service's bounded accept window.
         f"--host {_shell_quote(host)} --port {port} --timeout 30 "
-        f"--log {_shell_quote(run_root + '/logs/worker.log')}"
+        f"--max-requests {max_requests} --max-concurrent-connections {max_concurrent_connections} "
     )
+    if idle_timeout is not None:
+        command += f"--idle-timeout {idle_timeout} "
+    command += f"--log {_shell_quote(run_root + '/logs/worker.log')}"
     output = remote.ssh(command).strip().splitlines()
     if not output or not output[-1].isdigit():
         raise RuntimeError("remote worker did not return a process ID")
