@@ -319,6 +319,59 @@ def verify_bundle_archive(path: Path, *, expected_bundle_identity: str | None = 
     return report
 
 
+def build_bundle_archive(source_root: Path, archive_path: Path, *, bundle_id: str = "mncs-fabric.bundle.v0.1") -> BundleReport:
+    """Build a deterministic EA-NEXT-002 archive from regular source files."""
+
+    source_root = Path(source_root).resolve(strict=True)
+    files: list[tuple[str, bytes, str]] = []
+    for path in sorted(source_root.rglob("*"), key=lambda item: item.relative_to(source_root).as_posix().encode("utf-8")):
+        if path.is_symlink() or not path.is_file():
+            if path.is_symlink():
+                raise ValueError("bundle source cannot contain symbolic links")
+            continue
+        relative = path.relative_to(source_root).as_posix()
+        normalize_bundle_path(relative)
+        data = path.read_bytes()
+        mode = "0755" if path.stat().st_mode & stat.S_IXUSR else "0644"
+        files.append((relative, data, mode))
+    if not files:
+        raise ValueError("bundle source must contain at least one regular file")
+    entries = [{"path": name, "identity": hashlib.sha256(data).hexdigest(), "size_bytes": len(data), "role": "harness", "mode": mode} for name, data, mode in files]
+    manifest: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": RECORD_TYPE,
+        "bundle_id": bundle_id,
+        "bundle_identity": "0" * 64,
+        "bundle_format": BUNDLE_FORMAT,
+        "entries": entries,
+        "entrypoints": [{"name": "harness", "path": files[0][0]}],
+        "runtime_requirements": [],
+        "policy_references": [],
+        "harness_identity": _entry_identity(entries, "harness"),
+        "input_snapshot_identity": None,
+        "policy_identity": None,
+        "limits": {"max_file_count": min(MAX_FILE_COUNT, max(32, len(entries))), "max_file_bytes": MAX_FILE_BYTES, "max_total_bytes": MAX_TOTAL_BYTES, "max_path_bytes": MAX_PATH_BYTES, "max_expansion_ratio": MAX_EXPANSION_RATIO},
+        "extensions": {},
+    }
+    manifest["bundle_identity"] = hashlib.sha256(canonical_jcs_bytes({key: value for key, value in manifest.items() if key != "bundle_identity"})).hexdigest()
+    archive_path = Path(archive_path)
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED, allowZip64=False) as archive:
+        manifest_info = zipfile.ZipInfo(MANIFEST_NAME, (1980, 1, 1, 0, 0, 0))
+        manifest_info.create_system = 3
+        manifest_info.external_attr = (stat.S_IFREG | 0o644) << 16
+        archive.writestr(manifest_info, canonical_jcs_bytes(manifest))
+        for name, data, mode in files:
+            info = zipfile.ZipInfo(name, (1980, 1, 1, 0, 0, 0))
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | int(mode, 8)) << 16
+            archive.writestr(info, data)
+    report = verify_bundle_archive(archive_path, expected_bundle_identity=manifest["bundle_identity"])
+    if not report.valid:
+        raise ValueError("constructed execution bundle failed self-verification")
+    return report
+
+
 def bind_receipt_to_bundle(receipt: object, bundle: BundleReport) -> BundleReport:
     """Return a binding report; the receipt itself is never rewritten."""
     result = BundleReport("<receipt-binding>", valid=bundle.valid, supported=bundle.supported, bundle_identity=bundle.bundle_identity, archive_identity=bundle.archive_identity, manifest=bundle.manifest)

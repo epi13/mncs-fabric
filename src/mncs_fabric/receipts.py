@@ -231,8 +231,27 @@ def build_execution_receipt(
         "claim_boundary": {"conformance": "not-asserted", "correctness": "not-asserted", "security": "not-asserted", "sandbox": "not-asserted", "independence": "not-asserted", "protected_custody": "not-asserted", "promotion": "not-asserted"},
         "extensions": {"mncs-fabric:execution-record-identity": record.get("record_id"), "mncs-fabric:execution-outcome": execution_status, "mncs-fabric:node-label": node.get("machine_label", "unknown")},
     }
+    if isinstance(challenge, dict) and isinstance(challenge.get("challenge_identity"), str):
+        receipt["extensions"]["mncs-fabric:challenge-identity"] = challenge["challenge_identity"]
     receipt["receipt_identity"] = _mncs_sha256({key: value for key, value in receipt.items() if key != "receipt_identity"})
     return receipt
+
+
+def verify_execution_receipt(value: object) -> dict[str, Any]:
+    """Verify a Fabric-produced experimental receipt without adding authority."""
+
+    if not isinstance(value, dict) or value.get("schema_version") != RECEIPT_SCHEMA or value.get("record_type") != RECEIPT_TYPE:
+        return {"outcome": "FAIL", "reason": "unsupported execution receipt schema"}
+    identity = value.get("receipt_identity")
+    if not isinstance(identity, str) or len(identity) != 64 or any(char not in "0123456789abcdef" for char in identity):
+        return {"outcome": "FAIL", "reason": "receipt identity is malformed"}
+    expected = _mncs_sha256({key: item for key, item in value.items() if key != "receipt_identity"})
+    if identity != expected:
+        return {"outcome": "FAIL", "reason": "receipt identity does not verify"}
+    boundary = value.get("claim_boundary")
+    if not isinstance(boundary, dict) or boundary.get("conformance") != "not-asserted":
+        return {"outcome": "FAIL", "reason": "receipt claim boundary is missing"}
+    return {"outcome": "PASS", "identity": identity}
 
 
 def build_execution_assurance(receipt: dict[str, Any]) -> dict[str, Any]:

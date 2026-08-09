@@ -5,12 +5,14 @@ from pathlib import Path
 
 from .artifacts import build_manifest, verify_manifest
 from .canonical import verify_identity
+from .contracts import build_public_contract
 from .errors import FabricError
 from .enrollment import TrustStore
 from .io import load_json, write_json
 from .service import FabricService
 from .transport import TLSWorkerServer
 from .worker import LocalWorker
+from . import __version__
 
 _SERVICE = FabricService()
 
@@ -91,6 +93,13 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--idle-timeout", type=float, help="stop cleanly after this many idle seconds")
     serve.add_argument("--max-concurrent-connections", type=int, default=1)
     serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
+    serve.add_argument("--bundle-cache", type=_path, help="immutable EA-NEXT-002 bundle cache for native transfer")
+
+    contract = sub.add_parser("contract", help="inspect the installed public consumer contract")
+    contract_sub = contract.add_subparsers(dest="contract_command", required=True)
+    contract_show = contract_sub.add_parser("show", help="emit the versioned public contract")
+    contract_show.add_argument("--json", action="store_true", help="retain machine-readable JSON output")
+    contract_show.add_argument("--output", type=_path)
     return parser
 
 
@@ -103,6 +112,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "node":
             write_json(args.output, _SERVICE.nodes(args.label))
+            return 0
+        if args.command == "contract" and args.contract_command == "show":
+            write_json(args.output, build_public_contract(__version__))
             return 0
         if args.command == "artifacts" and args.artifacts_command == "create":
             write_json(args.output, build_manifest(args.root))
@@ -135,7 +147,7 @@ def main(argv: list[str] | None = None) -> int:
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
         if args.command == "worker" and args.worker_command == "serve":
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state)
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
             endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
             if args.max_requests == 1 and args.idle_timeout is None and args.max_concurrent_connections == 1:
                 endpoint.serve_once()

@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import Any
 
 from .canonical import sha256_identity
+from .bundle_transfer import BundleCache
+from .bundles import build_bundle_binding
 from .challenges import validate_execution_challenge
 from .errors import ProtocolError, StorageError
 from .executor import execute_local
@@ -20,13 +22,14 @@ from .receipts import build_execution_receipt
 class LocalWorker:
     """A worker callable in-process; no unauthenticated listener is created."""
 
-    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1) -> None:
+    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None) -> None:
         if not worker_id or concurrency_limit < 1:
             raise ValueError("worker_id and a positive concurrency limit are required")
         self.worker_id = worker_id
         self.bundle_root = Path(bundle_root)
         self.ledger = FabricLedger(Path(state_path))
         self.concurrency_limit = concurrency_limit
+        self.bundle_cache = BundleCache(Path(bundle_cache_root)) if bundle_cache_root is not None else None
 
     def node(self) -> dict[str, Any]:
         return collect_node_capabilities(self.worker_id)
@@ -58,6 +61,8 @@ class LocalWorker:
 
     def handle(self, envelope: object, *, now: str | None = None) -> dict[str, Any]:
         message = validate_envelope(envelope, now=now)
+        if message["message_type"] in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
+            return self._handle_bundle_message(message)
         if message["message_type"] != "dispatch.request":
             raise ProtocolError("worker accepts dispatch.request messages only")
         if message["worker_id"] != self.worker_id:
@@ -81,18 +86,53 @@ class LocalWorker:
                     duplicate_payload["receipt"] = result["receipt"]
                 return self._response(message, "execution.result", duplicate_payload)
             return self._response(message, "dispatch.ack", {"disposition": "DUPLICATE_IN_PROGRESS", "dispatch_identity": dispatch_binding})
-        self.ledger.append("protocol.dispatch", {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"]})
+        bundle_info = payload.get("execution_bundle")
+        execution_root = self.bundle_root
+        bundle_report = None
+        if bundle_info is not None:
+            if self.bundle_cache is None:
+                raise ProtocolError("dispatch requires a bundle cache that is not configured")
+            execution_root = self.bundle_cache.root_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
+            bundle_report = self.bundle_cache.report_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
+        self.ledger.append("protocol.dispatch", {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"], "bundle_identity": bundle_info.get("bundle_identity") if isinstance(bundle_info, dict) else None, "archive_identity": bundle_info.get("archive_identity") if isinstance(bundle_info, dict) else None})
         try:
-            record = execute_local(payload["job_plan"], self.bundle_root, payload["artifact_manifest"], self.worker_id)
+            record = execute_local(payload["job_plan"], execution_root, payload["artifact_manifest"], self.worker_id)
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
-        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge) if challenge is not None else None
+        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge)
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         self.ledger.append("protocol.result", result_record)
         response_payload: dict[str, Any] = {"result_identity": record["record_id"], "record": record, "disposition": "EXECUTED"}
         if receipt is not None:
             response_payload["receipt"] = receipt
+        if bundle_report is not None and receipt is not None:
+            response_payload["execution_bundle"] = {"bundle_identity": bundle_report.bundle_identity, "archive_identity": bundle_report.archive_identity}
+            response_payload["bundle_binding"] = build_bundle_binding(job_identity=record["job_identity"], candidate_identity=record.get("candidate_identity"), receipt_identity=receipt["receipt_identity"], bundle=bundle_report)
         return self._response(message, "execution.result", response_payload)
+
+    def _handle_bundle_message(self, message: dict[str, Any]) -> dict[str, Any]:
+        if self.bundle_cache is None:
+            return self._bundle_response(message, "FAIL", "worker bundle cache is not configured")
+        payload = message["payload"]
+        try:
+            if message["message_type"] == "bundle.offer":
+                status = self.bundle_cache.begin(transfer_id=payload["transfer_id"], bundle_identity=payload["bundle_identity"], archive_identity=payload["archive_identity"], total_bytes=payload["total_bytes"], chunk_bytes=payload["chunk_bytes"], chunk_count=payload["chunk_count"])
+            elif message["message_type"] == "bundle.chunk":
+                import base64
+                status = self.bundle_cache.chunk(transfer_id=payload["transfer_id"], bundle_identity=payload["bundle_identity"], archive_identity=payload["archive_identity"], sequence=payload["sequence"], data=base64.b64decode(payload["data"], validate=True))
+            else:
+                status, report, _ = self.bundle_cache.commit(transfer_id=payload["transfer_id"], bundle_identity=payload["bundle_identity"], archive_identity=payload["archive_identity"])
+                if report is not None and report.category == "UNKNOWN":
+                    status = "UNKNOWN"
+            return self._bundle_response(message, status, None)
+        except (ProtocolError, StorageError, OSError, ValueError) as exc:
+            return self._bundle_response(message, "FAIL" if isinstance(exc, ProtocolError) else "UNKNOWN", str(exc))
+
+    def _bundle_response(self, request: dict[str, Any], status: str, diagnostic: str | None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"transfer_schema": "mncs-fabric.bundle-transfer.v0.1", "transfer_id": request["payload"]["transfer_id"], "status": status}
+        if diagnostic:
+            payload["diagnostic"] = diagnostic
+        return self._response(request, "bundle.response", payload)
 
     def _response(self, request: dict[str, Any], message_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         created = utc_now()

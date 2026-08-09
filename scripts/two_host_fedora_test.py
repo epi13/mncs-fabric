@@ -110,12 +110,13 @@ def _remote_node(remote: Remote, run_root: str, worker_id: str) -> dict[str, Any
     return value
 
 
-def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int, max_requests: int = 1, idle_timeout: float | None = None, max_concurrent_connections: int = 1) -> int:
+def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int, max_requests: int = 1, idle_timeout: float | None = None, max_concurrent_connections: int = 1, bundle_cache: bool = True, bundle_root: str | None = None) -> int:
+    execution_root = bundle_root or run_root + "/repo/examples/portable-python/bundle"
     command = (
         f"{_shell_quote(run_root + '/venv/bin/python')} "
         f"{_shell_quote(run_root + '/repo/scripts/remote_worker_launcher.py')} "
         f"--worker-id {_shell_quote(worker_id)} --controller-id {_shell_quote(controller_id)} "
-        f"--bundle-root {_shell_quote(run_root + '/repo/examples/portable-python/bundle')} "
+        f"--bundle-root {_shell_quote(execution_root)} "
         f"--state {_shell_quote(run_root + '/state/worker-ledger.jsonl')} "
         f"--trust-state {_shell_quote(run_root + '/trust/worker-trust.jsonl')} "
         f"--ca {_shell_quote(run_root + '/certs/ca.pem')} "
@@ -126,6 +127,8 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         f"--host {_shell_quote(host)} --port {port} --timeout 30 "
         f"--max-requests {max_requests} --max-concurrent-connections {max_concurrent_connections} "
     )
+    if bundle_cache:
+        command += f"--bundle-cache {_shell_quote(run_root + '/bundle-cache')} "
     if idle_timeout is not None:
         command += f"--idle-timeout {idle_timeout} "
     command += f"--log {_shell_quote(run_root + '/logs/worker.log')}"
