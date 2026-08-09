@@ -33,6 +33,12 @@ from .resources import (
     validate_placement_observation,
     validate_resource_snapshot,
 )
+from .runtime import (
+    build_runtime_binding,
+    build_runtime_observation,
+    validate_runtime_observation,
+    validate_runtime_profile,
+)
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .worker import LocalWorker
@@ -206,6 +212,47 @@ class FabricClient:
 
     def refresh_workers(self) -> list[dict[str, Any]]:
         return self.network.refresh_all()
+
+    def runtime_profile(self, worker_id: str) -> dict[str, Any]:
+        """Return the worker's authenticated/observed runtime profile."""
+
+        if worker_id in self.local.workers:
+            return self.local.workers[worker_id].runtime_profile()
+        state = self.network.worker_state(worker_id)
+        description = state.get("description")
+        if not isinstance(description, dict) or not isinstance(description.get("runtime_profile"), dict):
+            raise ProtocolError("worker has no runtime profile observation; refresh it first")
+        return validate_runtime_profile(description["runtime_profile"], expected_worker_id=worker_id)
+
+    def ingest_runtime_observation(
+        self,
+        worker_id: str,
+        probe: Mapping[str, Any],
+        *,
+        runtime_profile: Mapping[str, Any] | None = None,
+        captured_at: str | None = None,
+    ) -> dict[str, Any]:
+        """Validate optional provider probe output without requiring a receipt."""
+
+        profile = runtime_profile or self.runtime_profile(worker_id)
+        observation = build_runtime_observation(worker_identity=worker_id, runtime_profile=profile, probe=probe, captured_at=captured_at)
+        self.local.ledger.append("runtime.observation", observation) if worker_id in self.local.workers else self.network.ledger.append("runtime.observation", observation)
+        return observation
+
+    @staticmethod
+    def bind_runtime_observation(result: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
+        worker_id = result.get("worker_identity")
+        if not isinstance(worker_id, str):
+            raise ProtocolError("consumer result has no worker identity")
+        binding = build_runtime_binding(
+            observation=observation,
+            worker_identity=worker_id,
+            request_identity=result.get("request_identity"),
+            record_identity=result.get("record_identity"),
+            receipt_identity=result.get("receipt_identity"),
+        )
+        validate_runtime_observation(observation, expected_worker_id=worker_id)
+        return binding
 
     def workers(self) -> list[dict[str, Any]]:
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]

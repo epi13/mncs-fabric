@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.worker-description.v0.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "node", "resource_snapshot", "worker_service_version", "protocol_schema", "public_contract_identity", "capability_source", "resource_source", "captured_at", "claim_boundary", "runtime_profile", "description_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.worker-description.v0.2"},
+    "worker_identity": {"type": "string"},
+    "node": {"type": "object"},
+    "resource_snapshot": {"type": "object"},
+    "worker_service_version": {"type": "string"},
+    "protocol_schema": {"const": "mncs-fabric.protocol.v0.1"},
+    "public_contract_identity": {"type": "string"},
+    "capability_source": {"const": "worker-observed"},
+    "resource_source": {"const": "worker-observed"},
+    "captured_at": {"type": "string"},
+    "claim_boundary": {"type": "string"},
+    "runtime_profile": {"type": "object"},
+    "description_identity": {"type": "string"}
+  }
+}

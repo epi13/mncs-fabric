@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a4` experimental execution substrate. Authenticated worker descriptions, expiring liveness, remote resource refresh, and generic execution collections now complement resource snapshots, placement admission, native bundle transfer, challenge/replay, persistent workers, and Fabric-owned receipts. Accelerator discovery is not executable CUDA proof; production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a5` experimental execution substrate. Authenticated worker descriptions now include the identity of the worker's launching Python runtime, with optional normalized runtime-probe observations and a bounded Windows-native lifecycle helper. Accelerator discovery is not executable CUDA proof; production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -47,6 +47,10 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - generic identity-addressed work items and execution collections that retain
   missing and conflicting results; and
 - explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
+- identity-addressable runtime profiles and optional runtime observations tied to
+  the exact worker interpreter, without adding provider dependencies; and
+- a strict Windows worker preflight/lifecycle helper and optional synchronized
+  Torch CUDA probe workload; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
@@ -116,6 +120,13 @@ The repeatable physical-host harness is `scripts/two_host_fedora_test.py`. SSH
 is limited to bootstrap, staging, diagnostics, and worker lifecycle; the
 candidate request is sent through direct Fabric mTLS. It requires explicit
 operator arguments and never uses SSH host-key bypasses.
+
+The Windows-specific preflight is `scripts/two_host_windows_gpu_test.py` and
+requires an explicit operator endpoint; it does not discover LAN hosts. The
+bounded process helper is `scripts/windows_worker_launcher.py`. The optional
+`scripts/probe_torch_cuda.py` workload must run in the same Python environment
+that launches the worker and reports synchronized kernel evidence separately
+from NVIDIA discovery. See [docs/RUNTIME_PROFILES.md](docs/RUNTIME_PROFILES.md).
 
 `scripts/two_host_persistent_test.py` exercises repeated requests, persistent
 PID continuity, replay dispositions, and trust revocation between requests.

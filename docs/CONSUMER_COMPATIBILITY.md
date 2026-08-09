@@ -30,6 +30,13 @@ Placement migration: MNEL/RAVEL may translate their own resource budget into
 returns worker snapshot and admission identities; consumers may attach a
 runtime-produced placement observation through the public binding helper.
 
+Runtime migration: the authenticated worker description now uses additive
+`worker-description.v0.2` when it can report the launching Python
+`runtime-profile.v0.1`. Consumers may normalize an optional provider probe with
+`FabricClient.ingest_runtime_observation()` and bind it after execution with
+`FabricClient.bind_runtime_observation()`. Neither consumer needs to parse
+Windows paths, `nvidia-smi`, or Torch package state to use this boundary.
+
 Worker-state migration: consumers should treat `RemoteWorkerConfig` as endpoint
 and trust configuration, not as the source of current capabilities. Call
 `FabricClient.refresh_worker()` before resource-sensitive work and retain the

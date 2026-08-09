@@ -4,6 +4,12 @@ Fabric chooses a compatible worker; the consumer/provider runtime chooses how
 its model executes on that worker. Fabric does not import Torch, Accelerate,
 MNEL, RAVEL, or GIMP runtime code.
 
+The worker's machine facts and its launching runtime are separate. A
+`mncs-fabric.runtime-profile.v0.1` identifies the worker Python environment by
+content identity, while `mncs-fabric.runtime-observation.v0.1` records bounded
+output from an optional synchronized provider probe. This prevents a CUDA
+capable Python environment from being confused with a machine-global claim.
+
 ## Contracts
 
 The additive profiles are:

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0a5 - runtime profiles and Windows worker preparation
+
+- added identity-addressable Python runtime profiles to authenticated worker
+  descriptions without serializing private executable paths;
+- added bounded runtime-observation and post-execution binding contracts for
+  optional provider probes;
+- added a dependency-free synchronized Torch CUDA probe workload that never
+  promotes `nvidia-smi` or `torch.cuda.is_available()` alone to CUDA proof;
+- added Windows-aware PID-token lifecycle and explicit-endpoint preflight
+  helpers without SSH tunneling or candidate execution over SSH; and
+- preserved CUDA and sequential-offload public feature flags as false because
+  no physical Windows endpoint was available for acceptance in this iteration.
+
 ## 0.2.0a4 - worker state and execution collections
 
 - added authenticated worker descriptions containing bounded worker-observed

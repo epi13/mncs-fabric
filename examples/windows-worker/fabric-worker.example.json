@@ -1,0 +1,18 @@
+{
+  "worker_id": "collamore02-windows",
+  "controller_id": "fabric-controller-01",
+  "bind_host": "<development-LAN-address>",
+  "port": 7443,
+  "bundle_root": "C:\\Fabric\\bundle-root",
+  "bundle_cache": "C:\\Fabric\\bundle-cache",
+  "worker_state": "C:\\Fabric\\state\\worker.jsonl",
+  "trust_state": "C:\\Fabric\\trust\\trust.jsonl",
+  "ca_certificate": "C:\\Fabric\\trust\\ca.pem",
+  "worker_certificate": "C:\\Fabric\\certs\\worker.pem",
+  "worker_private_key": "C:\\Fabric\\certs\\worker.key",
+  "log_directory": "C:\\Fabric\\logs",
+  "max_requests": 100,
+  "idle_timeout_seconds": 300,
+  "max_concurrent_connections": 1,
+  "claim_boundary": "operator configuration example; private keys and endpoint details are not portable identity"
+}

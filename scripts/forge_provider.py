@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.5"}
-SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "placement-evidence", "remote-worker-description", "remote-resource-refresh", "worker-liveness", "execution-collection", "collection-completeness", "physical-fault-corpus", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity"]
+PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.6"}
+SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "placement-evidence", "remote-worker-description", "remote-resource-refresh", "worker-liveness", "execution-collection", "collection-completeness", "physical-fault-corpus", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity", "runtime-profile-validation", "runtime-observation-validation", "windows-worker-launcher-static-validation"]
 
 
 def response(request: dict[str, object], status: str, summary: str, *, limitations: list[str] | None = None, witnesses: list[object] | None = None) -> dict[str, object]:
@@ -43,6 +43,7 @@ def run_validation() -> tuple[str, str, list[object]]:
     from mncs_fabric.collections import build_execution_collection, build_work_item, validate_execution_collection
     from mncs_fabric.worker import LocalWorker
     from mncs_fabric.worker_state import validate_worker_description
+    from mncs_fabric.runtime import build_runtime_observation, build_runtime_profile, validate_runtime_observation
     service = FabricService()
     public_contract = build_public_contract(__import__("mncs_fabric").__version__)
     validate_public_contract(public_contract)
@@ -62,6 +63,9 @@ def run_validation() -> tuple[str, str, list[object]]:
         bundle_root.mkdir()
         description = LocalWorker("forge-worker", bundle_root, root / "worker.jsonl").description()
         validate_worker_description(description, expected_worker_id="forge-worker")
+        profile = build_runtime_profile("forge-worker", captured_at="2099-01-01T00:00:00Z")
+        observation = build_runtime_observation(worker_identity="forge-worker", runtime_profile=profile, probe={"execution_probe": "UNKNOWN", "precision_probes": {}, "accelerator_backend": None}, captured_at="2099-01-01T00:00:00Z")
+        validate_runtime_observation(observation, expected_worker_id="forge-worker")
         item = build_work_item(job_identity="sha256:" + "1" * 64)
         collection = build_execution_collection([item], [{"work_item_identity": item["work_item_identity"], "disposition": "PASS", "record_identity": "sha256:" + "2" * 64}])
         validate_execution_collection(collection)
@@ -87,7 +91,7 @@ def run_validation() -> tuple[str, str, list[object]]:
             evidence_reports.append({"path": str(evidence_path.relative_to(ROOT)), "report": evidence_report})
             if evidence_report["outcome"] != "PASS":
                 return "FAIL", "sanitized physical evidence failed validation", [{"operation": "physical-evidence-validation", "report": evidence_report, "path": str(evidence_path.relative_to(ROOT))}]
-    return "PASS", "Fabric suite, public contract, consumer API, worker description/liveness, generic collections, native bundle transfer, receipt/bundle/challenge compatibility, TLS loopback, replay checks, resource observation/admission, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "public_contract": public_contract["contract_identity"], "worker_state": "description, refresh, liveness, and collection fixtures covered", "resource_placement": "fixture-covered; accelerator execution remains optional", "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
+    return "PASS", "Fabric suite, public contract, consumer API, worker state/collections, runtime-profile and runtime-observation fixtures, native bundle transfer, receipt/bundle/challenge compatibility, TLS loopback, replay checks, resource observation/admission, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "public_contract": public_contract["contract_identity"], "worker_state": "description v0.1/v0.2, refresh, liveness, and collection fixtures covered", "runtime": "profile identity and probe normalization fixture covered; physical CUDA remains optional", "resource_placement": "fixture-covered; accelerator execution remains optional", "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
 
 
 def main() -> int:
