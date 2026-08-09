@@ -57,3 +57,9 @@ advertises `resource-observation`, `placement-admission`, and
 offload evidence where no executable accelerator probe was performed. Physical
 resource runs remain optional operator-controlled evidence and are never
 required by CI.
+
+The checked-in `development-evidence/fedora-resource-placement.json` is a
+bounded direct-mTLS CPU-placement run with native bundle transfer and a
+sanitized worker resource snapshot. It records the Quadro P620 as discovery
+only (`execution_probe=UNKNOWN`); it is not CUDA or sequential-offload
+evidence.

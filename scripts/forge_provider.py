@@ -67,7 +67,7 @@ def run_validation() -> tuple[str, str, list[object]]:
     if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted" or challenge_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
         return "FAIL", "compatibility snapshots are not fail-closed", []
     evidence_reports = []
-    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json", ROOT / "development-evidence/fedora-native-bundle-two-host.json"):
+    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json", ROOT / "development-evidence/fedora-native-bundle-two-host.json", ROOT / "development-evidence/fedora-resource-placement.json"):
         if evidence_path.exists():
             evidence_report = validate_physical_evidence(json.loads(evidence_path.read_text(encoding="utf-8")))
             evidence_reports.append({"path": str(evidence_path.relative_to(ROOT)), "report": evidence_report})
