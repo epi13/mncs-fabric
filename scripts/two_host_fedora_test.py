@@ -121,14 +121,16 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         f"--ca {_shell_quote(run_root + '/certs/ca.pem')} "
         f"--certificate {_shell_quote(run_root + '/certs/worker.pem')} "
         f"--key {_shell_quote(run_root + '/certs/worker.key')} "
-        f"--host {_shell_quote(host)} --port {port} --timeout 8 "
+        # The endpoint is still one-request/bounded, but physical startup and
+        # repeated SSH readiness probes must not consume its accept window.
+        f"--host {_shell_quote(host)} --port {port} --timeout 30 "
         f">{_shell_quote(run_root + '/logs/worker.log')} 2>&1 </dev/null & echo $!"
     )
     output = remote.ssh(command).strip().splitlines()
     if not output or not output[-1].isdigit():
         raise RuntimeError("remote worker did not return a process ID")
     pid = int(output[-1])
-    deadline = time.monotonic() + 5
+    deadline = time.monotonic() + 15
     while time.monotonic() < deadline:
         listeners = remote.ssh(f"ss -ltn sport = :{port}")
         if f":{port}" in listeners:
