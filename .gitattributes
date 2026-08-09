@@ -1,0 +1,5 @@
+* text=auto
+
+# Execution-bundle members are content-addressed bytes. Never let a platform
+# checkout normalize their line endings or otherwise change their identity.
+examples/**/bundle/** -text
