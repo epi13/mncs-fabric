@@ -14,6 +14,7 @@ from .canonical import attach_identity, is_sha256_identity, verify_identity
 from .contracts import build_public_contract
 from .errors import ValidationError
 from .node import utc_now
+from .models import NODE_SCHEMA
 from .resources import validate_resource_snapshot
 
 DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.1"
@@ -80,7 +81,7 @@ def validate_worker_description(value: object, *, expected_worker_id: str | None
     if expected_worker_id is not None and worker_id != expected_worker_id:
         raise ValidationError("worker description identity does not match the registered worker")
     node = value["node"]
-    if not isinstance(node, dict) or node.get("machine_label") != worker_id or not isinstance(node.get("record_id"), str) or not verify_identity(node, "record_id"):
+    if not isinstance(node, dict) or node.get("schema_version") != NODE_SCHEMA or node.get("machine_label") != worker_id or not isinstance(node.get("record_id"), str) or not verify_identity(node, "record_id"):
         raise ValidationError("worker description node binding is invalid")
     snapshot = validate_resource_snapshot(value["resource_snapshot"])
     if snapshot["worker_identity"] != worker_id:

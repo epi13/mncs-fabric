@@ -61,6 +61,11 @@ class ProtocolTests(unittest.TestCase):
             tampered["worker_identity"] = "other-worker"
             with self.assertRaises(Exception):
                 validate_worker_description(tampered)
+            malformed_node = copy.deepcopy(description)
+            malformed_node["node"]["schema_version"] = "mncs-fabric.node-capabilities.v99"
+            malformed_node["description_identity"] = sha256_identity({key: value for key, value in malformed_node.items() if key != "description_identity"})
+            with self.assertRaises(Exception):
+                validate_worker_description(malformed_node)
 
     def test_worker_description_refresh_replaces_current_state_and_preserves_history(self):
         with tempfile.TemporaryDirectory() as directory:
