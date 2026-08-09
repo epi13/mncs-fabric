@@ -99,7 +99,7 @@ class LocalWorker:
             record = execute_local(payload["job_plan"], execution_root, payload["artifact_manifest"], self.worker_id)
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
-        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge)
+        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge, bundle_identity=bundle_report.bundle_identity if bundle_report is not None else None, archive_identity=bundle_report.archive_identity if bundle_report is not None else None)
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         self.ledger.append("protocol.result", result_record)
         response_payload: dict[str, Any] = {"result_identity": record["record_id"], "record": record, "disposition": "EXECUTED"}
