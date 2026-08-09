@@ -17,7 +17,7 @@ from pathlib import Path
 
 from two_host_fedora_test import ROOT, Remote, _cert_fingerprint, _remote_node, _run, _shell_quote, _start_worker, _stop_worker, _write_pki
 
-from mncs_fabric.api import ConsumerContext, FabricClient, RemoteWorkerConfig
+from mncs_fabric.api import ConsumerContext, FabricClient, RemoteWorkerConfig, PlacementRequest
 from mncs_fabric.artifacts import verify_manifest
 from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.challenges import ChallengeReplayStore, issue_execution_challenge
@@ -42,6 +42,19 @@ def _challenge(controller_id: str, plan: dict[str, object], bundle_identity: str
     if not report.valid or report.challenge is None:
         raise RuntimeError("could not issue native-transfer challenge")
     return report.challenge
+
+
+def _remote_resources(remote: Remote, run_root: str, worker_id: str) -> dict[str, object]:
+    code = "import json; from mncs_fabric.resources import capture_resource_snapshot; print(json.dumps(capture_resource_snapshot(" + json.dumps(worker_id) + "), sort_keys=True, separators=(\",\", \":\")))"
+    output = remote.ssh(
+        f"cd {_shell_quote(run_root + '/repo')} && "
+        f"{_shell_quote(run_root + '/venv/bin/python')} -c "
+        f"{_shell_quote(code)}"
+    )
+    value = json.loads(output)
+    if not isinstance(value, dict) or value.get("worker_identity") != worker_id:
+        raise RuntimeError("remote resource snapshot identity did not match the requested worker ID")
+    return value
 
 
 def run(args: argparse.Namespace) -> dict[str, object]:
@@ -81,34 +94,36 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     archive = output / "execution-bundle.zip"
     bundle = build_bundle_archive(source_root, archive, bundle_id="mncs-fabric.portable-python.native.v0.1")
     node = _remote_node(remote, remote_root, args.worker_id)
+    remote_resources = _remote_resources(remote, remote_root, args.worker_id)
     controller_trust = TrustStore(output / "controller-trust.jsonl")
     controller_trust.enroll("worker", args.worker_id, _cert_fingerprint(pki["worker"]), metadata={"experiment": "native-bundle-two-host"})
     controller = FabricClient(args.controller_id, output / "controller-public.jsonl")
-    controller.register_remote_worker(RemoteWorkerConfig(args.worker_id, args.worker_host, args.worker_port, tuple(sorted(capability_names(node))), pki["ca"], pki["controller"], pki["controller_key"], output / "controller-trust.jsonl", timeout=8))
+    controller.register_remote_worker(RemoteWorkerConfig(args.worker_id, args.worker_host, args.worker_port, tuple(sorted(capability_names(node))), pki["ca"], pki["controller"], pki["controller_key"], output / "controller-trust.jsonl", timeout=8, resource_snapshot=remote_resources))
     controller.register_local_worker(LocalWorker("fabric-controller-local", source_root, output / "local-worker.jsonl"))
     pid: int | None = None
     pid_stable = False
     requests: list[dict[str, object]] = []
     replay_store = ChallengeReplayStore(output / "challenge-replay.jsonl")
     context = ConsumerContext("MNEL", "sha256:" + "1" * 64, experiment_identity="sha256:" + "2" * 64, forge_workflow_identity="sha256:" + "3" * 64, provider_identity="sha256:" + "4" * 64)
+    placement = PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=64 * 1024 * 1024)
     try:
         pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port, max_requests=9, idle_timeout=30, bundle_root=remote_root + "/empty-bundle")
         transfer = controller.ensure_bundle(args.worker_id, archive, expected_bundle_identity=bundle.bundle_identity)
         started = time.perf_counter()
-        first = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context)
+        first = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context, placement=placement)
         requests.append({"request_id": "native-1", "disposition": first[0]["disposition"], "record_identity": first[0]["record_identity"], "receipt_identity": first[0]["receipt_identity"], "round_trip_seconds": round(time.perf_counter() - started, 6)})
-        duplicate = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context)
+        duplicate = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context, placement=placement)
         requests.append({"request_id": "native-1", "disposition": duplicate[0]["disposition"], "record_identity": duplicate[0].get("record_identity")})
         changed = dict(plan)
         changed["candidate_identity"] = "sha256:" + "b" * 64
         changed = validate_job_plan(changed)
-        conflicting = controller.execute(changed, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context)
+        conflicting = controller.execute(changed, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context, placement=placement)
         requests.append({"request_id": "native-1", "disposition": conflicting[0]["disposition"]})
         challenge = _challenge(args.controller_id, plan, bundle.bundle_identity or "", args.worker_id)
-        fresh = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-2", challenge=challenge, consumer_context=context)
+        fresh = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-2", challenge=challenge, consumer_context=context, placement=placement)
         replay = replay_store.consume(challenge, fresh[0]["receipt"])
         requests.append({"request_id": "native-2", "disposition": fresh[0]["disposition"], "record_identity": fresh[0]["record_identity"], "receipt_identity": fresh[0]["receipt_identity"], "challenge_identity": challenge["challenge_identity"], "replay_identity": replay.replay_receipt["replay_identity"] if replay.replay_receipt else None})
-        local = controller.execute(plan, manifest, worker_id="fabric-controller-local", consumer_context=context)[0]
+        local = controller.execute(plan, manifest, worker_id="fabric-controller-local", consumer_context=context, placement=placement)[0]
         reconciliation = controller.reconcile([local, first[0]])
         pid_stable = remote.ssh(f"ps -o pid= -p {pid} 2>/dev/null || true").strip() == str(pid)
 
@@ -118,7 +133,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         remote.scp_to(output / "worker-trust-revoked.jsonl", remote_root + "/trust/worker-trust-revoked.jsonl")
         remote.ssh(f"chmod 600 {_shell_quote(remote_root + '/trust/worker-trust-revoked.jsonl')} && mv {_shell_quote(remote_root + '/trust/worker-trust-revoked.jsonl')} {_shell_quote(remote_root + '/trust/worker-trust.jsonl')}")
         try:
-            controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-revoked", consumer_context=context)
+            controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-revoked", consumer_context=context, placement=placement)
             revoked_disposition = "UNEXPECTED_ACCEPT"
         except (FabricError, OSError, TimeoutError, ProtocolError) as exc:
             revoked_disposition = {"disposition": "FAIL_CLOSED", "diagnostic": type(exc).__name__}
@@ -140,6 +155,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "worker_hostname": args.expected_hostname,
         "persistent_pid_stable": pid_stable,
         "bundle": {"logical_identity": bundle.bundle_identity, "archive_identity": bundle.archive_identity, "transfer_status": transfer["status"]},
+        "placement": {"request_identity": placement.placement_request_identity, "resource_snapshot_identity": first[0].get("resource_snapshot", {}).get("resource_snapshot_identity"), "admission_decision_identity": first[0].get("placement_admission", {}).get("decision_identity"), "mode": first[0].get("placement_admission", {}).get("admission_mode")},
         "consumer_context": context.to_dict(),
         "requests": requests,
         "local_record_identity": local["record_identity"],

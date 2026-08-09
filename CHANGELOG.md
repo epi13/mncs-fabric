@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- add `0.2.0a3` provider-neutral resource snapshots, placement requests,
+  deterministic resource admission, freshness bounds, explicit accelerator
+  rejection reasons, placement receipt references, schemas, and adversarial
+  CPU/fake-accelerator tests;
+- add a dependency-free Fabric resource probe and Forge validation for the
+  resource/placement fixture boundary; physical CUDA remains optional and is
+  not advertised without a real execution probe;
+
 - publish `mncs-fabric.public-contract.v0.1`, `FabricClient`, typed remote
   worker configuration, consumer provenance bindings, and Fabric-owned
   consumer results/receipts;

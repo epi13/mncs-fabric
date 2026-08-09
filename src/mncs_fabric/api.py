@@ -26,6 +26,12 @@ from .enrollment import TrustStore
 from .errors import ProtocolError, ValidationError
 from .protocol import dispatch_request_identity
 from .receipts import verify_execution_receipt
+from .resources import (
+    PlacementRequest,
+    build_placement_binding,
+    validate_placement_observation,
+    validate_resource_snapshot,
+)
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .worker import LocalWorker
@@ -62,6 +68,7 @@ class RemoteWorkerConfig:
     trust_state: Path
     concurrency_limit: int = 1
     timeout: float = 5.0
+    resource_snapshot: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not self.worker_id or not self.host or not 1 <= self.port <= 65535:
@@ -74,6 +81,10 @@ class RemoteWorkerConfig:
             value = Path(getattr(self, field))
             if not value.is_file():
                 raise ValidationError(f"remote worker {field} is unavailable: {value}")
+        if self.resource_snapshot is not None:
+            validate_resource_snapshot(self.resource_snapshot, error_type=ValidationError)
+            if self.resource_snapshot.get("worker_identity") != self.worker_id:
+                raise ValidationError("remote worker resource snapshot identity does not match worker_id")
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -83,6 +94,7 @@ class RemoteWorkerConfig:
             "capabilities": list(self.capabilities),
             "concurrency_limit": self.concurrency_limit,
             "transport": "tls-mutual-authenticated",
+            "resource_snapshot_identity": self.resource_snapshot.get("resource_snapshot_identity") if self.resource_snapshot else None,
         }
 
 
@@ -122,6 +134,10 @@ def _consumer_result(response: Mapping[str, Any], context: ConsumerContext | Non
         "bundle_identity": execution_bundle.get("bundle_identity") if execution_bundle else (record.get("artifact_manifest_identity") if record else None),
         "challenge_identity": (receipt.get("extensions", {}).get("mncs-fabric:challenge-identity") if receipt else None),
     }
+    if isinstance(payload.get("placement_admission"), dict):
+        result["placement_admission"] = dict(payload["placement_admission"])
+    if isinstance(payload.get("resource_snapshot"), dict):
+        result["resource_snapshot"] = dict(payload["resource_snapshot"])
     if context is not None:
         result["consumer_context_identity"] = context.context_identity
         result["provenance_binding"] = build_provenance_binding(
@@ -173,13 +189,13 @@ class FabricClient:
             trust_store=TrustStore(config.trust_state),
             timeout=config.timeout,
         )
-        self.network.register_remote(config.worker_id, frozenset(config.capabilities), transport, concurrency_limit=config.concurrency_limit)
+        self.network.register_remote(config.worker_id, frozenset(config.capabilities), transport, concurrency_limit=config.concurrency_limit, resource_snapshot=config.resource_snapshot)
         self.remote_configs[config.worker_id] = config
         return {"outcome": "PASS", **config.public_dict()}
 
     def workers(self) -> list[dict[str, Any]]:
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
-        remote = [{"worker_id": config.worker_id, "capabilities": list(config.capabilities), "concurrency_limit": config.concurrency_limit, "available": True, "transport": "tls-mutual-authenticated", "source": "remote"} for config in (self.remote_configs[key] for key in sorted(self.remote_configs))]
+        remote = [{"worker_id": config.worker_id, "capabilities": list(config.capabilities), "concurrency_limit": config.concurrency_limit, "available": True, "transport": "tls-mutual-authenticated", "source": "remote", "resource_snapshot": config.resource_snapshot, "resource_snapshot_identity": config.resource_snapshot.get("resource_snapshot_identity") if config.resource_snapshot else None} for config in (self.remote_configs[key] for key in sorted(self.remote_configs))]
         return local + remote
 
     def execute(
@@ -193,31 +209,33 @@ class FabricClient:
         challenge: dict[str, Any] | None = None,
         consumer_context: ConsumerContext | Mapping[str, Any] | None = None,
         execution_bundle: dict[str, str] | None = None,
+        placement: PlacementRequest | Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         context, context_value = _context_payload(consumer_context)
+        placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
         if execution_bundle is None and worker_id is not None:
             execution_bundle = self.bundle_links.get(worker_id)
         if worker_id is not None and worker_id in self.local.workers:
             outputs = []
             worker = self.local.workers[worker_id]
             for index in range(replicas):
-                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle) + f":{index}"
-                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle))
+                rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value) + f":{index}"
+                outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value))
             return [_consumer_result(response, context) for response in outputs]
         if worker_id is not None or self.remote_configs:
             if worker_id is not None and worker_id not in self.remote_configs:
                 raise ProtocolError(f"worker is not registered: {worker_id}")
             if worker_id is not None:
                 transport, _ = self.network.remote_workers[worker_id]
-                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle)
+                response = self.network.dispatch_via(transport, plan, manifest, worker_id=worker_id, request_id=request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
                 return [_consumer_result(response, context)]
-            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle)
+            responses = self.network.dispatch_remote(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
             return [_consumer_result(response, context) for response in responses]
-        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle)
+        responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
         return [_consumer_result(response, context) for response in responses]
 
-    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context)
+    def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement)
 
     def ensure_bundle(self, worker_id: str, archive: Path, *, expected_bundle_identity: str | None = None) -> dict[str, Any]:
         """Verify and transfer one typed bundle; arbitrary files are rejected."""
@@ -247,5 +265,14 @@ class FabricClient:
     def verify_execution_bundle(self, archive: Path, **kwargs: Any) -> dict[str, Any]:
         return self.service.verify_execution_bundle(archive, **kwargs)
 
+    def verify_resource_snapshot(self, snapshot: object) -> dict[str, Any]:
+        return validate_resource_snapshot(snapshot, error_type=ValidationError)
 
-__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig"]
+    def verify_placement_observation(self, observation: object) -> dict[str, Any]:
+        return validate_placement_observation(observation, error_type=ValidationError)
+
+    def bind_placement_observation(self, result: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
+        return build_placement_binding(result=result, observation=observation)
+
+
+__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig", "PlacementRequest"]

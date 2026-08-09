@@ -52,6 +52,14 @@ does not establish independent freshness or custody.
 - scaling measurements separated from semantic evidence;
 - [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
 - [~] physical two-node public-facade scheduling and recovery evidence;
+- [x] identity-addressable host/accelerator resource observations with
+  explicit freshness and unknown-value handling;
+- [x] provider-neutral CPU/full-accelerator/sequential-offload admission
+  fixtures with deterministic decision identities;
+- [~] placement evidence binding is implemented, but actual CUDA and
+  sequential-offload runtime evidence remains unavailable on the current
+  physical worker;
+- [ ] enforced resource reservations or production-grade accelerator sharing;
 
 ## Phase 3 — heterogeneous cohort
 

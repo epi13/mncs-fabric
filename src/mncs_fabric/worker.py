@@ -14,6 +14,7 @@ from .errors import ProtocolError, StorageError
 from .executor import execute_local
 from . import __version__
 from .node import capability_names, collect_node_capabilities, utc_now
+from .resources import build_placement_reference, capture_resource_snapshot, evaluate_placement, validate_placement_request
 from .protocol import dispatch_binding_identity, make_envelope, validate_envelope
 from .store import FabricLedger
 from .receipts import build_execution_receipt
@@ -37,11 +38,15 @@ class LocalWorker:
     def capabilities(self) -> frozenset[str]:
         return frozenset(capability_names(self.node()))
 
+    def resource_snapshot(self) -> dict[str, Any]:
+        node = self.node()
+        return capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
+
     def announcement(self, controller_id: str) -> dict[str, Any]:
         created = utc_now()
         expires = (self._parse_time(created) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
         node = self.node()
-        return make_envelope("worker.announce", controller_id=controller_id, worker_id=self.worker_id, request_id="announce-" + self.worker_id, job_id="node-announcement", nonce="announce-" + sha256_identity(node)[7:23], payload={"node": node}, created_at=created, expires_at=expires)
+        return make_envelope("worker.announce", controller_id=controller_id, worker_id=self.worker_id, request_id="announce-" + self.worker_id, job_id="node-announcement", nonce="announce-" + sha256_identity(node)[7:23], payload={"node": node, "resource_snapshot": self.resource_snapshot()}, created_at=created, expires_at=expires)
 
     @staticmethod
     def _parse_time(value: str):
@@ -73,6 +78,9 @@ class LocalWorker:
         if challenge is not None and not validate_execution_challenge(challenge).valid:
             raise ProtocolError("dispatch execution challenge is invalid")
         dispatch_binding = dispatch_binding_identity(message)
+        placement_request = payload.get("placement_request")
+        placement_admission = None
+        resource_snapshot = None
         prior, result = self._prior_dispatch(request_id)
         if prior is not None:
             # Records created before the stable binding field was introduced
@@ -87,8 +95,17 @@ class LocalWorker:
                 for field in ("execution_bundle", "bundle_binding"):
                     if result.get(field) is not None:
                         duplicate_payload[field] = result[field]
+                for field in ("placement_admission", "resource_snapshot"):
+                    if result.get(field) is not None:
+                        duplicate_payload[field] = result[field]
                 return self._response(message, "execution.result", duplicate_payload)
             return self._response(message, "dispatch.ack", {"disposition": "DUPLICATE_IN_PROGRESS", "dispatch_identity": dispatch_binding})
+        if placement_request is not None:
+            validate_placement_request(placement_request)
+            resource_snapshot = self.resource_snapshot()
+            placement_admission = evaluate_placement(placement_request, resource_snapshot, self.capabilities())
+            if placement_admission["disposition"] != "PASS":
+                return self._response(message, "dispatch.ack", {"disposition": "UNKNOWN", "reason": placement_admission["reason_code"], "placement_admission": placement_admission, "resource_snapshot": resource_snapshot})
         bundle_info = payload.get("execution_bundle")
         execution_root = self.bundle_root
         bundle_report = None
@@ -102,15 +119,22 @@ class LocalWorker:
             record = execute_local(payload["job_plan"], execution_root, payload["artifact_manifest"], self.worker_id)
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
-        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge, bundle_identity=bundle_report.bundle_identity if bundle_report is not None else None, archive_identity=bundle_report.archive_identity if bundle_report is not None else None)
+        placement_reference = build_placement_reference(placement_admission) if placement_admission is not None else None
+        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge, bundle_identity=bundle_report.bundle_identity if bundle_report is not None else None, archive_identity=bundle_report.archive_identity if bundle_report is not None else None, placement_reference=placement_reference)
         response_payload: dict[str, Any] = {"result_identity": record["record_id"], "record": record, "disposition": "EXECUTED"}
         if receipt is not None:
             response_payload["receipt"] = receipt
         if bundle_report is not None and receipt is not None:
             response_payload["execution_bundle"] = {"bundle_identity": bundle_report.bundle_identity, "archive_identity": bundle_report.archive_identity}
             response_payload["bundle_binding"] = build_bundle_binding(job_identity=record["job_identity"], candidate_identity=record.get("candidate_identity"), receipt_identity=receipt["receipt_identity"], bundle=bundle_report)
+        if placement_admission is not None:
+            response_payload["placement_admission"] = placement_admission
+            response_payload["resource_snapshot"] = resource_snapshot
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         for field in ("execution_bundle", "bundle_binding"):
+            if response_payload.get(field) is not None:
+                result_record[field] = response_payload[field]
+        for field in ("placement_admission", "resource_snapshot"):
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         self.ledger.append("protocol.result", result_record)
