@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 from typing import Any
 
-from .canonical import sha256_identity
+from .canonical import sha256_identity, verify_identity
 from .challenges import bind_challenge_to_receipt
 from .errors import ProtocolError
 from .models import validate_job_plan
@@ -79,14 +79,22 @@ class LocalController:
         self.ledger.append("protocol.controller-dispatch", envelope)
         response = transport.request(envelope)
         if response.get("message_type") == "execution.result":
-            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge)
+            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge, execution_bundle=execution_bundle)
         return validate_envelope(response)
 
-    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None) -> dict[str, Any]:
+    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None) -> dict[str, Any]:
         value = validate_envelope(response)
         record = value["payload"].get("record", {})
         if value["worker_id"] != worker_id or record.get("job_identity") != job_identity or (candidate_identity is not None and record.get("candidate_identity") != candidate_identity) or (artifact_manifest_identity is not None and record.get("artifact_manifest_identity") != artifact_manifest_identity):
             raise ProtocolError("controller response identity binding does not match the dispatch")
+        if execution_bundle is not None:
+            payload = value["payload"]
+            if payload.get("execution_bundle") != execution_bundle:
+                raise ProtocolError("controller response bundle identity does not match the dispatch")
+            binding = payload.get("bundle_binding")
+            receipt = payload.get("receipt")
+            if not isinstance(binding, dict) or binding.get("job_identity") != job_identity or binding.get("candidate_identity") != candidate_identity or binding.get("bundle_identity") != execution_bundle["bundle_identity"] or binding.get("archive_identity") != execution_bundle["archive_identity"] or not isinstance(receipt, dict) or binding.get("receipt_identity") != receipt.get("receipt_identity") or not verify_identity(binding, "binding_identity"):
+                raise ProtocolError("controller response bundle binding does not match the dispatch")
         if challenge is not None:
             receipt = value["payload"].get("receipt")
             if not isinstance(receipt, dict) or not bind_challenge_to_receipt(challenge, receipt).valid:

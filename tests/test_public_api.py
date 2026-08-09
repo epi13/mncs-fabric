@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from mncs_fabric.api import ConsumerContext, FabricClient
+from mncs_fabric.api import ConsumerContext, FabricClient, LocalWorkerConfig
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.canonical import verify_identity
 from mncs_fabric.models import validate_job_plan
@@ -37,7 +37,7 @@ class PublicContractTests(unittest.TestCase):
         second = FabricClient.contract()
         self.assertEqual(first, second)
         self.assertTrue(verify_identity(first, "contract_identity"))
-        self.assertFalse(first["features"]["native_bundle_transfer"])
+        self.assertTrue(first["features"]["native_bundle_transfer"])
 
     def test_local_consumer_execution_owns_receipt_and_provenance(self) -> None:
         with TemporaryDirectory() as directory:
@@ -47,7 +47,7 @@ class PublicContractTests(unittest.TestCase):
             (bundle / "task.py").write_text("from pathlib import Path\nPath('result.json').write_text('{\\\"ok\\\":true}')\n", encoding="utf-8")
             plan, manifest = _plan(bundle)
             client = FabricClient("consumer-controller", root / "controller.jsonl")
-            client.register_local_worker(LocalWorker("worker-a", bundle, root / "worker.jsonl"))
+            client.register_local_worker(LocalWorkerConfig("worker-a", bundle, root / "worker.jsonl"))
             context = ConsumerContext(
                 source_project="MNEL",
                 consumer_workload_identity="sha256:" + "b" * 64,

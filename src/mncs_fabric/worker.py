@@ -84,6 +84,9 @@ class LocalWorker:
                 duplicate_payload: dict[str, Any] = {"result_identity": result["record"]["record_id"], "record": result["record"], "disposition": "DUPLICATE_IDEMPOTENT"}
                 if result.get("receipt") is not None:
                     duplicate_payload["receipt"] = result["receipt"]
+                for field in ("execution_bundle", "bundle_binding"):
+                    if result.get(field) is not None:
+                        duplicate_payload[field] = result[field]
                 return self._response(message, "execution.result", duplicate_payload)
             return self._response(message, "dispatch.ack", {"disposition": "DUPLICATE_IN_PROGRESS", "dispatch_identity": dispatch_binding})
         bundle_info = payload.get("execution_bundle")
@@ -100,14 +103,17 @@ class LocalWorker:
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
         receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge, bundle_identity=bundle_report.bundle_identity if bundle_report is not None else None, archive_identity=bundle_report.archive_identity if bundle_report is not None else None)
-        result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
-        self.ledger.append("protocol.result", result_record)
         response_payload: dict[str, Any] = {"result_identity": record["record_id"], "record": record, "disposition": "EXECUTED"}
         if receipt is not None:
             response_payload["receipt"] = receipt
         if bundle_report is not None and receipt is not None:
             response_payload["execution_bundle"] = {"bundle_identity": bundle_report.bundle_identity, "archive_identity": bundle_report.archive_identity}
             response_payload["bundle_binding"] = build_bundle_binding(job_identity=record["job_identity"], candidate_identity=record.get("candidate_identity"), receipt_identity=receipt["receipt_identity"], bundle=bundle_report)
+        result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
+        for field in ("execution_bundle", "bundle_binding"):
+            if response_payload.get(field) is not None:
+                result_record[field] = response_payload[field]
+        self.ledger.append("protocol.result", result_record)
         return self._response(message, "execution.result", response_payload)
 
     def _handle_bundle_message(self, message: dict[str, Any]) -> dict[str, Any]:

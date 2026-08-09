@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- publish `mncs-fabric.public-contract.v0.1`, `FabricClient`, typed remote
+  worker configuration, consumer provenance bindings, and Fabric-owned
+  consumer results/receipts;
+- add bounded native EA-NEXT-002 bundle transfer with worker-side verification,
+  atomic publication, and immutable cache;
+- record direct physical native-transfer evidence and extend Forge validation
+  to the public contract, consumer boundary, cache, and evidence profile;
+
 - add an explicitly bounded persistent TLS worker service with request, idle,
   concurrency, and graceful-shutdown limits;
 - add repeated physical-worker evidence covering PID continuity, challenge
@@ -9,12 +17,19 @@
 - derive worker receipt runner versions from the package version so deployed
   receipts do not retain the pre-0.2.0a1 bootstrap label;
 
+## 0.2.0a2
+
+- public distributed consumer contract and Fabric-generated receipts;
+- generic provenance binding for consumer workload and Forge workflow
+  references;
+- bounded native execution-bundle transfer over authenticated Fabric
+  envelopes, with immutable worker cache and direct Fedora evidence.
+
 ## 0.2.0a1
 
 - bounded persistent worker service and repeatable physical two-node evidence;
 - explicit between-request trust revocation and persistent replay tests;
 - machine-readable validation for persistent physical evidence;
-- native immutable bundle transfer remains deferred.
 
 - repaired Windows ledger locking using handle-scoped release and deterministic
   cleanup, without an unlocked fallback;

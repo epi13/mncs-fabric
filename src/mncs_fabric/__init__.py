@@ -2,6 +2,6 @@
 
 __version__ = "0.2.0a2"
 
-from .api import ConsumerContext, FabricClient, RemoteWorkerConfig
+from .api import ConsumerContext, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
 
-__all__ = ["ConsumerContext", "FabricClient", "RemoteWorkerConfig", "__version__"]
+__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig", "__version__"]

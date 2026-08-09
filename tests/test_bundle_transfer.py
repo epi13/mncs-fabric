@@ -63,10 +63,13 @@ class BundleTransferTests(unittest.TestCase):
             client.register_remote_worker(RemoteWorkerConfig("worker-bundle", "127.0.0.1", port, ("python",), cert["ca"], cert["client"], cert["client_key"], root / "controller-trust.jsonl", timeout=3))
             transferred = client.ensure_bundle("worker-bundle", archive, expected_bundle_identity=bundle.bundle_identity)
             self.assertEqual(transferred["status"], "COMMITTED")
-            result = client.execute(plan, manifest, worker_id="worker-bundle", consumer_context=ConsumerContext("RAVEL", "sha256:" + "1" * 64))[0]
+            result = client.execute(plan, manifest, worker_id="worker-bundle", request_id="bundle-request", consumer_context=ConsumerContext("RAVEL", "sha256:" + "1" * 64))[0]
             self.assertEqual(result["disposition"], "EXECUTED")
             self.assertEqual(client.verify_receipt(result["receipt"])["outcome"], "PASS")
             self.assertEqual(result["provenance_binding"]["bundle_identity"], bundle.bundle_identity)
+            duplicate = client.execute(plan, manifest, worker_id="worker-bundle", request_id="bundle-request", consumer_context=ConsumerContext("RAVEL", "sha256:" + "1" * 64))[0]
+            self.assertEqual(duplicate["disposition"], "DUPLICATE_IDEMPOTENT")
+            self.assertEqual(duplicate["bundle_identity"], bundle.bundle_identity)
             server.request_stop()
             thread.join(timeout=5)
             self.assertFalse(thread.is_alive())

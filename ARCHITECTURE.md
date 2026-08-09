@@ -32,6 +32,15 @@ HMAC-only fallback.
 
 `FabricService` is the stable boundary for node inspection, capability inspection, plan validation, local execution, record verification, collection, and reconciliation. The CLI delegates to it. Forge invokes the same bounded service contract through its declared Provider Protocol workflow; it does not import Fabric internals.
 
+`mncs_fabric.api.FabricClient` is the consumer-facing distributed facade. It
+composes local and registered mTLS workers, typed `RemoteWorkerConfig`, bundle
+transfer, replication, reconciliation, Fabric-owned receipts, and optional
+`ConsumerContext` provenance. Consumers do not construct
+`NetworkController`, `TLSNetworkTransport`, or `TrustStore` for ordinary use;
+those remain supported advanced interfaces. The identity-addressable
+`mncs-fabric.public-contract.v0.1` descriptor reports the supported schemas and
+features.
+
 ### Protocol and durable state
 
 `protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `transport.py`
@@ -58,9 +67,12 @@ protocol request replay and MNCS freshness replay are deliberately distinct.
 `bundles.py` verifies the current MNCS EA-NEXT-002 ZIP shape without extracting
 untrusted content. It keeps the raw logical bundle identity distinct from the
 exact `sha256:` archive identity and binds receipts through a companion record.
-Bulk cross-host archive transfer is deferred; network dispatch currently uses
-pre-positioned verified artifacts. The persistent physical harness therefore
-still stages candidate material through SSH while using Fabric for execution.
+`bundle_transfer.py` adds bounded Fabric-native offer/chunk/commit transfer.
+Workers independently verify the archive, materialize only verified regular
+members, and atomically publish an immutable cache entry. SSH remains an
+operator bootstrap channel for source, trust, and worker startup; it is no
+longer required to stage candidate execution material in the native-transfer
+path.
 
 The bounded operator harness in `scripts/two_host_fedora_test.py` stages the
 exact source, trust material, and verified execution material over SSH, then

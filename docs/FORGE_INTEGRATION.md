@@ -2,7 +2,7 @@
 
 MNCS Forge is expected to remain the optional agent and operator control plane. MNCS Fabric is the execution and transport plane. Neither replaces offline MNCS or MNCDS validation.
 
-A Forge provider should invoke the public `mncs_fabric.service.FabricService` boundary or a bounded Fabric CLI operation and retain the returned identities. It should not import private Fabric internals or silently convert missing capabilities into source reading, grep, or a weaker substitute.
+A Forge provider should invoke the public `mncs_fabric.service.FabricService` boundary for local service operations or `mncs_fabric.api.FabricClient` for declared distributed consumer operations, and retain the returned identities. It should not import private Fabric internals or silently convert missing capabilities into source reading, grep, or a weaker substitute.
 
 Proposed bounded operations:
 
@@ -44,5 +44,7 @@ restart/replay dispositions, revocation disposition, limitations, and secret
 exclusion. The provider also validates the bounded persistent-worker evidence
 profile when its sanitized record is present. Forge does not impersonate a
 remote operator or run a second host; the physical runs remain
-operator-controlled. Bulk bundle transfer and independent certification
-remain explicit unsupported constructs.
+operator-controlled. The provider also validates the public contract,
+consumer-result/provenance shape, native bundle-transfer/cache tests, and
+sanitized native-transfer evidence. Independent certification remains
+unsupported.

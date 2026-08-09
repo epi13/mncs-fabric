@@ -193,4 +193,49 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_two_host_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.persistent-two-host.v0.1":
         return validate_persistent_two_host_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.native-bundle-two-host.v0.1":
+        return validate_native_bundle_two_host_evidence(evidence)
     return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}
+
+
+def validate_native_bundle_two_host_evidence(evidence: object) -> dict[str, Any]:
+    """Validate sanitized evidence for native bundle transfer."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("record_type") != "mncs-fabric.native-bundle-two-host":
+        issues.append("record type is invalid")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False:
+        issues.append("native transport boundary is invalid")
+    if not isinstance(evidence.get("fabric_commit"), str) or not _COMMIT.fullmatch(evidence["fabric_commit"]):
+        issues.append("fabric commit is invalid")
+    if evidence.get("fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions differ")
+    if not isinstance(evidence.get("controller_identity"), str) or evidence.get("controller_identity") == evidence.get("worker_identity"):
+        issues.append("logical node identities are not distinct")
+    bundle = evidence.get("bundle")
+    if not isinstance(bundle, dict) or not _identity(bundle.get("archive_identity")) or not _identity(bundle.get("logical_identity"), bare=True) or bundle.get("transfer_status") not in {"COMMITTED", "ALREADY_PRESENT"}:
+        issues.append("native bundle transfer identity or status is invalid")
+    try:
+        from .contracts import validate_consumer_context
+        validate_consumer_context(evidence.get("consumer_context"), error_type=ValueError)
+    except (ValueError, TypeError):
+        issues.append("consumer context is invalid")
+    requests = evidence.get("requests")
+    dispositions = [item.get("disposition") for item in requests if isinstance(item, dict)] if isinstance(requests, list) else []
+    if dispositions.count("EXECUTED") < 2 or "DUPLICATE_IDEMPOTENT" not in dispositions or "CONFLICTING_REPLAY" not in dispositions:
+        issues.append("native request dispositions are incomplete")
+    reconciliation = evidence.get("reconciliation")
+    if not isinstance(reconciliation, dict) or reconciliation.get("outcome") != "PASS" or not _identity(evidence.get("local_record_identity")) or not _identity(evidence.get("remote_record_identity")):
+        issues.append("native reconciliation is incomplete")
+    adversarial = evidence.get("adversarial")
+    if not isinstance(adversarial, dict) or adversarial.get("revoked_controller", {}).get("disposition") != "FAIL_CLOSED" or adversarial.get("challenge_replay") is not True:
+        issues.append("native security dispositions are incomplete")
+    boundary = evidence.get("claim_boundary")
+    for term in ("no semantic", "sandbox", "correctness", "custody", "independence", "conformance", "certification"):
+        if not isinstance(boundary, str) or term not in boundary.lower():
+            issues.append(f"claim boundary omits:{term}")
+    if not isinstance(evidence.get("limitations"), list) or not evidence["limitations"] or _contains_secret(evidence):
+        issues.append("limitations or secret exclusion is invalid")
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}

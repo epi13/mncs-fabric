@@ -34,10 +34,15 @@ def run_validation() -> tuple[str, str, list[object]]:
     if not compileall.compile_dir(str(ROOT / "src"), quiet=1):
         return "FAIL", "Fabric source compilation failed", []
     from mncs_fabric.artifacts import verify_manifest
+    from mncs_fabric.contracts import build_public_contract, validate_public_contract
     from mncs_fabric.evidence import validate_physical_evidence
     from mncs_fabric.io import load_json
     from mncs_fabric.service import FabricService
     service = FabricService()
+    public_contract = build_public_contract(__import__("mncs_fabric").__version__)
+    validate_public_contract(public_contract)
+    if public_contract["features"]["native_bundle_transfer"] is not True:
+        return "FAIL", "public contract does not advertise implemented native bundle transfer", []
     with tempfile.TemporaryDirectory(prefix="mncs-fabric-forge-") as directory:
         output = Path(directory)
         manifest = verify_manifest(ROOT / "examples/portable-python/bundle", load_json(ROOT / "examples/portable-python/artifact-manifest.json"))
@@ -54,20 +59,20 @@ def run_validation() -> tuple[str, str, list[object]]:
     if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted" or challenge_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
         return "FAIL", "compatibility snapshots are not fail-closed", []
     evidence_reports = []
-    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json"):
+    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json", ROOT / "development-evidence/fedora-native-bundle-two-host.json"):
         if evidence_path.exists():
             evidence_report = validate_physical_evidence(json.loads(evidence_path.read_text(encoding="utf-8")))
             evidence_reports.append({"path": str(evidence_path.relative_to(ROOT)), "report": evidence_report})
             if evidence_report["outcome"] != "PASS":
                 return "FAIL", "sanitized physical evidence failed validation", [{"operation": "physical-evidence-validation", "report": evidence_report, "path": str(evidence_path.relative_to(ROOT))}]
-    return "PASS", "Fabric suite, compilation, portable example, receipt/bundle/challenge compatibility, TLS loopback, replay checks, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
+    return "PASS", "Fabric suite, public contract, consumer API, native bundle transfer, receipt/bundle/challenge compatibility, TLS loopback, replay checks, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "public_contract": public_contract["contract_identity"], "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
 
 
 def main() -> int:
     line = sys.stdin.readline()
     request = json.loads(line)
     if request.get("type") == "capabilities":
-        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence"], "unsupported_constructs": ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
+        result = {"protocol_version": "0.1", "type": "capabilities", "request_id": request.get("request_id", "forge-capabilities"), "provider": PROVIDER, "analyses": ["inspection"], "statuses": ["PASS", "FAIL", "UNKNOWN"], "cancellation": False, "health_checks": False, "extensions": {"supported_constructs": ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity"], "unsupported_constructs": ["real-second-host-network-evidence", "independent-certification"], "limitations": ["operator-controlled local development evidence"]}}
     elif request.get("type") == "analysis_request" and request.get("analysis") == "inspection":
         status, summary, witnesses = run_validation()
         result = response(request, status, summary, limitations=["Forge execution is development evidence, not independent certification."], witnesses=witnesses)

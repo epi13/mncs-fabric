@@ -160,7 +160,7 @@ def build_execution_receipt(
     subject_family: str = "MNCS",
     subject_kind: str = "development-record",
     runner_identity: str = "mncs-fabric-local-runner-v1",
-    runner_version: str = "0.2.0a1",
+    runner_version: str = "0.2.0a2",
     placement_reference: dict[str, Any] | None = None,
     challenge: dict[str, Any] | None = None,
     bundle_identity: str | None = None,

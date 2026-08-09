@@ -23,7 +23,7 @@ PUBLIC_FEATURES = {
     "challenge_replay": True,
     "reconciliation": True,
     "bundle_verification": True,
-    "native_bundle_transfer": False,
+    "native_bundle_transfer": True,
     "capability_scheduling": True,
 }
 
@@ -159,7 +159,7 @@ def validate_public_contract(value: object) -> dict[str, Any]:
         raise ValidationError("unsupported public contract schema")
     if not verify_identity(value, "contract_identity"):
         raise ValidationError("public contract identity does not verify")
-    if not isinstance(value.get("features"), dict) or value["features"].get("native_bundle_transfer") is not False:
+    if not isinstance(value.get("features"), dict) or value["features"].get("native_bundle_transfer") is not True:
         raise ValidationError("public contract feature declaration is invalid")
     return dict(value)
 

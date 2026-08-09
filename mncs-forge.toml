@@ -45,8 +45,8 @@ command = ["python", "scripts/forge_provider.py"]
 transport = "stdio-jsonl"
 required = true
 capabilities = ["inspection"]
-supported_constructs = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence"]
-unsupported_constructs = ["real-second-host-network-evidence", "bulk-cross-host-bundle-transfer", "independent-certification"]
+supported_constructs = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity"]
+unsupported_constructs = ["real-second-host-network-evidence", "independent-certification"]
 limitations = ["operator-controlled local development evidence"]
 
 [[workflows]]

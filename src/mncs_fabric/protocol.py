@@ -130,6 +130,18 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             receipt = value["receipt"]
             if not isinstance(receipt, dict) or not isinstance(receipt.get("receipt_identity"), str) or len(receipt["receipt_identity"]) != 64 or any(char not in "0123456789abcdef" for char in receipt["receipt_identity"]):
                 raise ProtocolError("execution result receipt identity is invalid")
+        if "execution_bundle" in value:
+            bundle = value["execution_bundle"]
+            if not isinstance(bundle, dict) or set(bundle) != {"bundle_identity", "archive_identity"}:
+                raise ProtocolError("execution result bundle binding is invalid")
+            if not isinstance(bundle.get("bundle_identity"), str) or len(bundle["bundle_identity"]) != 64 or any(char not in "0123456789abcdef" for char in bundle["bundle_identity"]):
+                raise ProtocolError("execution result logical bundle identity is invalid")
+            if not is_sha256_identity(bundle.get("archive_identity")):
+                raise ProtocolError("execution result archive identity is invalid")
+        if "bundle_binding" in value:
+            binding = value["bundle_binding"]
+            if not isinstance(binding, dict) or not isinstance(binding.get("binding_identity"), str) or not verify_identity(binding, "binding_identity"):
+                raise ProtocolError("execution result bundle binding identity is invalid")
     elif message_type in {"status.request", "result.collect"}:
         if not is_sha256_identity(value.get("job_identity")):
             raise ProtocolError("status and collection requests require a job identity")

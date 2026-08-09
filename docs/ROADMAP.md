@@ -24,14 +24,18 @@
   `development-evidence/fedora-two-host-phase1.md`).
 - [x] bounded persistent worker mode with repeated physical-request evidence
   (`development-evidence/fedora-persistent-two-host.md`);
+- [x] identity-addressable public consumer contract and `FabricClient` facade;
+- [x] Fabric-owned receipts and generic consumer provenance bindings;
+- [x] bounded native EA-NEXT-002 bundle transfer with worker-side verification
+  and immutable cache, including direct physical execution evidence;
 
 - [~] bounded worker lifecycle is experimental; production multi-host operation
   and certificate provisioning remain operator responsibilities;
 
-The experimental two-host acceptance run and bounded persistent-worker run are
-complete. Fabric does not claim production Phase 1 lifecycle completion:
-certificate provisioning is operator-managed and bulk execution-bundle
-transfer is not yet implemented.
+The experimental two-host acceptance run, bounded persistent-worker run, and
+native-transfer run are complete. Fabric does not claim production Phase 1
+lifecycle completion: certificate provisioning is operator-managed and worker
+supervision remains bounded/operator-controlled.
 
 EA-NEXT-005 challenge/replay compatibility has bounded physical deployment
 evidence. Its replay authority remains an operator-controlled local store and
@@ -47,6 +51,7 @@ does not establish independent freshness or custody.
 - [~] node-loss and delayed-result handling (explicit UNKNOWN for transport loss);
 - scaling measurements separated from semantic evidence;
 - [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
+- [~] physical two-node public-facade scheduling and recovery evidence;
 
 ## Phase 3 — heterogeneous cohort
 

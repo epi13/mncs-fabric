@@ -28,6 +28,24 @@ from .protocol import dispatch_request_identity
 from .receipts import verify_execution_receipt
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
+from .worker import LocalWorker
+
+
+@dataclass(frozen=True, slots=True)
+class LocalWorkerConfig:
+    """Consumer-safe configuration for one in-process worker."""
+
+    worker_id: str
+    bundle_root: Path
+    state_path: Path
+    concurrency_limit: int = 1
+    bundle_cache_root: Path | None = None
+
+    def __post_init__(self) -> None:
+        if not self.worker_id or self.concurrency_limit < 1:
+            raise ValidationError("local worker identity or concurrency limit is invalid")
+        if not Path(self.bundle_root).is_dir():
+            raise ValidationError(f"local worker bundle root is unavailable: {self.bundle_root}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +156,8 @@ class FabricClient:
         return build_public_contract(__version__)
 
     def register_local_worker(self, worker: Any) -> dict[str, Any]:
+        if isinstance(worker, LocalWorkerConfig):
+            worker = LocalWorker(worker.worker_id, worker.bundle_root, worker.state_path, concurrency_limit=worker.concurrency_limit, bundle_cache_root=worker.bundle_cache_root)
         return self.local.register(worker)
 
     def register_remote_worker(self, config: RemoteWorkerConfig) -> dict[str, Any]:
@@ -228,4 +248,4 @@ class FabricClient:
         return self.service.verify_execution_bundle(archive, **kwargs)
 
 
-__all__ = ["ConsumerContext", "FabricClient", "RemoteWorkerConfig"]
+__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig"]
