@@ -155,6 +155,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "worker_hostname": args.expected_hostname,
         "persistent_pid_stable": pid_stable,
         "bundle": {"logical_identity": bundle.bundle_identity, "archive_identity": bundle.archive_identity, "transfer_status": transfer["status"]},
+        "resource_snapshot": remote_resources,
         "placement": {"request_identity": placement.placement_request_identity, "resource_snapshot_identity": first[0].get("resource_snapshot", {}).get("resource_snapshot_identity"), "admission_decision_identity": first[0].get("placement_admission", {}).get("decision_identity"), "mode": first[0].get("placement_admission", {}).get("admission_mode")},
         "consumer_context": context.to_dict(),
         "requests": requests,

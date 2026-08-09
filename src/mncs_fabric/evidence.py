@@ -217,6 +217,15 @@ def validate_native_bundle_two_host_evidence(evidence: object) -> dict[str, Any]
     bundle = evidence.get("bundle")
     if not isinstance(bundle, dict) or not _identity(bundle.get("archive_identity")) or not _identity(bundle.get("logical_identity"), bare=True) or bundle.get("transfer_status") not in {"COMMITTED", "ALREADY_PRESENT"}:
         issues.append("native bundle transfer identity or status is invalid")
+    resource_snapshot = evidence.get("resource_snapshot")
+    if resource_snapshot is not None:
+        try:
+            from .resources import validate_resource_snapshot
+            validate_resource_snapshot(resource_snapshot, error_type=ValueError)
+            if resource_snapshot.get("worker_identity") != evidence.get("worker_identity"):
+                issues.append("resource snapshot worker identity is invalid")
+        except (ValueError, TypeError):
+            issues.append("resource snapshot is invalid")
     placement = evidence.get("placement")
     if placement is not None:
         if not isinstance(placement, dict) or not all(_identity(placement.get(field)) for field in ("request_identity", "resource_snapshot_identity", "admission_decision_identity")) or placement.get("mode") != "cpu":
