@@ -11,9 +11,10 @@ from mncs_fabric.resources import (
     validate_placement_observation,
     validate_resource_snapshot,
 )
+from mncs_fabric.scheduler import WorkerSlot, schedule
 
 
-def _snapshot(*, free_vram: int | None = None, probe: str = "UNKNOWN", precision: dict[str, str] | None = None, host_available: int | None = 8 * 1024**3, captured_at: str | None = None) -> dict[str, object]:
+def _snapshot(*, worker_id: str = "worker-a", free_vram: int | None = None, probe: str = "UNKNOWN", precision: dict[str, str] | None = None, host_available: int | None = 8 * 1024**3, captured_at: str | None = None) -> dict[str, object]:
     accelerators = ()
     if free_vram is not None:
         accelerators = ({
@@ -31,7 +32,7 @@ def _snapshot(*, free_vram: int | None = None, probe: str = "UNKNOWN", precision
             "observation_source": "fixture",
         },)
     value = ResourceSnapshot(
-        worker_identity="worker-a",
+        worker_identity=worker_id,
         captured_at=captured_at or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         host_memory_total_bytes=16 * 1024**3,
         host_memory_available_bytes=host_available,
@@ -103,6 +104,36 @@ class ResourcePlacementTests(unittest.TestCase):
         changed["actual_mode"] = "full-accelerator"
         with self.assertRaises(Exception):
             validate_placement_observation(changed)
+
+    def test_scheduler_uses_resource_admission_and_stable_tie_break(self) -> None:
+        plan = {
+            "schema_version": "mncs-fabric.job-plan.v0.1",
+            "job_id": "resource:scheduler",
+            "candidate_identity": "sha256:" + "a" * 64,
+            "evaluator_identity": None,
+            "artifact_manifest_identity": "sha256:" + "b" * 64,
+            "argv": ["@python", "task.py"],
+            "working_directory": ".",
+            "timeout_seconds": 5,
+            "output_limit_bytes": 4096,
+            "environment": {},
+            "required_capabilities": ["python"],
+            "result_paths": [],
+            "network_policy": "UNSPECIFIED",
+        }
+        placement = PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=1024)
+        decision = schedule(
+            plan,
+            [
+                WorkerSlot("worker-b", frozenset({"python"}), resource_snapshot=_snapshot(worker_id="worker-b")),
+                WorkerSlot("worker-a", frozenset({"python"}), resource_snapshot=_snapshot(worker_id="worker-a")),
+            ],
+            replicas=2,
+            placement=placement,
+        )
+        self.assertEqual(decision.disposition, "PASS")
+        self.assertEqual(decision.worker_ids, ("worker-a", "worker-b"))
+        self.assertEqual(len(decision.admissions), 2)
 
 
 if __name__ == "__main__":
