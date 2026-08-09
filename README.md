@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, and mutually authenticated TLS transport are implemented. The first direct Fedora-to-Fedora development evidence run is recorded; persistent production lifecycle and bulk bundle transfer remain incomplete.
+> **Status:** `0.2.0a1` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, mutually authenticated TLS transport, and bounded persistent worker operation are implemented. Native bundle transfer and production lifecycle remain incomplete.
 
 ## Authority boundary
 
@@ -94,17 +94,23 @@ mncs-fabric reconcile RECORD.json [RECORD.json ...]
 mncs-fabric bundle verify BUNDLE.zip
 mncs-fabric worker serve --worker-id ID --controller-id ID --bundle-root ROOT \
   --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
-  --certificate worker.pem --key worker.key --port PORT
+  --certificate worker.pem --key worker.key --port PORT \
+  [--max-requests N --idle-timeout SECONDS]
 ```
 
-`worker serve` is explicit and serves one bounded TLS request; it defaults to
-loopback only when `--host` is omitted and never falls back to plaintext. The
-controller-side Python API is `NetworkController` plus `TLSNetworkTransport`.
+`worker serve` is explicit and serves one bounded TLS request by default. An
+operator can opt into a bounded persistent service with `--max-requests` and
+optional `--idle-timeout`; every connection is independently authenticated and
+the listener never falls back to plaintext. The controller-side Python API is
+`NetworkController` plus `TLSNetworkTransport`.
 
 The repeatable physical-host harness is `scripts/two_host_fedora_test.py`. SSH
 is limited to bootstrap, staging, diagnostics, and worker lifecycle; the
 candidate request is sent through direct Fabric mTLS. It requires explicit
 operator arguments and never uses SSH host-key bypasses.
+
+`scripts/two_host_persistent_test.py` exercises repeated requests, persistent
+PID continuity, replay dispositions, and trust revocation between requests.
 
 The public application boundary is `mncs_fabric.service.FabricService`:
 `nodes`, `capabilities`, `validate_plan`, `execute_local`, `verify_record`,

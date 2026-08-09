@@ -75,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     worker = sub.add_parser("worker", help="serve a worker endpoint explicitly")
     worker_sub = worker.add_subparsers(dest="worker_command", required=True)
-    serve = worker_sub.add_parser("serve", help="serve one bounded mutually-authenticated TLS request")
+    serve = worker_sub.add_parser("serve", help="serve bounded mutually-authenticated TLS requests")
     serve.add_argument("--worker-id", required=True)
     serve.add_argument("--controller-id", required=True)
     serve.add_argument("--bundle-root", type=_path, required=True)
@@ -87,6 +87,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, required=True)
     serve.add_argument("--timeout", type=float, default=5.0)
+    serve.add_argument("--max-requests", type=int, default=1, help="stop after this many accepted requests; default: one")
+    serve.add_argument("--idle-timeout", type=float, help="stop cleanly after this many idle seconds")
+    serve.add_argument("--max-concurrent-connections", type=int, default=1)
+    serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
     return parser
 
 
@@ -133,8 +137,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "worker" and args.worker_command == "serve":
             worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state)
             endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
-            endpoint.serve_once()
-            result = {"outcome": "PASS" if endpoint.last_error is None else "UNKNOWN", "worker_id": args.worker_id, "host": args.host, "port": args.port, "diagnostic": endpoint.last_error}
+            if args.max_requests == 1 and args.idle_timeout is None and args.max_concurrent_connections == 1:
+                endpoint.serve_once()
+            else:
+                endpoint.serve_forever(max_requests=args.max_requests, idle_timeout=args.idle_timeout, max_concurrent_connections=args.max_concurrent_connections, graceful_shutdown_timeout=args.graceful_shutdown_timeout)
+            result = {"outcome": "PASS" if endpoint.last_error is None else "UNKNOWN", "worker_id": args.worker_id, "host": args.host, "port": args.port, "requests": endpoint.handled_requests, "max_requests": args.max_requests, "diagnostic": endpoint.last_error}
             write_json(None, result)
             return _status_code(result["outcome"])
         raise AssertionError("unreachable command")

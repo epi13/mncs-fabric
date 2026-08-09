@@ -40,8 +40,9 @@ authentication, not encrypted transport.
 interface. The TLS variant requires a CA-validated client/server certificate,
 enrolled certificate fingerprints, explicit controller/worker identity
 agreement, timeouts, and a bounded four-byte length frame. One request and one
-response are allowed per connection; truncated, oversized, noncanonical, or
-trailing data is rejected. TLS protects transport only. It does not establish
+response are allowed per connection; a bounded persistent worker may accept
+multiple such connections without restarting. Truncated, oversized,
+noncanonical, or trailing data is rejected. TLS protects transport only. It does not establish
 independence, protected custody, attestation, correctness, or conformance.
 
 EA-NEXT-002 execution bundles are verified by a separate companion boundary.

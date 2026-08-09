@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- add an explicitly bounded persistent TLS worker service with request, idle,
+  concurrency, and graceful-shutdown limits;
+- add repeated physical-worker evidence covering PID continuity, challenge
+  replay, duplicate/conflicting requests, and between-request revocation;
+- derive worker receipt runner versions from the package version so deployed
+  receipts do not retain the pre-0.2.0a1 bootstrap label;
+
+## 0.2.0a1
+
+- bounded persistent worker service and repeatable physical two-node evidence;
+- explicit between-request trust revocation and persistent replay tests;
+- machine-readable validation for persistent physical evidence;
+- native immutable bundle transfer remains deferred.
+
 - repaired Windows ledger locking using handle-scoped release and deterministic
   cleanup, without an unlocked fallback;
 - made dispatch replay identity stable across reconstructed retries while

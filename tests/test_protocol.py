@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from mncs_fabric.artifacts import build_manifest
+from mncs_fabric import __version__
 from mncs_fabric.auth import KeyRecord, Keyring
 from mncs_fabric.canonical import attach_identity, sha256_identity
 from mncs_fabric.challenges import issue_execution_challenge
@@ -117,3 +118,4 @@ class ProtocolTests(unittest.TestCase):
         response = controller.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id="worker-a", request_id="challenge-request", challenge=challenge)
         self.assertEqual(response["message_type"], "execution.result")
         self.assertEqual(response["payload"]["receipt"]["challenge"]["nonce"], challenge["nonce"])
+        self.assertEqual(response["payload"]["receipt"]["runner"]["runner_version"], __version__)

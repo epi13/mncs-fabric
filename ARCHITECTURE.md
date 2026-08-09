@@ -22,8 +22,11 @@ A worker verifies a job bundle and manifest, checks required capabilities, creat
 The current alpha implements this behavior locally through `LocalWorker.handle`
 and exposes an explicit `TLSWorkerServer` endpoint. The endpoint requires a
 client certificate, verifies the enrolled controller fingerprint and logical
-identity, accepts one bounded canonical envelope, and closes the connection.
-It does not offer plaintext or HMAC-only fallback.
+identity for every connection, and accepts one bounded canonical envelope per
+connection. `serve_once()` preserves the original one-request behavior;
+`serve_forever()` is an explicitly bounded persistent service with request,
+idle, connection, and graceful-shutdown limits. It does not offer plaintext or
+HMAC-only fallback.
 
 ### Public application boundary
 
@@ -55,8 +58,9 @@ protocol request replay and MNCS freshness replay are deliberately distinct.
 `bundles.py` verifies the current MNCS EA-NEXT-002 ZIP shape without extracting
 untrusted content. It keeps the raw logical bundle identity distinct from the
 exact `sha256:` archive identity and binds receipts through a companion record.
-Bulk cross-host archive transfer is deferred; network dispatch uses
-pre-positioned verified artifacts.
+Bulk cross-host archive transfer is deferred; network dispatch currently uses
+pre-positioned verified artifacts. The persistent physical harness therefore
+still stages candidate material through SSH while using Fabric for execution.
 
 The bounded operator harness in `scripts/two_host_fedora_test.py` stages the
 exact source, trust material, and verified execution material over SSH, then
@@ -105,4 +109,4 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - network or kernel sandboxing;
 - hardware attestation;
 - a distributed RAVEL mechanism; and
-- claiming Phase-1 multi-host completion without a real second host.
+- production daemon supervision or unlimited worker service operation.

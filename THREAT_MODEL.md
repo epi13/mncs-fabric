@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a0` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a1` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -66,9 +66,10 @@ The current implementation does not prevent:
 
 The current transport does not provide certificate issuance, automated key
 rotation, hardware-backed identity, production listener supervision, bulk
-bundle transfer, or cross-host liveness guarantees. The tested endpoint is a
-bounded one-request service. The physical run does not remove these residual
-limitations.
+bundle transfer, or cross-host liveness guarantees. The worker now has an
+experimental bounded persistent mode, but this is not production supervision
+or unlimited daemon operation. The physical run does not remove these
+residual limitations.
 
 These gaps must remain explicit `UNKNOWN` or limitations. They must not be rewritten as PASS.
 
@@ -100,6 +101,10 @@ iteration:
 - replayed valid MNCS challenge: the separate challenge replay ledger rejects a
   consumed challenge, but this remains bounded by the operator-controlled local
   store;
+- persistent trust revocation: the worker reloads its append-only trust ledger
+  before each request, so an operator-revoked controller certificate is
+  rejected between requests; replacing the local trust state remains an
+  operator trust assumption;
 - authenticated malicious worker/controller: Fabric records observations and
   identity mismatches, but cannot make an authenticated peer truthful;
 - connection exhaustion, oversized frame, slow sender, dropped connection, and
