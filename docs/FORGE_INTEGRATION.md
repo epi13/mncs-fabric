@@ -41,6 +41,8 @@ sanitized `development-evidence/fedora-two-host-phase1.json` artifact is
 present, the provider also runs bounded `two-host-evidence-validation` checks
 for schema, identity references, direct-TLS/tunnel declarations,
 restart/replay dispositions, revocation disposition, limitations, and secret
-exclusion. Forge does not impersonate a remote operator or run a second host;
-the physical run remains operator-controlled. Bulk bundle transfer and
-independent certification remain explicit unsupported constructs.
+exclusion. The provider also validates the bounded persistent-worker evidence
+profile when its sanitized record is present. Forge does not impersonate a
+remote operator or run a second host; the physical runs remain
+operator-controlled. Bulk bundle transfer and independent certification
+remain explicit unsupported constructs.

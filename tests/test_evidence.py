@@ -5,7 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
-from mncs_fabric.evidence import validate_two_host_evidence
+from mncs_fabric.evidence import validate_persistent_two_host_evidence, validate_two_host_evidence
 
 
 class PhysicalEvidenceTests(unittest.TestCase):
@@ -21,3 +21,7 @@ class PhysicalEvidenceTests(unittest.TestCase):
         secret = copy.deepcopy(evidence)
         secret["private_key"] = "-----BEGIN PRIVATE KEY-----"
         self.assertEqual(validate_two_host_evidence(secret)["outcome"], "FAIL")
+
+    def test_persistent_two_host_evidence_validates(self) -> None:
+        evidence = json.loads((Path(__file__).parents[1] / "development-evidence/fedora-persistent-two-host.json").read_text(encoding="utf-8"))
+        self.assertEqual(validate_persistent_two_host_evidence(evidence)["outcome"], "PASS")

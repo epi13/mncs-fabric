@@ -22,18 +22,20 @@
 - [x] additive EA-NEXT-005 challenge/replay compatibility;
 - [x] Fedora-to-Fedora two-node evidence run (direct Fabric mTLS; see
   `development-evidence/fedora-two-host-phase1.md`).
+- [x] bounded persistent worker mode with repeated physical-request evidence
+  (`development-evidence/fedora-persistent-two-host.md`);
 
-- [~] one-request network service lifecycle; production multi-host operation
+- [~] bounded worker lifecycle is experimental; production multi-host operation
   and certificate provisioning remain operator responsibilities;
 
-The experimental two-host acceptance run is complete. Fabric does not claim
-production Phase 1 lifecycle completion: the worker remains a bounded
-one-request service, certificate provisioning is operator-managed, and bulk
-execution-bundle transfer is not yet implemented.
+The experimental two-host acceptance run and bounded persistent-worker run are
+complete. Fabric does not claim production Phase 1 lifecycle completion:
+certificate provisioning is operator-managed and bulk execution-bundle
+transfer is not yet implemented.
 
-EA-NEXT-005 challenge/replay compatibility is implemented locally and in the
-transport envelope, but awaits a genuine physical-host run for deployment
-evidence.
+EA-NEXT-005 challenge/replay compatibility has bounded physical deployment
+evidence. Its replay authority remains an operator-controlled local store and
+does not establish independent freshness or custody.
 
 ## Phase 2 — scheduler foundation (partially implemented)
 

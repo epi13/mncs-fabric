@@ -117,3 +117,80 @@ def validate_two_host_evidence(evidence: object) -> dict[str, Any]:
     if _contains_secret(evidence):
         issues.append("private-key material is present")
     return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
+
+
+def validate_persistent_two_host_evidence(evidence: object) -> dict[str, Any]:
+    """Validate the bounded persistent-worker physical evidence profile."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.persistent-two-host.v0.1":
+        issues.append("unsupported persistent evidence schema")
+    if evidence.get("record_type") != "mncs-fabric.persistent-two-host":
+        issues.append("record type is not the persistent Fabric experiment")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False or evidence.get("bootstrap_material_staged_by_ssh") is not True:
+        issues.append("transport/bootstrap boundary is invalid")
+    for field in ("controller_fabric_commit", "worker_fabric_commit"):
+        if not isinstance(evidence.get(field), str) or not _COMMIT.fullmatch(evidence[field]):
+            issues.append(f"invalid:{field}")
+    if evidence.get("controller_fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions differ")
+    if not isinstance(evidence.get("controller_identity"), str) or not isinstance(evidence.get("worker_identity"), str) or evidence.get("controller_identity") == evidence.get("worker_identity"):
+        issues.append("logical node identities are not distinct")
+    nodes = evidence.get("node_records")
+    if not isinstance(nodes, dict) or not isinstance(nodes.get("controller"), dict) or not isinstance(nodes.get("worker"), dict):
+        issues.append("node records are incomplete")
+    else:
+        for label in ("controller", "worker"):
+            node = nodes[label]
+            for field in ("node_fingerprint", "record_id"):
+                if not _identity(node.get(field)):
+                    issues.append(f"invalid:{label}.{field}")
+        if nodes["controller"].get("node_fingerprint") == nodes["worker"].get("node_fingerprint"):
+            issues.append("node fingerprints are not distinct")
+    service = evidence.get("persistent_service")
+    if not isinstance(service, dict) or not isinstance(service.get("max_requests"), int) or service.get("max_requests") < 1 or service.get("max_concurrent_connections") != 1 or service.get("pid_stable") is not True:
+        issues.append("persistent service bounds or PID continuity are invalid")
+    execution = evidence.get("execution")
+    if not isinstance(execution, dict):
+        issues.append("execution references are incomplete")
+    else:
+        for field in ("job_identity", "candidate_identity", "artifact_manifest_identity", "worker_record_id", "cohort_id"):
+            if not _identity(execution.get(field)):
+                issues.append(f"invalid:execution.{field}")
+        if execution.get("cohort_outcome") != "PASS":
+            issues.append("cohort outcome is not PASS")
+        if not isinstance(execution.get("result_identities"), list) or not execution["result_identities"] or not all(_identity(item) for item in execution["result_identities"]):
+            issues.append("result identities are incomplete")
+    requests = evidence.get("requests")
+    if not isinstance(requests, list) or len(requests) < 6:
+        issues.append("persistent request sequence is incomplete")
+    else:
+        dispositions = [item.get("disposition") for item in requests if isinstance(item, dict)]
+        if dispositions.count("EXECUTED") < 4 or "DUPLICATE_IDEMPOTENT" not in dispositions or "CONFLICTING_REPLAY" not in dispositions:
+            issues.append("persistent request dispositions are incomplete")
+    adversarial = evidence.get("adversarial")
+    if not isinstance(adversarial, dict) or adversarial.get("duplicate_request") != "DUPLICATE_IDEMPOTENT" or adversarial.get("conflicting_replay") != "CONFLICTING_REPLAY":
+        issues.append("persistent replay dispositions are invalid")
+    revoked = adversarial.get("revoked_controller_between_requests") if isinstance(adversarial, dict) else None
+    if not isinstance(revoked, dict) or revoked.get("disposition") != "FAIL_CLOSED":
+        issues.append("between-request revocation was not rejected fail-closed")
+    boundary = evidence.get("claim_boundary")
+    for term in ("no sandbox", "correctness", "custody", "independence", "conformance", "certification"):
+        if not isinstance(boundary, str) or term not in boundary.lower():
+            issues.append(f"claim boundary omits:{term}")
+    limitations = evidence.get("limitations")
+    if not isinstance(limitations, list) or not limitations or not any("SSH" in str(item) and "transfer" in str(item) for item in limitations):
+        issues.append("bundle staging limitation is missing")
+    if _contains_secret(evidence):
+        issues.append("private-key material is present")
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
+
+
+def validate_physical_evidence(evidence: object) -> dict[str, Any]:
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.two-host-experiment.v0.1":
+        return validate_two_host_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.persistent-two-host.v0.1":
+        return validate_persistent_two_host_evidence(evidence)
+    return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}

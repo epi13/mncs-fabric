@@ -1,0 +1,39 @@
+{
+  "schema_version": "mncs-fabric.persistent-two-host.v0.1",
+  "record_type": "mncs-fabric.persistent-two-host",
+  "experiment_id": "persistent-two-host-20260809T164916Z",
+  "controller_fabric_commit": "dcda0f37642b6c0077592ad01cc3b831406591c2",
+  "worker_fabric_commit": "dcda0f37642b6c0077592ad01cc3b831406591c2",
+  "worker_fabric_source_archive_identity": "sha256:e3a86c58c18bcbb8880f0bdbfe989fb1f2ac6c4a377eaaa75ec8f7f386e5a243",
+  "direct_fabric_tls": true,
+  "ssh_tunnel_used": false,
+  "bootstrap_material_staged_by_ssh": true,
+  "controller_identity": "fabric-controller-01",
+  "worker_identity": "fabric-worker-01",
+  "worker_hostname": "fabric-worker-01",
+  "persistent_service": {"max_requests": 7, "idle_timeout_seconds": 30, "max_concurrent_connections": 1, "pid_stable": true},
+  "node_records": {
+    "controller": {"architecture": "x86_64", "cpu_count": 8, "machine_label": "fabric-controller-01", "node_fingerprint": "sha256:f380c136e05760b88f8468f63bdfda99746a7ad34079ad0bd020e35cdbd04f80", "record_id": "sha256:c4a157f0388d28fdb3a017cf8f4a20465b42d437725a6867bf1e18342cac070c"},
+    "worker": {"architecture": "x86_64", "cpu_count": 8, "machine_label": "fabric-worker-01", "node_fingerprint": "sha256:81ec18acefdfc8a71c6fc26ea12733f784381e4fde97d9b4c77c1f5debb6fe33", "record_id": "sha256:53522cd3ddc5e4e39a2bfaf29e04dd8d50913c9b912c69ae610a0f3dcda88d2c"}
+  },
+  "execution": {
+    "job_identity": "sha256:82663d39fb3f107bfb09726a811b1c6c16ee6c725ba9b72650ed4a5959c664df",
+    "candidate_identity": "sha256:65e0e98a48fc207f9955a71232c72c1e93e8d939e90c18bd8dbfd23b31dba33d",
+    "artifact_manifest_identity": "sha256:b030e36d524a2e7c2201c5972e59860477822aeaaf5d16654e52a8292c461857",
+    "worker_record_id": "sha256:7b0a1f42303e1b2ff08d43ae7f13f665053482630463520a19607299c2ca1b5b",
+    "result_identities": ["sha256:4523028bdb5a17804bdb299e6019122ee6866fb513a3e961a8fd19374072c1b7"],
+    "cohort_id": "sha256:3dafec5bd148127c375e15b3875b8cc32d625beb86ecc6a31f84d2fd4bcedbc5",
+    "cohort_outcome": "PASS"
+  },
+  "requests": [
+    {"request_id": "persistent-1", "disposition": "EXECUTED", "record_id": "sha256:2c317fb8622b8e27230c26d145ebb0cc95d565c4adcc857cebb381e7c0e73a7b", "challenge_identity": "02d0a3edcb90cf87aefc7c10ba95d9c99fd39264f9a8f784cf0dba60a652219e", "receipt_identity": "080207076ccd6d128df68ebca445ede1ad0db2ba4979a1ecf0a0bbeabd5aabc4", "replay_identity": "dc049f65e92ae0077cbf90ed0d6b927970dc2b39ff0e628fff7227c2cbe2e90e"},
+    {"request_id": "persistent-2", "disposition": "EXECUTED", "record_id": "sha256:a5f70d120d8fa6dc7f6aa84843002d38b78a17571a573f94f259f791df56b225", "challenge_identity": "0696e4e8c73df277353095b7ddfd0d7f83cd65ca1b0fa8fd2e28a0df5fcdc73f", "receipt_identity": "dd1858ab373e01a971352ee0740bd2280a5d0b3a46816a15c01e80f9e06d94e2", "replay_identity": "7ef6f60910c9bdd4a0df67415f001ccd88ea3420f603ad5458e86350462ff08e"},
+    {"request_id": "persistent-3", "disposition": "EXECUTED", "record_id": "sha256:46dccb66528d3e838f838e7f3f487d7165cb7b381d496a7da6259623f9171e57", "challenge_identity": "5026701c1e1599c3d54aed760999228c7a857ed99a419755ec7fb6171a064361", "receipt_identity": "74858770505cf01cd6779c686b700cc6151873c90e32814464cbeb665fa46a05", "replay_identity": "7d8d1c477250833590c8f23bf0a38b5a40125bab58cd0cebba316f8efad7d108"},
+    {"request_id": "persistent-3", "disposition": "DUPLICATE_IDEMPOTENT", "record_id": "sha256:46dccb66528d3e838f838e7f3f487d7165cb7b381d496a7da6259623f9171e57"},
+    {"request_id": "persistent-3", "disposition": "CONFLICTING_REPLAY"},
+    {"request_id": "persistent-4", "disposition": "EXECUTED", "record_id": "sha256:7b0a1f42303e1b2ff08d43ae7f13f665053482630463520a19607299c2ca1b5b", "challenge_identity": "af772a8d0bfde8dbba63e3bd5d557f3354bbc0a6c6156827c3c797bac869ab9d", "receipt_identity": "81c86f5a15e23bf025cacd865f298e5312b8c128628becbe45e8a37c01e6438a", "replay_identity": "911fba2dbdfcd956da4fb152b40ef0681adbe7982c1030d486749f1a4053501b"}
+  ],
+  "adversarial": {"duplicate_request": "DUPLICATE_IDEMPOTENT", "conflicting_replay": "CONFLICTING_REPLAY", "revoked_controller_between_requests": {"disposition": "FAIL_CLOSED", "diagnostic": "ProtocolError"}},
+  "claim_boundary": "operator-controlled development evidence; persistent direct mTLS observations only; no sandbox, correctness, custody, independence, conformance, or certification claim",
+  "limitations": ["EA-NEXT-002 execution material was staged through SSH; native Fabric bundle transfer was not exercised.", "EA-NEXT-005 freshness and replay consumption remain in an operator-controlled local store.", "The two hosts share one operator trust domain."]
+}

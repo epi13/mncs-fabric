@@ -27,9 +27,11 @@ the same request ID bound to a different dispatch is `CONFLICTING_REPLAY`.
 
 `TrustStore` is an operator-managed append-only enrollment/revocation ledger,
 not a public CA. Unknown, revoked, mismatched, or substituted certificate
-identities fail closed. Network dispatch currently assumes the worker already
-has the artifact manifest and execution copy; EA-NEXT-002 bulk archive transfer
-is intentionally deferred until a bounded transfer profile is implemented.
+identities fail closed. The worker endpoint may run in conservative one-request
+mode or an explicitly bounded persistent mode. Network dispatch currently
+assumes the worker already has the artifact manifest and execution copy;
+EA-NEXT-002 bulk archive transfer is intentionally deferred until a bounded
+transfer profile is implemented.
 
 An optional `execution_challenge` dispatch field uses the current MNCS
 EA-NEXT-005 experimental shape. It is not a replacement for the protocol

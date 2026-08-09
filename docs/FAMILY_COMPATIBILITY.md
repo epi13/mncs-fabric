@@ -36,8 +36,9 @@ different identities: raw logical `bundle_identity` and exact transport
 require logical bundle, harness, input, and policy agreement.
 
 Fabric currently consumes and verifies bundle archives; it does not yet stream
-bulk bundle material as a network dispatch payload. A network worker therefore
-requires pre-positioned verified artifacts until the transfer profile is added.
+bulk bundle material as a network dispatch payload. Both one-request and
+bounded persistent workers therefore require pre-positioned verified artifacts
+until the transfer profile is added.
 
 ## EA-NEXT-005 challenge/replay assumptions
 
@@ -46,9 +47,10 @@ current challenge, scope, and replay-receipt shape. Fabric carries an optional
 scoped challenge in dispatch envelopes, copies its nonce/window into the typed
 receipt, and consumes it once in a Fabric-owned durable replay ledger. The
 protocol request ID and the MNCS challenge identity remain separate replay
-layers. The replay store is operator-controlled and does not establish
-freshness beyond that store, correctness, isolation, custody, independence,
-conformance, or promotion.
+layers. Bounded physical persistent-worker evidence now exists, but the replay
+store is operator-controlled and does not establish freshness beyond that
+store, correctness, isolation, custody, independence, conformance, or
+promotion.
 
 Fabric does not emit MNCS/MNCDS conformance, execution assurance, protected
 custody, independent evaluation, sandbox, encryption, or attestation claims.
