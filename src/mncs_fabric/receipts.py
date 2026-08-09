@@ -160,9 +160,11 @@ def build_execution_receipt(
     subject_family: str = "MNCS",
     subject_kind: str = "development-record",
     runner_identity: str = "mncs-fabric-local-runner-v1",
-    runner_version: str = "0.2.0a1",
+    runner_version: str = "0.2.0a2",
     placement_reference: dict[str, Any] | None = None,
     challenge: dict[str, Any] | None = None,
+    bundle_identity: str | None = None,
+    archive_identity: str | None = None,
 ) -> dict[str, Any]:
     """Build the current experimental MNCS typed receipt from one Fabric record."""
 
@@ -213,7 +215,7 @@ def build_execution_receipt(
         "record_id": _id("fabric-execution-", record.get("record_id")),
         "receipt_identity": None,
         "subject": _subject(record, family=subject_family, kind=subject_kind),
-        "bundle": {"test_bundle_identity": _raw(record.get("artifact_manifest_identity")), "harness_identity": _raw(executable_identity) if executable_identity else None, "input_snapshot_identity": None},
+        "bundle": {"test_bundle_identity": _raw(bundle_identity if bundle_identity is not None else record.get("artifact_manifest_identity")), "harness_identity": _raw(executable_identity) if executable_identity else None, "input_snapshot_identity": None},
         "policy": {"execution_policy_identity": policy_identity, "placement_policy_identity": None, "requested_limits": [{"resource": "timeout", "value": float(record.get("timeout_seconds", 0) or 0), "unit": "seconds"}] if record.get("timeout_seconds") else [], "result_semantics": "Fabric records declared result artifact identities; project evaluators define semantic result meaning."},
         "runner": {"runner_identity": runner_identity, "runner_version": runner_version, "executable_identity": _raw(executable_identity) if executable_identity else None, "runtime_identity": _id("runtime-", runtime_identity) if runtime_identity else "runtime-unknown", "command_identity": _raw(sha256_identity(argv))},
         "environment": {"environment_identity": environment_identity},
@@ -231,8 +233,29 @@ def build_execution_receipt(
         "claim_boundary": {"conformance": "not-asserted", "correctness": "not-asserted", "security": "not-asserted", "sandbox": "not-asserted", "independence": "not-asserted", "protected_custody": "not-asserted", "promotion": "not-asserted"},
         "extensions": {"mncs-fabric:execution-record-identity": record.get("record_id"), "mncs-fabric:execution-outcome": execution_status, "mncs-fabric:node-label": node.get("machine_label", "unknown")},
     }
+    if isinstance(challenge, dict) and isinstance(challenge.get("challenge_identity"), str):
+        receipt["extensions"]["mncs-fabric:challenge-identity"] = challenge["challenge_identity"]
+    if archive_identity is not None:
+        receipt["extensions"]["mncs-fabric:archive-identity"] = archive_identity
     receipt["receipt_identity"] = _mncs_sha256({key: value for key, value in receipt.items() if key != "receipt_identity"})
     return receipt
+
+
+def verify_execution_receipt(value: object) -> dict[str, Any]:
+    """Verify a Fabric-produced experimental receipt without adding authority."""
+
+    if not isinstance(value, dict) or value.get("schema_version") != RECEIPT_SCHEMA or value.get("record_type") != RECEIPT_TYPE:
+        return {"outcome": "FAIL", "reason": "unsupported execution receipt schema"}
+    identity = value.get("receipt_identity")
+    if not isinstance(identity, str) or len(identity) != 64 or any(char not in "0123456789abcdef" for char in identity):
+        return {"outcome": "FAIL", "reason": "receipt identity is malformed"}
+    expected = _mncs_sha256({key: item for key, item in value.items() if key != "receipt_identity"})
+    if identity != expected:
+        return {"outcome": "FAIL", "reason": "receipt identity does not verify"}
+    boundary = value.get("claim_boundary")
+    if not isinstance(boundary, dict) or boundary.get("conformance") != "not-asserted":
+        return {"outcome": "FAIL", "reason": "receipt claim boundary is missing"}
+    return {"outcome": "PASS", "identity": identity}
 
 
 def build_execution_assurance(receipt: dict[str, Any]) -> dict[str, Any]:

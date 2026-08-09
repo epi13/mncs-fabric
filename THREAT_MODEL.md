@@ -2,11 +2,23 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a1` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a2` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
 development evidence; it is not independent assurance.
+
+The public consumer facade accepts opaque provenance only. A consumer may lie
+about its semantic workload identity; Fabric can bind the supplied reference
+but cannot establish its truth. Public-contract drift is rejected by identity
+validation rather than silently accepted.
+
+Native bundle transfer adds bounded chunk flooding, partial-transfer
+accumulation, cache exhaustion/corruption, archive substitution, and stale
+capability observations to the threat surface. Transfer is typed, size-bounded,
+sequenced, independently verified by the worker, and atomically published;
+partial material is unavailable to execution. These controls protect package
+integrity and protocol state, not execution isolation or worker honesty.
 
 ## Protected assets
 
@@ -65,8 +77,10 @@ The current implementation does not prevent:
 - inference of independence from machine count alone.
 
 The current transport does not provide certificate issuance, automated key
-rotation, hardware-backed identity, production listener supervision, bulk
-bundle transfer, or cross-host liveness guarantees. The worker now has an
+rotation, hardware-backed identity, production listener supervision, or
+cross-host liveness guarantees. Native bundle transfer is bounded and
+experimental; it does not provide a general package registry or delivery
+guarantee. The worker now has an
 experimental bounded persistent mode, but this is not production supervision
 or unlimited daemon operation. The physical run does not remove these
 residual limitations.

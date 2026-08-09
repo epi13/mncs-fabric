@@ -7,12 +7,14 @@ remote command.
 
 from __future__ import annotations
 
+import base64
 from datetime import datetime, timezone
 from typing import Any
 
 from .auth import Keyring
 from .challenges import validate_execution_challenge
 from .canonical import is_sha256_identity, sha256_identity, verify_identity
+from .contracts import validate_consumer_context
 from .errors import ProtocolError
 from .models import validate_job_plan
 
@@ -27,6 +29,10 @@ MESSAGE_TYPES = {
     "status.response",
     "result.collect",
     "replay.disposition",
+    "bundle.offer",
+    "bundle.chunk",
+    "bundle.commit",
+    "bundle.response",
 }
 _ID_FIELDS = ("controller_id", "worker_id", "request_id", "job_id", "nonce")
 
@@ -76,6 +82,19 @@ def dispatch_binding_identity(envelope: dict[str, Any]) -> str:
     )
 
 
+def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any], challenge: object = None, consumer_context: object = None, execution_bundle: object = None) -> str:
+    """Derive the stable semantic request identity used by controller and worker."""
+
+    value: dict[str, Any] = {"job_plan": plan, "artifact_manifest": manifest}
+    if challenge is not None:
+        value["execution_challenge"] = challenge
+    if consumer_context is not None:
+        value["consumer_context"] = consumer_context
+    if execution_bundle is not None:
+        value["execution_bundle"] = execution_bundle
+    return sha256_identity(value)
+
+
 def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ProtocolError("message payload must be an object")
@@ -90,9 +109,15 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             raise ProtocolError("dispatch must include a self-identifying artifact manifest")
         if plan["artifact_manifest_identity"] != manifest["manifest_identity"]:
             raise ProtocolError("dispatch plan and manifest identities differ")
-        if value.get("request_identity") != sha256_identity({"job_plan": plan, "artifact_manifest": manifest}):
-            if "execution_challenge" not in value or value.get("request_identity") != sha256_identity({"job_plan": plan, "artifact_manifest": manifest, "execution_challenge": value.get("execution_challenge")}):
-                raise ProtocolError("dispatch request identity does not match its payload")
+        consumer_context = value.get("consumer_context")
+        if consumer_context is not None:
+            validate_consumer_context(consumer_context)
+        execution_bundle = value.get("execution_bundle")
+        if execution_bundle is not None:
+            if set(execution_bundle) != {"bundle_identity", "archive_identity"} or not isinstance(execution_bundle.get("bundle_identity"), str) or len(execution_bundle["bundle_identity"]) != 64 or any(char not in "0123456789abcdef" for char in execution_bundle["bundle_identity"]) or not is_sha256_identity(execution_bundle.get("archive_identity")):
+                raise ProtocolError("dispatch execution-bundle binding is invalid")
+        if value.get("request_identity") != dispatch_request_identity(plan=plan, manifest=manifest, challenge=value.get("execution_challenge"), consumer_context=consumer_context, execution_bundle=execution_bundle):
+            raise ProtocolError("dispatch request identity does not match its payload")
         if "execution_challenge" in value and not validate_execution_challenge(value["execution_challenge"]).valid:
             raise ProtocolError("dispatch execution challenge is invalid")
     elif message_type == "execution.result":
@@ -105,6 +130,18 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             receipt = value["receipt"]
             if not isinstance(receipt, dict) or not isinstance(receipt.get("receipt_identity"), str) or len(receipt["receipt_identity"]) != 64 or any(char not in "0123456789abcdef" for char in receipt["receipt_identity"]):
                 raise ProtocolError("execution result receipt identity is invalid")
+        if "execution_bundle" in value:
+            bundle = value["execution_bundle"]
+            if not isinstance(bundle, dict) or set(bundle) != {"bundle_identity", "archive_identity"}:
+                raise ProtocolError("execution result bundle binding is invalid")
+            if not isinstance(bundle.get("bundle_identity"), str) or len(bundle["bundle_identity"]) != 64 or any(char not in "0123456789abcdef" for char in bundle["bundle_identity"]):
+                raise ProtocolError("execution result logical bundle identity is invalid")
+            if not is_sha256_identity(bundle.get("archive_identity")):
+                raise ProtocolError("execution result archive identity is invalid")
+        if "bundle_binding" in value:
+            binding = value["bundle_binding"]
+            if not isinstance(binding, dict) or not isinstance(binding.get("binding_identity"), str) or not verify_identity(binding, "binding_identity"):
+                raise ProtocolError("execution result bundle binding identity is invalid")
     elif message_type in {"status.request", "result.collect"}:
         if not is_sha256_identity(value.get("job_identity")):
             raise ProtocolError("status and collection requests require a job identity")
@@ -120,6 +157,27 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     elif message_type == "worker.capabilities":
         if not isinstance(value.get("capabilities"), list) or not all(isinstance(item, str) for item in value["capabilities"]):
             raise ProtocolError("capability report must contain a string array")
+    elif message_type in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
+        from .bundle_transfer import MAX_CHUNK_BYTES, MAX_CHUNKS, MAX_ARCHIVE_BYTES, TRANSFER_SCHEMA
+        required = {"transfer_schema", "transfer_id", "bundle_identity", "archive_identity", "total_bytes", "chunk_bytes", "chunk_count"}
+        if set(value) - (required | {"sequence", "data"}) or not required <= set(value) or value.get("transfer_schema") != TRANSFER_SCHEMA or not isinstance(value.get("transfer_id"), str) or not is_sha256_identity(value.get("archive_identity")) or not (isinstance(value.get("bundle_identity"), str) and len(value["bundle_identity"]) == 64 and all(char in "0123456789abcdef" for char in value["bundle_identity"])):
+            raise ProtocolError("bundle transfer identity or schema is invalid")
+        if not all(isinstance(value.get(name), int) and not isinstance(value.get(name), bool) for name in ("total_bytes", "chunk_bytes", "chunk_count")) or not 1 <= value["total_bytes"] <= MAX_ARCHIVE_BYTES or not 1 <= value["chunk_bytes"] <= MAX_CHUNK_BYTES or not 1 <= value["chunk_count"] <= MAX_CHUNKS or value["chunk_count"] != (value["total_bytes"] + value["chunk_bytes"] - 1) // value["chunk_bytes"]:
+            raise ProtocolError("bundle transfer bounds are invalid")
+        if message_type == "bundle.chunk":
+            if not isinstance(value.get("sequence"), int) or value["sequence"] < 0 or not isinstance(value.get("data"), str):
+                raise ProtocolError("bundle chunk sequence or data is invalid")
+            try:
+                decoded = base64.b64decode(value["data"], validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ProtocolError("bundle chunk data is not canonical base64") from exc
+            if not 0 < len(decoded) <= MAX_CHUNK_BYTES:
+                raise ProtocolError("bundle chunk exceeds its bound")
+        elif "sequence" in value or "data" in value:
+            raise ProtocolError("bundle offer/commit cannot carry chunk data")
+    elif message_type == "bundle.response":
+        if value.get("transfer_schema") != "mncs-fabric.bundle-transfer.v0.1" or not isinstance(value.get("transfer_id"), str) or value.get("status") not in {"ALREADY_PRESENT", "TRANSFER_REQUIRED", "ACCEPTED", "COMMITTED", "FAIL", "UNKNOWN"}:
+            raise ProtocolError("bundle response is invalid")
     return value
 
 

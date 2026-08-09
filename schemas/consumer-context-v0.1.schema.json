@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric consumer provenance context",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_project", "consumer_workload_identity", "experiment_identity", "forge_workflow_identity", "provider_identity", "partition_identity", "authority", "claim_boundary", "context_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.consumer-context.v0.1"},
+    "source_project": {"type": "string", "minLength": 1, "maxLength": 64},
+    "consumer_workload_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "experiment_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "forge_workflow_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "provider_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "partition_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authority": {"const": "provenance-only"},
+    "claim_boundary": {"type": "string"},
+    "context_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a1` experimental Phase-1 foundation. Local execution, EA-NEXT-001 receipt adaptation, EA-NEXT-002 offline bundle verification, Forge-controlled validation, durable replay-safe protocol state, deterministic scheduling, mutually authenticated TLS transport, and bounded persistent worker operation are implemented. Native bundle transfer and production lifecycle remain incomplete.
+> **Status:** `0.2.0a2` experimental execution substrate. Local and authenticated network execution, Fabric-owned EA-NEXT-001 receipts, EA-NEXT-002 offline verification plus bounded native bundle transfer, EA-NEXT-005 challenge/replay compatibility, durable replay-safe state, deterministic scheduling, and bounded persistent workers are implemented. Production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -38,6 +38,8 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - durable append-only controller/worker ledgers with explicit recovery diagnostics and duplicate protection; and
 - deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
+- a versioned `FabricClient` consumer facade with identity-addressable public-contract metadata, typed remote-worker configuration, consumer provenance bindings, replication, reconciliation, and Fabric-owned receipts;
+- bounded native EA-NEXT-002 bundle transfer over Fabric envelopes with independent worker verification, chunk limits, atomic publication, and an immutable content-addressed cache;
 - explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
@@ -112,10 +114,26 @@ operator arguments and never uses SSH host-key bypasses.
 `scripts/two_host_persistent_test.py` exercises repeated requests, persistent
 PID continuity, replay dispositions, and trust revocation between requests.
 
-The public application boundary is `mncs_fabric.service.FabricService`:
-`nodes`, `capabilities`, `validate_plan`, `execute_local`, `verify_record`,
-`collect`, and `reconcile`. A future Forge provider should call this boundary
-or the bounded CLI, never private implementation modules.
+External consumers should import `FabricClient`, `LocalWorkerConfig`,
+`RemoteWorkerConfig`, and
+`ConsumerContext` from `mncs_fabric.api`. The machine-readable compatibility
+descriptor is available without a worker or network:
+
+```bash
+mncs-fabric contract show --json
+```
+
+`FabricClient.ensure_bundle()` transfers only a verified typed execution bundle;
+it is not general file transfer. `FabricClient.execute()` returns a versioned
+consumer result containing the Fabric record, Fabric-generated MNCS receipt,
+and optional provenance binding. Consumer projects retain semantic workload,
+evaluation, promotion, and learning authority.
+
+`FabricService` remains the stable local/service boundary for node inspection,
+plan validation, local execution, verification, collection, and reconciliation.
+For external distributed consumers, the documented entrypoint is
+`mncs_fabric.api.FabricClient`; both boundaries are public and neither requires
+consumers to assemble private transport, trust, or receipt internals.
 
 ## Repository map
 

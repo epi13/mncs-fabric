@@ -1,5 +1,29 @@
 # MNCS-family compatibility
 
+## Fabric public consumer contract
+
+Fabric publishes `mncs-fabric.public-contract.v0.1`, available through
+`mncs-fabric contract show --json` and `FabricClient.contract()`. Its
+identity-addressable descriptor pins the public API, record, capability,
+protocol, receipt, bundle, and challenge profiles plus feature declarations.
+The descriptor is compatibility metadata, not authority or conformance.
+
+External consumers should use `FabricClient`, `RemoteWorkerConfig`, and
+`ConsumerContext` from `mncs_fabric.api`. Fabric produces the execution record
+and the companion MNCS receipt for both local and network execution; consumer
+receipt reconstruction is not required. `ConsumerContext` retains opaque
+workload, experiment, provider, partition, and Forge workflow references as
+provenance only.
+
+## Native bundle transfer
+
+`mncs-fabric.bundle-transfer.v0.1` transfers a verified EA-NEXT-002 archive in
+bounded chunks. Logical bundle identity and exact archive identity remain
+distinct. The worker independently verifies the archive and atomically
+publishes an immutable cache entry. This establishes package-integrity and
+identity linkage observations only; it does not prove execution, correctness,
+sandboxing, assurance, custody, independence, or conformance.
+
 This iteration was aligned against these local sibling snapshots:
 
 | Project | Commit used | Boundary used | Status |
@@ -9,7 +33,7 @@ This iteration was aligned against these local sibling snapshots:
 | `mncs-forge-mcp` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
 | `mncs-language` | `f234cc8079faa5895a38b7abce0c96031f7d2565` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
 | `RAVEL` | `d572d68ab9c8eaf163425748d44729aaa8028e98` | lifecycle/episode identity awareness | no RAVEL conformance claim |
-| `Machine-Native-Experimental-Learning` | `5da7a2e69e4a4d3c6333bfa15a824ee0fe38e0e4` | identity/lifecycle and native artifact vocabulary | no imported private contract |
+| `Machine-Native-Experimental-Learning` | `57b07b2d25a8ea9dad93ea396ae5cc0dff7f9f5b` | identity/lifecycle and native artifact vocabulary | no imported private contract |
 | `gimp-local-mcp` | `e824c6a25db2a262c4f9f55801d77d96c95eae43` | provider-neutral CPU/accelerator/offload placement direction | no CUDA-specific requirement imported |
 
 ## Supported receipt assumptions
@@ -35,10 +59,11 @@ different identities: raw logical `bundle_identity` and exact transport
 `archive_identity`. `bind_receipt_to_bundle` and the companion binding record
 require logical bundle, harness, input, and policy agreement.
 
-Fabric currently consumes and verifies bundle archives; it does not yet stream
-bulk bundle material as a network dispatch payload. Both one-request and
-bounded persistent workers therefore require pre-positioned verified artifacts
-until the transfer profile is added.
+Fabric now transfers verified bundle archives through the bounded
+`mncs-fabric.bundle-transfer.v0.1` profile. SSH may still bootstrap source,
+trust, certificates, and worker lifecycle, but candidate execution material is
+transported by Fabric in the native-transfer path. The cache and transfer are
+experimental and operator-controlled.
 
 ## EA-NEXT-005 challenge/replay assumptions
 

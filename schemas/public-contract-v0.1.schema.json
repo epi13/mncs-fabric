@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric public consumer contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "public_api_version", "package_name", "package_version", "job_plan_schema", "execution_record_schema", "cohort_schema", "node_capability_schema", "protocol_schema", "receipt_profile", "execution_bundle_profile", "challenge_profile", "features", "capability_namespace", "claim_boundary", "contract_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.public-contract.v0.1"},
+    "public_api_version": {"const": "mncs-fabric.api.v0.1"},
+    "package_name": {"const": "mncs-fabric"},
+    "package_version": {"type": "string", "minLength": 1},
+    "job_plan_schema": {"const": "mncs-fabric.job-plan.v0.1"},
+    "execution_record_schema": {"const": "mncs-fabric.execution-record.v0.1"},
+    "cohort_schema": {"const": "mncs-fabric.cohort-result.v0.1"},
+    "node_capability_schema": {"const": "mncs-fabric.node-capabilities.v0.1"},
+    "protocol_schema": {"const": "mncs-fabric.protocol.v0.1"},
+    "receipt_profile": {"const": "0.1-experimental"},
+    "execution_bundle_profile": {"const": "0.1-experimental"},
+    "challenge_profile": {"const": "0.1-experimental"},
+    "features": {"type": "object", "additionalProperties": {"type": "boolean"}},
+    "capability_namespace": {"type": "string"},
+    "claim_boundary": {"type": "string"},
+    "contract_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -1,0 +1,104 @@
+{
+    "adversarial": {
+        "challenge_replay": true,
+        "conflicting_replay": "CONFLICTING_REPLAY",
+        "duplicate_request": "DUPLICATE_IDEMPOTENT",
+        "revoked_controller": {
+            "diagnostic": "ProtocolError",
+            "disposition": "FAIL_CLOSED"
+        }
+    },
+    "bundle": {
+        "archive_identity": "sha256:fc39022440cdf3e21be089170a19c67a4a2927bbec8394f34733cf8cc2d74a49",
+        "logical_identity": "27b6ff92c6f897c9bf59fa4a9a18db55981c50aa82b277fa55d2b11086c47c25",
+        "transfer_status": "COMMITTED"
+    },
+    "claim_boundary": "operator-controlled development evidence; native bundle transfer and direct mTLS observations only; no semantic consumer verdict, sandbox, correctness, custody, independence, conformance, or certification claim",
+    "consumer_context": {
+        "authority": "provenance-only",
+        "claim_boundary": "opaque consumer provenance; no semantic verdict, promotion, conformance, or evaluator authority",
+        "consumer_workload_identity": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "context_identity": "sha256:ba94999d8260147b404df22500f131c52c05b9b5c0854aea956d7956e27d33c7",
+        "experiment_identity": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "forge_workflow_identity": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "partition_identity": null,
+        "provider_identity": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "schema_version": "mncs-fabric.consumer-context.v0.1",
+        "source_project": "MNEL"
+    },
+    "controller_identity": "fabric-controller-01",
+    "direct_fabric_tls": true,
+    "experiment_id": "native-bundle-two-host-20260809T175441Z",
+    "fabric_commit": "0e56f97746494180d83088a27c9065d2c2227ef8",
+    "limitations": [
+        "The Fabric source, bootstrap trust, and certificates were staged through SSH; candidate execution material was transferred by Fabric.",
+        "The two hosts share one operator trust domain.",
+        "Consumer context is provenance-only and does not establish MNEL or RAVEL semantic truth."
+    ],
+    "local_record_identity": "sha256:d0d91b9b66d39c33355fd063c2feca4eb1870df768330c59095a8bca7cc880af",
+    "persistent_pid_stable": true,
+    "reconciliation": {
+        "artifact_manifest_identity": "sha256:b030e36d524a2e7c2201c5972e59860477822aeaaf5d16654e52a8292c461857",
+        "candidate_identity": "sha256:65e0e98a48fc207f9955a71232c72c1e93e8d939e90c18bd8dbfd23b31dba33d",
+        "cohort_id": "sha256:bec23c2d5f244b9427c97ac20dd4124ec8f067d3a73251ec8bf2eef43bc7e57f",
+        "evaluator_identity": null,
+        "evidence_class": "OPERATOR_CONTROLLED_CROSS_HOST",
+        "independent_evaluation": "UNKNOWN",
+        "job_identity": "sha256:82663d39fb3f107bfb09726a811b1c6c16ee6c725ba9b72650ed4a5959c664df",
+        "limitations": [
+            "A shared operator controls the controller and participating machines.",
+            "A cohort PASS does not establish organizational independence, protected holdout, or formal MNCS conformance."
+        ],
+        "machine_labels": [
+            "fabric-controller-local",
+            "fabric-worker-01"
+        ],
+        "outcome": "PASS",
+        "protected_custody": "UNKNOWN",
+        "reasons": [
+            "all verified records agree on declared result artifacts"
+        ],
+        "record_count": 2,
+        "record_identities": [
+            "sha256:d0d91b9b66d39c33355fd063c2feca4eb1870df768330c59095a8bca7cc880af",
+            "sha256:7eddd3bca4c5ad9bb3092eb36823e17ee28811ffcb5ac38b216bc0d90ec03ebd"
+        ],
+        "schema_version": "mncs-fabric.cohort-result.v0.1"
+    },
+    "record_type": "mncs-fabric.native-bundle-two-host",
+    "remote_record_identity": "sha256:7eddd3bca4c5ad9bb3092eb36823e17ee28811ffcb5ac38b216bc0d90ec03ebd",
+    "requests": [
+        {
+            "disposition": "EXECUTED",
+            "receipt_identity": "5249da967135ba90a944c41af31cea889653e973d6fc15cfa58978e6c252e5f8",
+            "record_identity": "sha256:7eddd3bca4c5ad9bb3092eb36823e17ee28811ffcb5ac38b216bc0d90ec03ebd",
+            "request_id": "native-1",
+            "round_trip_seconds": 0.388751
+        },
+        {
+            "disposition": "DUPLICATE_IDEMPOTENT",
+            "record_identity": "sha256:7eddd3bca4c5ad9bb3092eb36823e17ee28811ffcb5ac38b216bc0d90ec03ebd",
+            "request_id": "native-1"
+        },
+        {
+            "disposition": "CONFLICTING_REPLAY",
+            "request_id": "native-1"
+        },
+        {
+            "challenge_identity": "c659f641b15fab6da05b8024a088a6941c29e8626ebff7cc5eb29e143895804c",
+            "disposition": "EXECUTED",
+            "receipt_identity": "e914d96d836cb38622dd68131b9d44f4f2947588731565f857ba33a577d471b4",
+            "record_identity": "sha256:2736fb19bc672a909ad9b20958ff5c59ee62ee51bc46d1241fe1f59792aed794",
+            "replay_identity": "24d3e14e3b7401b11681f95b3b8e2014ee3d254555e21c13a31d0c27b98f1544",
+            "request_id": "native-2"
+        }
+    ],
+    "schema_version": "mncs-fabric.native-bundle-two-host.v0.1",
+    "source_archive_identity": "sha256:cac7d74a6e019625e0b25d16dcb011c21c6a0e059abd81685bd48bd5f1487a26",
+    "ssh_staged_candidate_material": false,
+    "ssh_tunnel_used": false,
+    "worker_fabric_commit": "0e56f97746494180d83088a27c9065d2c2227ef8",
+    "worker_hostname": "fabric-worker-01",
+    "worker_identity": "fabric-worker-01"
+}
+

@@ -47,8 +47,16 @@ independence, protected custody, attestation, correctness, or conformance.
 
 EA-NEXT-002 execution bundles are verified by a separate companion boundary.
 Their raw logical identity and exact archive transport identity are retained
-separately. Network dispatch currently uses pre-positioned verified artifacts;
-bulk archive transfer is deferred until a bounded transfer profile exists.
+separately. `mncs-fabric.bundle-transfer.v0.1` adds bounded offer/chunk/commit
+messages over the authenticated envelope transport. The worker verifies and
+atomically publishes the archive before dispatch can use it; this is typed
+bundle transfer, not arbitrary file transfer.
+
+The public consumer layer may add a validated
+`mncs-fabric.consumer-context.v0.1` provenance object. It contains opaque
+consumer/workflow/provider references and grants no evaluator, promotion,
+conformance, or semantic verdict authority. Dispatch replay identity includes
+this context and any typed execution-bundle binding.
 
 An optional EA-NEXT-005 challenge is carried as a validated dispatch companion.
 Its exact subject/candidate/bundle/policy/runner scope, nonce, and validity
