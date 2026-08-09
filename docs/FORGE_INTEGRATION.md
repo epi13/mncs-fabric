@@ -36,7 +36,11 @@ compatibility snapshots, bounded
 protocol/framing tests, TLS loopback, enrollment/revocation, replay, scheduler,
 and storage checks. Forge records the result as operator-controlled development
 evidence. It is not independent certification or an MNCS conformance decision.
-The two-host harness has static safety coverage in this workflow, but the
-Forge workflow does not impersonate a remote operator or claim that it ran a
-second host. Real second-host operation and bulk bundle transfer remain
-explicit unsupported constructs.
+The two-host harness has static safety coverage in this workflow. When the
+sanitized `development-evidence/fedora-two-host-phase1.json` artifact is
+present, the provider also runs bounded `two-host-evidence-validation` checks
+for schema, identity references, direct-TLS/tunnel declarations,
+restart/replay dispositions, revocation disposition, limitations, and secret
+exclusion. Forge does not impersonate a remote operator or run a second host;
+the physical run remains operator-controlled. Bulk bundle transfer and
+independent certification remain explicit unsupported constructs.

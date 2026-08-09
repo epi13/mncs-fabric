@@ -5,7 +5,7 @@ This iteration was aligned against these local sibling snapshots:
 | Project | Commit used | Boundary used | Status |
 | --- | --- | --- | --- |
 | `machine-native-complexity-standard` | `80f08d312dce963265c7f69ac5b4bae8245bd692` | EA-NEXT-001 typed receipt, EA-NEXT-002 immutable execution bundle, and EA-NEXT-005 challenge/replay `0.1-experimental` | receipt, bundle, and additive challenge/replay adapters; assurance remains UNKNOWN where Fabric cannot establish a property |
-| `MNCS-Commons` | `95583b9b061101366ffad887ecc31c6fe60bea8d` | append/recovery, locking, and structured adapter concepts | Fabric-owned ledger; no private Commons dependency |
+| `MNCS-Commons` | `b1eb5a1081bbb63ee3a6284e8046035bd72a47bc` | append/recovery, locking, structured adapter, and public-node boundary concepts | Fabric-owned ledger/network; no private Commons dependency |
 | `mncs-forge-mcp` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
 | `mncs-language` | `f234cc8079faa5895a38b7abce0c96031f7d2565` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
 | `RAVEL` | `d572d68ab9c8eaf163425748d44729aaa8028e98` | lifecycle/episode identity awareness | no RAVEL conformance claim |

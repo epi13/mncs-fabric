@@ -5,6 +5,8 @@
 MNCS Fabric `0.2.0a0` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
+The first direct Fedora-to-Fedora run is recorded as operator-controlled
+development evidence; it is not independent assurance.
 
 ## Protected assets
 
@@ -65,7 +67,8 @@ The current implementation does not prevent:
 The current transport does not provide certificate issuance, automated key
 rotation, hardware-backed identity, production listener supervision, bulk
 bundle transfer, or cross-host liveness guarantees. The tested endpoint is a
-bounded one-request service and has only loopback evidence so far.
+bounded one-request service. The physical run does not remove these residual
+limitations.
 
 These gaps must remain explicit `UNKNOWN` or limitations. They must not be rewritten as PASS.
 

@@ -71,6 +71,12 @@ Artifacts are addressed by ordered SHA-256 manifests. Manifest verification reje
 
 The reconciler verifies execution-record identities and requires agreement on job, candidate, evaluator, and artifact identities. A cohort fails when declared result artifacts disagree. A cohort remains `UNKNOWN` when any execution is incomplete or unsupported.
 
+The bounded two-host harness uses SSH only for exact-revision bootstrap and
+material staging. It launches a narrow worker process and performs the actual
+request over direct Fabric TLS. The sanitized result in
+`development-evidence/` is operator-controlled development evidence; it does
+not elevate a receipt, bundle, or physical host count into assurance.
+
 ## Data flow
 
 1. A generator or operator creates a candidate bundle.
