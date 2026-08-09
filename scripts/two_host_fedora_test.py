@@ -65,7 +65,7 @@ class Remote:
         self.options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10"]
 
     def ssh(self, command: str) -> str:
-        return _run(["ssh", *self.options, self.destination, command], timeout=20)
+        return _run(["ssh", "-n", *self.options, self.destination, command], timeout=20)
 
     def scp_to(self, source: Path, destination: str) -> None:
         _run(["scp", *self.options, str(source), f"{self.destination}:{destination}"], timeout=60)
@@ -113,7 +113,7 @@ def _remote_node(remote: Remote, run_root: str, worker_id: str) -> dict[str, Any
 def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_id: str, host: str, port: int) -> int:
     command = (
         f"mkdir -p {_shell_quote(run_root + '/logs')} && "
-        f"nohup {_shell_quote(run_root + '/venv/bin/python')} -m mncs_fabric worker serve "
+        f"setsid nohup {_shell_quote(run_root + '/venv/bin/python')} -m mncs_fabric worker serve "
         f"--worker-id {_shell_quote(worker_id)} --controller-id {_shell_quote(controller_id)} "
         f"--bundle-root {_shell_quote(run_root + '/repo/examples/portable-python/bundle')} "
         f"--state {_shell_quote(run_root + '/state/worker-ledger.jsonl')} "
@@ -124,7 +124,8 @@ def _start_worker(remote: Remote, run_root: str, *, worker_id: str, controller_i
         # The endpoint is still one-request/bounded, but physical startup and
         # repeated SSH readiness probes must not consume its accept window.
         f"--host {_shell_quote(host)} --port {port} --timeout 30 "
-        f">{_shell_quote(run_root + '/logs/worker.log')} 2>&1 </dev/null & echo $!"
+        f">{_shell_quote(run_root + '/logs/worker.log')} 2>&1 </dev/null & "
+        f"pid=$!; disown \"$pid\" 2>/dev/null || true; printf '%s\\n' \"$pid\""
     )
     output = remote.ssh(command).strip().splitlines()
     if not output or not output[-1].isdigit():
