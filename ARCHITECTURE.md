@@ -10,10 +10,12 @@ MNCS Fabric is the execution plane between a development control plane such as M
 
 `LocalController` maintains an in-process worker registry, deterministic
 capability admission, immutable dispatch identities, and durable dispatch
-history. `NetworkController` registers capability snapshots with a typed
-transport and reuses the same dispatch/replay logic. It is an operator service,
-not a conformance authority. Remote worker loss is returned as `UNKNOWN` and
-never fabricated into a result.
+history. `NetworkController` registers endpoint configuration with a typed
+transport and can request an authenticated worker description. Worker-observed
+capability and resource records replace the current scheduling observation
+while prior records remain in the controller ledger. Liveness expires after a
+bounded lease; remote worker loss is returned as `UNKNOWN` and never fabricated
+into a result. It is an operator service, not a conformance authority.
 
 ### Worker
 
@@ -50,6 +52,11 @@ reasons. A provider runtime may attach an
 `ExecutionPlacementObservation`; Fabric records and binds it but does not
 attest to its truth. CPU, full accelerator, and sequential CPU offload are
 placement modes, not implementations of model-layer movement.
+
+`worker_state.py` owns bounded worker-description and worker-liveness profiles.
+Descriptions are authenticated worker reports, not attestation.
+`collections.py` owns generic work-item and collection completeness; consumer
+projects retain partition meaning and semantic aggregation.
 
 ### Protocol and durable state
 
@@ -136,4 +143,5 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - network or kernel sandboxing;
 - hardware attestation;
 - a distributed RAVEL mechanism; and
+- public semantic ownership for MNEL/RAVEL workloads or collection aggregation; and
 - production daemon supervision or unlimited worker service operation.
