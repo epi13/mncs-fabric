@@ -256,7 +256,7 @@ def run_experiment(args: argparse.Namespace) -> dict[str, Any]:
         restarted_controller.register_remote(args.worker_id, frozenset(capability_names(node)), transport)
         pid = None
         pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port)
-        restarted_response = restarted_controller.dispatch_remote(plan, manifest)
+        restarted_response = restarted_controller.dispatch_remote(plan, manifest, challenge=challenge)
         adversarial["controller_restart_retry"] = restarted_response[0].get("payload", {}).get("disposition")
 
         # Revocation is checked over the real TLS connection before dispatch.
