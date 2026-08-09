@@ -18,7 +18,10 @@ description/liveness references without exposing controller internals.
 Availability is bounded: `AVAILABLE` means recent authenticated contact,
 `UNAVAILABLE` records a failed contact, and `UNKNOWN` means no current contact
 or an expired lease. The default description lease is five minutes. Resource-
-sensitive scheduling refreshes registered remote workers before admission.
+Sensitive scheduling refreshes registered remote workers before admission. A
+description older than the five-minute description bound is retained as
+history but cannot restore `AVAILABLE`; it produces `UNKNOWN` until a fresh
+description arrives.
 Snapshots are observations, not RAM/VRAM reservations.
 
 There is no unauthenticated discovery, broadcast, filesystem inspection,

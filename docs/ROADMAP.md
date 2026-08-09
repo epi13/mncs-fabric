@@ -47,7 +47,8 @@ does not establish independent freshness or custody.
 - [x] stable tie breaking and explicit unsupported disposition;
 - [x] simple in-process and registered-transport replicated dispatch ordering;
 - [ ] four-node Fedora fabric;
-- sharded experiment collection;
+- [~] generic execution collection is implemented; semantic sharded experiment
+  scheduling remains consumer-owned;
 - [~] node-loss and delayed-result handling (explicit UNKNOWN for transport loss);
 - scaling measurements separated from semantic evidence;
 - [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
