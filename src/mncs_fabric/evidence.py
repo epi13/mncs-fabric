@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from .errors import FabricError
+
 
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
@@ -195,7 +197,58 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_persistent_two_host_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.native-bundle-two-host.v0.1":
         return validate_native_bundle_two_host_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.physical-worker-state.v0.1":
+        return validate_physical_worker_state_evidence(evidence)
     return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}
+
+
+def validate_physical_worker_state_evidence(evidence: object) -> dict[str, Any]:
+    """Validate sanitized description, loss/recovery, and collection evidence."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("record_type") != "mncs-fabric.physical-worker-state":
+        issues.append("record type is invalid")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False:
+        issues.append("direct Fabric TLS boundary is invalid")
+    if not isinstance(evidence.get("fabric_commit"), str) or not _COMMIT.fullmatch(evidence["fabric_commit"]) or evidence.get("fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions are invalid or differ")
+    if not isinstance(evidence.get("controller_identity"), str) or not isinstance(evidence.get("worker_identity"), str) or evidence["controller_identity"] == evidence["worker_identity"]:
+        issues.append("logical worker identities are not distinct")
+    bundle = evidence.get("bundle")
+    if not isinstance(bundle, dict) or not _identity(bundle.get("archive_identity")) or not _identity(bundle.get("logical_identity"), bare=True) or bundle.get("transfer_status") not in {"COMMITTED", "ALREADY_PRESENT"}:
+        issues.append("bundle transfer evidence is invalid")
+    try:
+        from .worker_state import validate_worker_description
+        description = validate_worker_description(evidence.get("worker_description"), expected_worker_id=evidence.get("worker_identity"))
+        if description["resource_snapshot"]["worker_identity"] != evidence.get("worker_identity"):
+            issues.append("description resource binding is invalid")
+    except (FabricError, ValueError, TypeError):
+        issues.append("worker description is invalid")
+    replication = evidence.get("replication")
+    if not isinstance(replication, dict) or not isinstance(replication.get("results"), list) or len(replication["results"]) != 2 or replication.get("reconciliation", {}).get("outcome") != "PASS":
+        issues.append("two-worker replication evidence is incomplete")
+    elif len({item.get("worker_identity") for item in replication["results"]}) != 2 or not all(_identity(item.get("record_identity")) for item in replication["results"]):
+        issues.append("replication worker or record identities are invalid")
+    collection = evidence.get("collection")
+    try:
+        from .collections import validate_execution_collection
+        checked_collection = validate_execution_collection(collection)
+        if checked_collection["outcome"] != "PASS":
+            issues.append("execution collection is not complete")
+    except (FabricError, ValueError, TypeError):
+        issues.append("execution collection is invalid")
+    fault = evidence.get("fault_corpus")
+    if not isinstance(fault, dict) or fault.get("loss", {}).get("disposition") != "UNKNOWN" or fault.get("incomplete_replication", {}).get("disposition") != "UNKNOWN" or fault.get("duplicate_after_restart") != "DUPLICATE_IDEMPOTENT":
+        issues.append("loss/recovery fault dispositions are invalid")
+    boundary = evidence.get("claim_boundary")
+    for term in ("sandbox", "correctness", "custody", "independence", "conformance", "certification"):
+        if not isinstance(boundary, str) or term not in boundary.lower():
+            issues.append(f"claim boundary omits:{term}")
+    if not isinstance(evidence.get("limitations"), list) or not evidence["limitations"] or _contains_secret(evidence):
+        issues.append("limitations or secret exclusion is invalid")
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
 
 
 def validate_native_bundle_two_host_evidence(evidence: object) -> dict[str, Any]:

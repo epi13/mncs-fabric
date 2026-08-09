@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.worker-liveness.v0.1",
+  "type": "object",
+  "required": ["schema_version", "worker_identity", "state", "observed_at", "description_identity", "lease_seconds", "liveness_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.worker-liveness.v0.1"},
+    "worker_identity": {"type": "string"},
+    "state": {"enum": ["AVAILABLE", "UNAVAILABLE", "UNKNOWN"]},
+    "observed_at": {"type": "string"},
+    "description_identity": {"type": ["string", "null"]},
+    "lease_seconds": {"type": "number", "exclusiveMinimum": 0},
+    "liveness_identity": {"type": "string"}
+  }
+}

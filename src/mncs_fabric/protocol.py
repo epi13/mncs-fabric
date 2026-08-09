@@ -33,6 +33,8 @@ MESSAGE_TYPES = {
     "bundle.chunk",
     "bundle.commit",
     "bundle.response",
+    "worker.describe.request",
+    "worker.describe.result",
 }
 _ID_FIELDS = ("controller_id", "worker_id", "request_id", "job_id", "nonce")
 
@@ -178,6 +180,16 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     elif message_type == "worker.capabilities":
         if not isinstance(value.get("capabilities"), list) or not all(isinstance(item, str) for item in value["capabilities"]):
             raise ProtocolError("capability report must contain a string array")
+    elif message_type == "worker.describe.request":
+        required = {"description_request_identity"}
+        if set(value) != required or not is_sha256_identity(value.get("description_request_identity")):
+            raise ProtocolError("worker description request identity is invalid")
+    elif message_type == "worker.describe.result":
+        from .worker_state import validate_worker_description
+        required = {"description"}
+        if set(value) != required:
+            raise ProtocolError("worker description result fields are invalid")
+        validate_worker_description(value.get("description"))
     elif message_type in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
         from .bundle_transfer import MAX_CHUNK_BYTES, MAX_CHUNKS, MAX_ARCHIVE_BYTES, TRANSFER_SCHEMA
         required = {"transfer_schema", "transfer_id", "bundle_identity", "archive_identity", "total_bytes", "chunk_bytes", "chunk_count"}

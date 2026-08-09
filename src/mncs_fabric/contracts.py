@@ -31,6 +31,10 @@ PUBLIC_FEATURES = {
     "placement_evidence": True,
     "cuda_execution_probe": False,
     "sequential_cpu_offload_evidence": False,
+    "remote_worker_description": True,
+    "remote_resource_refresh": True,
+    "worker_liveness": True,
+    "execution_collections": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {
@@ -153,6 +157,10 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
         "placement_admission_schema": "mncs-fabric.placement-admission.v0.1",
         "placement_observation_schema": "mncs-fabric.execution-placement-observation.v0.1",
         "placement_reference_schema": "mncs-fabric.placement-reference.v0.1",
+        "worker_description_schema": "mncs-fabric.worker-description.v0.1",
+        "worker_liveness_schema": "mncs-fabric.worker-liveness.v0.1",
+        "work_item_schema": "mncs-fabric.work-item.v0.1",
+        "execution_collection_schema": "mncs-fabric.execution-collection.v0.1",
         "protocol_schema": "mncs-fabric.protocol.v0.1",
         "receipt_profile": "0.1-experimental",
         "execution_bundle_profile": "0.1-experimental",
