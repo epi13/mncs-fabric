@@ -6,11 +6,10 @@ from pathlib import Path
 from .artifacts import build_manifest, verify_manifest
 from .canonical import verify_identity
 from .errors import FabricError
-from .executor import execute_local
 from .io import load_json, write_json
-from .models import COHORT_SCHEMA, EXECUTION_SCHEMA, validate_job_plan
-from .node import collect_node_capabilities
-from .reconcile import reconcile_records
+from .service import FabricService
+
+_SERVICE = FabricService()
 
 
 def _path(value: str) -> Path:
@@ -73,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "node":
-            write_json(args.output, collect_node_capabilities(args.label))
+            write_json(args.output, _SERVICE.nodes(args.label))
             return 0
         if args.command == "artifacts" and args.artifacts_command == "create":
             write_json(args.output, build_manifest(args.root))
@@ -83,10 +82,10 @@ def main(argv: list[str] | None = None) -> int:
             write_json(None, {"outcome": "PASS", "manifest_identity": manifest["manifest_identity"]})
             return 0
         if args.command == "plan":
-            write_json(args.output, validate_job_plan(load_json(args.plan)))
+            write_json(args.output, _SERVICE.validate_plan(load_json(args.plan)))
             return 0
         if args.command == "run":
-            record = execute_local(
+            record = _SERVICE.execute_local(
                 load_json(args.plan), args.root, load_json(args.manifest), args.label,
                 results_dir=args.results_dir, work_root=args.work_root,
             )
@@ -94,15 +93,11 @@ def main(argv: list[str] | None = None) -> int:
             return _status_code(record["outcome"])
         if args.command == "record":
             value = load_json(args.record)
-            schema = value.get("schema_version") if isinstance(value, dict) else None
-            field = "record_id" if schema == EXECUTION_SCHEMA else "cohort_id" if schema == COHORT_SCHEMA else None
-            if field is None or not verify_identity(value, field):
-                write_json(None, {"outcome": "FAIL", "reason": "record identity does not verify"})
-                return 1
-            write_json(None, {"outcome": "PASS", "identity": value[field]})
-            return 0
+            result = _SERVICE.verify_record(value)
+            write_json(None, result)
+            return _status_code(result["outcome"])
         if args.command == "reconcile":
-            cohort = reconcile_records([load_json(path) for path in args.records], require_distinct_nodes=not args.allow_repeated_node)
+            cohort = _SERVICE.reconcile([load_json(path) for path in args.records], require_distinct_nodes=not args.allow_repeated_node)
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
         raise AssertionError("unreachable command")

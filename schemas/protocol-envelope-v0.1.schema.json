@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/epi13/mncs-fabric/schemas/protocol-envelope-v0.1.schema.json",
+  "title": "MNCS Fabric protocol envelope 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "message_type", "message_id", "controller_id", "worker_id", "request_id", "job_id", "nonce", "created_at", "expires_at", "payload"],
+  "properties": {
+    "protocol_version": {"const": "mncs-fabric.protocol.v0.1"},
+    "message_type": {"enum": ["worker.announce", "worker.capabilities", "dispatch.request", "dispatch.ack", "execution.result", "status.request", "status.response", "result.collect", "replay.disposition"]},
+    "message_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "controller_id": {"type": "string", "minLength": 1},
+    "worker_id": {"type": "string", "minLength": 1},
+    "request_id": {"type": "string", "minLength": 1},
+    "job_id": {"type": "string", "minLength": 1},
+    "nonce": {"type": "string", "minLength": 16},
+    "created_at": {"type": "string"},
+    "expires_at": {"type": "string"},
+    "payload": {"type": "object"},
+    "authentication": {"type": "object", "additionalProperties": false, "required": ["algorithm", "key_id", "mac"], "properties": {"algorithm": {"const": "HMAC-SHA256"}, "key_id": {"type": "string", "minLength": 1}, "mac": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+  }
+}

@@ -1,0 +1,47 @@
+"""Stable public Fabric application boundary for CLI and future Forge adapters."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+from .canonical import verify_identity
+from .errors import ValidationError
+from .executor import execute_local
+from .models import COHORT_SCHEMA, EXECUTION_SCHEMA, validate_job_plan
+from .node import capability_names, collect_node_capabilities
+from .reconcile import reconcile_records
+
+
+class FabricService:
+    """Typed, machine-readable service operations with no CLI or Forge imports."""
+
+    def nodes(self, label: str) -> dict[str, Any]:
+        return collect_node_capabilities(label)
+
+    def capabilities(self, label: str) -> dict[str, Any]:
+        node = self.nodes(label)
+        return {"schema_version": node["schema_version"], "node_fingerprint": node["node_fingerprint"], "machine_label": node["machine_label"], "capabilities": sorted(capability_names(node))}
+
+    def validate_plan(self, plan: object) -> dict[str, Any]:
+        return validate_job_plan(plan)
+
+    def execute_local(self, plan: object, root: Path, manifest: object, label: str, *, results_dir: Path | None = None, work_root: Path | None = None) -> dict[str, Any]:
+        return execute_local(plan, root, manifest, label, results_dir=results_dir, work_root=work_root)
+
+    def verify_record(self, record: object) -> dict[str, Any]:
+        if not isinstance(record, dict):
+            raise ValidationError("record must be an object")
+        schema = record.get("schema_version")
+        field = "record_id" if schema == EXECUTION_SCHEMA else "cohort_id" if schema == COHORT_SCHEMA else None
+        if field is None or not verify_identity(record, field):
+            return {"outcome": "FAIL", "reason": "record identity does not verify"}
+        return {"outcome": "PASS", "identity": record[field]}
+
+    def collect(self, record: object) -> dict[str, Any]:
+        if not isinstance(record, dict):
+            raise ValidationError("record must be an object")
+        return record
+
+    def reconcile(self, records: list[dict[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:
+        return reconcile_records(records, require_distinct_nodes=require_distinct_nodes)

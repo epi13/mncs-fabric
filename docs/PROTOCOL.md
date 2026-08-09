@@ -1,4 +1,4 @@
-# Local protocol 0.1
+# Fabric records and protocol 0.1
 
 The initial protocol consists of five versioned JSON record families. Their JSON Schemas are under `schemas/`. Canonical identities use UTF-8 JSON with sorted keys, no insignificant whitespace, and SHA-256 prefixed by `sha256:`. The identity field itself is omitted while deriving the identity.
 
@@ -21,6 +21,37 @@ Captures a user-supplied machine label, operating system, architecture, Python r
 Captures the verified identities, host record, timing, executable identity, exit disposition, exact output byte counts and digests, bounded UTF-8 previews, result-file identities, policy observations, and limitations.
 
 The executable does not authoritatively declare the Fabric outcome. Fabric derives the outcome from launch, resource, exit, and result checks. Project-specific semantic gates belong in a separate evaluator.
+
+## Controller/worker envelope
+
+`mncs-fabric.protocol.v0.1` is a transport-independent fixed envelope. Its
+message type, controller and worker IDs, request/job IDs, nonce, expiry,
+payload, and canonical `message_id` are bound together. Dispatch payloads carry
+a validated fixed-argv job plan and matching artifact manifest identity; they
+do not carry arbitrary shell commands. Unknown protocol versions fail closed.
+
+The implemented local message families are worker announcement/capabilities,
+dispatch request/acknowledgement, execution result, status, collection, and
+replay disposition. Optional HMAC-SHA256 uses an operator-supplied key ID and
+rejects unknown, inactive, revoked, wrong, or tampered keys. It is message
+authentication, not encrypted transport.
+
+## Receipt compatibility
+
+Fabric v0.2 adds a companion adapter for the experimental MNCS typed execution
+receipt and assurance record. The original Fabric execution-record v0.1 is not
+rewritten. Receipt identity, bundle, candidate, runner, environment, streams,
+artifacts, and actual termination observations are preserved where available;
+missing assurance facts remain UNKNOWN and claim boundaries remain
+`not-asserted`.
+
+## Durable local state
+
+Controller and worker dispatch/result state is appended to a versioned local
+ledger with record identity, sequence, previous-entry identity, and entry
+identity. Corruption and unsupported versions fail closed. A truncated tail is
+diagnosed and can only be removed by an explicit recovery call. See
+[STORAGE.md](STORAGE.md).
 
 ## Cohort result
 

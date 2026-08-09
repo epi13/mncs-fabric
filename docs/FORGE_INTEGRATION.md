@@ -2,7 +2,7 @@
 
 MNCS Forge is expected to remain the optional agent and operator control plane. MNCS Fabric is the execution and transport plane. Neither replaces offline MNCS or MNCDS validation.
 
-A future Forge provider should invoke a bounded Fabric CLI or protocol operation and retain the returned identities. It should not import private Fabric internals or silently convert missing capabilities into source reading, grep, or a weaker substitute.
+A Forge provider should invoke the public `mncs_fabric.service.FabricService` boundary or a bounded Fabric CLI operation and retain the returned identities. It should not import private Fabric internals or silently convert missing capabilities into source reading, grep, or a weaker substitute.
 
 Proposed bounded operations:
 
@@ -18,4 +18,18 @@ fabric.replay
 fabric.fault.inject
 ```
 
-Only the local equivalents of node inspection, plan validation, execution, collection, and reconciliation exist in 0.1. Remote dispatch and fault injection remain future work.
+Implemented local operations are exposed by `FabricService.nodes`,
+`capabilities`, `validate_plan`, `execute_local`, `verify_record`, `collect`,
+and `reconcile`. CLI commands delegate to this boundary. Local controller and
+worker dispatch is available through the typed protocol services; network
+dispatch and fault injection remain future work.
+
+## Project-local Forge workflow
+
+`mncs-forge.toml` declares the required local `mncs-fabric-local` Provider
+Protocol 0.1 provider and the `fabric-validation` development workflow. Forge
+executes the provider in a bounded copied workspace. The provider runs the
+Fabric unit/integration suite, source compilation, the portable example and
+reconciliation, and the self-contained compatibility snapshot. Forge records
+the result as operator-controlled development evidence. It is not independent
+certification or an MNCS conformance decision.

@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.1.0a0` foundation. The local executor is functional. Remote transport, worker enrollment, authenticated dispatch, and distributed RAVEL execution are planned but are not yet implemented.
+> **Status:** `0.2.0a0` experimental Phase-1 foundation. Local execution, typed receipt adaptation, Forge-controlled validation, an in-process controller/worker protocol, durable local ledgers, replay protection, and deterministic capability-aware admission are implemented. Network transport remains deferred.
 
 ## Authority boundary
 
@@ -31,10 +31,15 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - argv-only execution with no shell, bounded time, bounded stdout/stderr, isolated temporary work copies, and declared result artifacts;
 - explicit `PASS`, `FAIL`, and `UNKNOWN` execution outcomes;
 - deterministic local or operator-controlled cross-host reconciliation;
+- companion adapters for the current experimental MNCS typed execution receipt and execution-assurance shape;
+- a stable `FabricService` boundary shared by the CLI and future Forge adapters;
+- fixed, canonical controller/worker envelopes with optional operator-supplied HMAC authentication;
+- durable append-only controller/worker ledgers with explicit recovery diagnostics and duplicate protection; and
+- deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
 
-The executor is bounded but is **not a security sandbox**. Network policy is recorded but not yet enforced. See [THREAT_MODEL.md](THREAT_MODEL.md).
+The executor is bounded but is **not a security sandbox**. Network policy is recorded but not yet enforced. HMAC authenticates message contents but does not encrypt transport. See [THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Quick start
 
@@ -84,9 +89,14 @@ mncs-fabric record verify RECORD.json
 mncs-fabric reconcile RECORD.json [RECORD.json ...]
 ```
 
+The public application boundary is `mncs_fabric.service.FabricService`:
+`nodes`, `capabilities`, `validate_plan`, `execute_local`, `verify_record`,
+`collect`, and `reconcile`. A future Forge provider should call this boundary
+or the bounded CLI, never private implementation modules.
+
 ## Repository map
 
-- `src/mncs_fabric/` — canonical identities, manifests, node capture, execution, and reconciliation;
+- `src/mncs_fabric/` — canonical identities, manifests, node capture, execution, receipts, service boundary, protocol, controller/worker, scheduler, and ledger;
 - `schemas/` — versioned interchange schemas;
 - `examples/portable-python/` — a deterministic cross-platform example bundle;
 - `docs/` — protocol, integration, and roadmap documents; and
