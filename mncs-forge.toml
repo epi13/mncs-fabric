@@ -1,0 +1,60 @@
+version = 1
+environment_allowlist = ["PATH", "LANG", "LC_ALL", "PYTHONPATH"]
+
+[project]
+name = "MNCS Fabric local control plane"
+identity = "mncs-fabric-local-v1"
+root = "."
+
+[paths]
+candidates = []
+generated = []
+contracts = ["ARCHITECTURE.md", "THREAT_MODEL.md", "CONTRIBUTING.md"]
+references = ["src", "tests", "schemas", "examples", "scripts", "compat", "pyproject.toml", "README.md", "docs"]
+evaluators = []
+acceptance_policies = []
+development_evidence = ["build/forge-evidence"]
+protected = []
+outputs = ["build/forge-evidence"]
+
+[limits]
+timeout_seconds = 120
+output_bytes = 1048576
+
+[authority.development]
+may_write_candidates = false
+may_write_generated = false
+may_run_providers = true
+
+[authority.evaluator]
+candidate_read_only = true
+authority_read_only = true
+require_frozen_identities = true
+withhold_repair_feedback = true
+
+[policies]
+selection = "README.md"
+useful_benefit_objective = "README.md"
+
+[[providers]]
+id = "mncs-fabric-local"
+name = "MNCS Fabric local validation"
+identity = "mncs-fabric-local-v1"
+version = "0.2"
+command = ["python", "scripts/forge_provider.py"]
+transport = "stdio-jsonl"
+required = true
+capabilities = ["inspection"]
+supported_constructs = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility"]
+unsupported_constructs = ["remote-network-transport", "independent-certification"]
+limitations = ["operator-controlled local development evidence"]
+
+[[workflows]]
+name = "fabric-validation"
+category = "inspection"
+mode = "development"
+command = ["python", "scripts/forge_provider.py"]
+provider_protocol = true
+provider_id = "mncs-fabric-local"
+disclosure = "compact"
+subject = "project"

@@ -8,13 +8,25 @@ MNCS Fabric is the execution plane between a development control plane such as M
 
 ### Controller
 
-The future controller will maintain node enrollment, capability inventory, scheduling, immutable job identities, dispatch state, and evidence collection. The controller is not a conformance authority.
+`LocalController` currently maintains an in-process worker registry, deterministic capability admission, immutable dispatch identities, and durable dispatch history. It is a development foundation, not a network daemon or conformance authority. Enrollment is represented by explicit worker announcements; authenticated network enrollment remains deferred.
 
 ### Worker
 
 A worker verifies a job bundle and manifest, checks required capabilities, creates an isolated working copy, executes a fixed argv without a shell, captures bounded observations, and returns a self-identifying execution record.
 
-The current alpha implements this worker behavior locally. It deliberately does not expose a network daemon before authenticated transport and enrollment semantics are designed and reviewed.
+The current alpha implements this worker behavior locally and through `LocalWorker.handle`. It deliberately does not expose a network daemon: HMAC message authentication is available to in-process callers, but encryption and mutual host authentication are not yet present.
+
+### Public application boundary
+
+`FabricService` is the stable boundary for node inspection, capability inspection, plan validation, local execution, record verification, collection, and reconciliation. The CLI delegates to it. Forge invokes the same bounded service contract through its declared Provider Protocol workflow; it does not import Fabric internals.
+
+### Protocol and durable state
+
+`protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `store.py` provides a Fabric-owned append-only JSONL ledger with sequence and SHA-256 linkage, exclusive writer locking, bounded reads, `fsync`, corruption detection, and explicit tail recovery. `controller.py` and `worker.py` use the ledger to distinguish idempotent duplicate delivery from conflicting replay.
+
+### Family receipt adapter
+
+`receipts.py` produces the current experimental MNCS typed execution receipt as a companion observation. It maps only facts present in a Fabric execution record and emits UNKNOWN or `not-asserted` for sandboxing, network isolation, custody, independence, attestation, correctness, and conformance. See [docs/FAMILY_COMPATIBILITY.md](docs/FAMILY_COMPATIBILITY.md).
 
 ### Artifact store
 
@@ -43,7 +55,7 @@ The reconciler verifies execution-record identities and requires agreement on jo
 
 Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 
-## Non-goals for 0.1
+## Current non-goals
 
 - Kubernetes or general-purpose cluster orchestration;
 - arbitrary remote shell access;
@@ -52,3 +64,6 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - network or kernel sandboxing;
 - hardware attestation; and
 - a distributed RAVEL mechanism.
+- an unauthenticated or encrypted network worker;
+- protected custody, hardware attestation, or independent evaluation; and
+- claiming Phase-1 multi-host completion without TLS/certificates and a real second host.

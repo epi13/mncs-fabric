@@ -1,6 +1,6 @@
 # Roadmap
 
-## Phase 0 — foundation (this release)
+## Phase 0 — foundation (complete)
 
 - canonical identities;
 - artifact manifests;
@@ -10,20 +10,26 @@
 - deterministic reconciliation;
 - schemas, tests, CI, and threat model.
 
-## Phase 1 — authenticated two-node transport
+## Phase 1 — controller/worker foundation (partially implemented)
 
-- controller and worker processes;
-- mutual authentication and enrollment;
-- fixed request/response envelopes;
-- durable worker ledger;
-- replay and duplicate rejection;
-- concurrency and admission limits;
-- Fedora-to-Fedora two-node evidence run.
+- [x] in-process controller and worker services;
+- [ ] encrypted transport and mutual host authentication/enrollment;
+- [x] fixed request/response envelopes;
+- [x] durable local controller/worker ledgers;
+- [x] replay and duplicate rejection;
+- [x] local concurrency/admission limits;
+- [ ] Fedora-to-Fedora two-node evidence run.
 
-## Phase 2 — four-node Fedora fabric
+The network and real second-host items remain blocked on TLS/certificate
+provisioning, enrollment/revocation, and adversarial deployment testing. Fabric
+does not claim Phase 1 complete.
 
-- capability-aware scheduler;
-- parallel and replicated trial plans;
+## Phase 2 — scheduler foundation (partially implemented)
+
+- [x] exact capability-aware deterministic local admission;
+- [x] stable tie breaking and explicit unsupported disposition;
+- [x] simple in-process replicated dispatch ordering;
+- [ ] four-node Fedora fabric;
 - sharded experiment collection;
 - node-loss and delayed-result handling;
 - scaling measurements separated from semantic evidence;

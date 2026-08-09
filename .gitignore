@@ -13,3 +13,5 @@ dist/
 Thumbs.db
 *.local.json
 .mncs-fabric/
+.mncs-forge/
+workspace/

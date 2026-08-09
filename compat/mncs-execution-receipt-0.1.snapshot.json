@@ -1,0 +1,11 @@
+{
+  "schema_name": "mncs-execution-receipt-0.1-experimental",
+  "schema_version": "0.1-experimental",
+  "record_type": "mncs-execution-receipt",
+  "required_top_level": [
+    "schema_version", "record_type", "record_id", "receipt_identity", "subject", "bundle", "policy", "runner", "environment", "challenge", "request", "lifecycle", "process", "termination_observations", "streams", "aggregate_output", "artifacts", "resources", "enforcement", "placement", "claim_boundary", "extensions"
+  ],
+  "enforcement_fields": ["command_binding", "environment_binding", "filesystem_restriction", "network_restriction", "process_restriction", "resource_limits", "test_bundle_integrity", "result_integrity"],
+  "claim_boundary_fields": ["conformance", "correctness", "security", "sandbox", "independence", "protected_custody", "promotion"],
+  "unsupported_versions": "fail-closed"
+}
