@@ -63,6 +63,12 @@ and sanitized physical worker-state evidence. This is offline structural
 validation of operator-controlled records; Forge does not operate or certify
 the private Fedora node.
 
+Runtime-profile and runtime-observation fixtures are validated offline. The
+provider advertises the Windows launcher as a static safety surface, but does
+not advertise physical Windows, CUDA, or sequential-offload evidence without
+operator-collected records. An explicit Windows endpoint is required for any
+future direct Fedora-to-Windows run; Forge CI never scans or contacts the LAN.
+
 The checked-in `development-evidence/fedora-resource-placement.json` is a
 bounded direct-mTLS CPU-placement run with native bundle transfer and a
 sanitized worker resource snapshot. It records the Quadro P620 as discovery

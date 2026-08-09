@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from scripts.two_host_fedora_test import build_parser, _shell_quote
+from scripts.two_host_windows_gpu_test import build_parser as build_windows_parser
 
 
 class TwoHostHarnessTests(unittest.TestCase):
@@ -23,3 +24,13 @@ class TwoHostHarnessTests(unittest.TestCase):
         self.assertNotIn("ssh -L", source)
         self.assertNotIn("ExitOnForwardFailure", source)
         self.assertIn("remote_worker_launcher.py", source)
+
+    def test_windows_harness_requires_explicit_endpoint_and_stays_out_of_band(self) -> None:
+        parser_text = build_windows_parser().format_help()
+        self.assertIn("--ssh-host", parser_text)
+        self.assertIn("--expected-hostname", parser_text)
+        source = Path(__file__).parents[1].joinpath("scripts", "two_host_windows_gpu_test.py").read_text(encoding="utf-8")
+        self.assertNotIn("192.168.1.16", source)
+        self.assertIn('"StrictHostKeyChecking=yes"', source)
+        self.assertNotIn("StrictHostKeyChecking=no", source)
+        self.assertNotIn("ssh -L", source)

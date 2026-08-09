@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.runtime-binding.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "runtime_profile_identity", "runtime_observation_identity", "request_identity", "record_identity", "receipt_identity", "claim_boundary", "runtime_binding_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.runtime-binding.v0.1"},
+    "worker_identity": {"type": "string"},
+    "runtime_profile_identity": {"type": "string"},
+    "runtime_observation_identity": {"type": "string"},
+    "request_identity": {"type": ["string", "null"]},
+    "record_identity": {"type": ["string", "null"]},
+    "receipt_identity": {"type": ["string", "null"]},
+    "claim_boundary": {"type": "string"},
+    "runtime_binding_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

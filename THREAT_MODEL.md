@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a4` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a5` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -34,6 +34,15 @@ does not make a worker's free RAM, VRAM, driver, or runtime report truthful.
 Accelerator discovery is separate from executable-kernel proof; the current
 dependency-free probe reports NVIDIA discovery as UNKNOWN when `nvidia-smi`
 or a real runtime probe is unavailable.
+
+Runtime profiles add a second boundary: a machine GPU, an NVIDIA driver,
+`nvidia-smi`, and the Python environment that launches Fabric are distinct
+claims. The optional runtime probe is operator-controlled input. A real
+synchronized kernel is required before its execution status is `PASS`, but
+the resulting record is still not hardware attestation. Runtime-profile
+replacement, driver changes, Python-environment drift, stale probe evidence,
+Torch architecture incompatibility, Windows PID reuse, path/case collisions,
+and launcher attempts to stop an unrelated process are explicitly considered.
 
 ## Protected assets
 
@@ -165,6 +174,13 @@ iteration:
   ordinary account controls and remains UNKNOWN.
 - resource reservations: Fabric does not reserve VRAM or host RAM; concurrent
   accelerator workloads can invalidate an otherwise fresh admission.
+- runtime proof can become stale when the worker interpreter, Torch/CUDA
+  versions, driver, or GPU identity changes; Fabric does not install or manage
+  those environments;
+- Windows worker lifecycle state can be lost or become stale, although the
+  launcher binds stop operations to a recorded process-start token; and
+- `nvidia-smi` discovery and `torch.cuda.is_available()` are insufficient proof
+  of executable CUDA kernels.
 
 The boundaries are intentionally separate: TLS protects transport; HMAC
 authenticates a message; bundle verification protects package integrity;

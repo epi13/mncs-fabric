@@ -15,12 +15,19 @@ receipt reconstruction is not required. `ConsumerContext` retains opaque
 workload, experiment, provider, partition, and Forge workflow references as
 provenance only.
 
-The common worker-state profiles are `mncs-fabric.worker-description.v0.1`,
+The common worker-state profiles are `mncs-fabric.worker-description.v0.1`
+(historical) and additive `mncs-fabric.worker-description.v0.2`,
 `mncs-fabric.worker-liveness.v0.1`, `mncs-fabric.work-item.v0.1`, and
 `mncs-fabric.execution-collection.v0.1`. They let MNEL and RAVEL retain
 opaque workload/partition references while Fabric owns authenticated worker
 observations and collection completeness; consumer semantic, training,
 question, and aggregation authority remains outside Fabric.
+
+The additive runtime profiles identify the worker's launching Python
+environment and optional synchronized provider observations. A Windows or
+CUDA-capable machine does not automatically imply executable CUDA: discovery,
+driver state, Python environment, and synchronized kernel evidence remain
+separate records.
 
 ## Native bundle transfer
 

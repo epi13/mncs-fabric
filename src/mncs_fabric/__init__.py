@@ -1,7 +1,8 @@
 """MNCS Fabric: bounded execution and evidence primitives."""
 
-__version__ = "0.2.0a4"
+__version__ = "0.2.0a5"
 
 from .api import ConsumerContext, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
+from .runtime import RuntimeProfile
 
-__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig", "__version__"]
+__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig", "RuntimeProfile", "__version__"]

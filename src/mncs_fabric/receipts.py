@@ -160,7 +160,7 @@ def build_execution_receipt(
     subject_family: str = "MNCS",
     subject_kind: str = "development-record",
     runner_identity: str = "mncs-fabric-local-runner-v1",
-    runner_version: str = "0.2.0a4",
+    runner_version: str | None = None,
     placement_reference: dict[str, Any] | None = None,
     challenge: dict[str, Any] | None = None,
     bundle_identity: str | None = None,
@@ -209,6 +209,9 @@ def build_execution_receipt(
     }
     if isinstance(challenge, dict):
         challenge_observation = {key: challenge[key] for key in ("nonce", "issued_at", "expires_at") if key in challenge}
+    if runner_version is None:
+        from . import __version__
+        runner_version = __version__
     receipt: dict[str, Any] = {
         "schema_version": RECEIPT_SCHEMA,
         "record_type": RECEIPT_TYPE,

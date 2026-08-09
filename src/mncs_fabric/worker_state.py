@@ -16,8 +16,10 @@ from .errors import ValidationError
 from .node import utc_now
 from .models import NODE_SCHEMA
 from .resources import validate_resource_snapshot
+from .runtime import build_runtime_profile, validate_runtime_profile
 
-DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.1"
+LEGACY_DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.1"
+DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.2"
 LIVENESS_SCHEMA = "mncs-fabric.worker-liveness.v0.1"
 DESCRIPTION_LEASE_SECONDS = 300.0
 LIVENESS_STATES = {"AVAILABLE", "UNAVAILABLE", "UNKNOWN"}
@@ -45,6 +47,7 @@ def build_worker_description(
     worker_id: str,
     node: Mapping[str, Any],
     resource_snapshot: Mapping[str, Any],
+    runtime_profile: Mapping[str, Any] | None = None,
     captured_at: str | None = None,
 ) -> dict[str, Any]:
     """Build a fresh, self-identifying worker-owned description."""
@@ -63,11 +66,12 @@ def build_worker_description(
         "captured_at": _timestamp(captured, "captured_at"),
         "claim_boundary": "authenticated worker report; not attestation, custody, independence, correctness, or conformance",
     }
+    value["runtime_profile"] = dict(runtime_profile) if runtime_profile is not None else build_runtime_profile(worker_id)
     return attach_identity(value, "description_identity")
 
 
 def validate_worker_description(value: object, *, expected_worker_id: str | None = None) -> dict[str, Any]:
-    if not isinstance(value, dict) or value.get("schema_version") != DESCRIPTION_SCHEMA:
+    if not isinstance(value, dict) or value.get("schema_version") not in {LEGACY_DESCRIPTION_SCHEMA, DESCRIPTION_SCHEMA}:
         raise ValidationError("unsupported worker description schema")
     required = {
         "schema_version", "worker_identity", "node", "resource_snapshot",
@@ -75,7 +79,9 @@ def validate_worker_description(value: object, *, expected_worker_id: str | None
         "capability_source", "resource_source", "captured_at", "claim_boundary",
         "description_identity",
     }
-    if set(value) != required or not verify_identity(value, "description_identity"):
+    schema = value["schema_version"]
+    expected_fields = required | {"runtime_profile"} if schema == DESCRIPTION_SCHEMA else required
+    if set(value) != expected_fields or not verify_identity(value, "description_identity"):
         raise ValidationError("worker description fields or identity are invalid")
     worker_id = _text(value["worker_identity"], "worker_identity")
     if expected_worker_id is not None and worker_id != expected_worker_id:
@@ -95,6 +101,8 @@ def validate_worker_description(value: object, *, expected_worker_id: str | None
     if value["capability_source"] != "worker-observed" or value["resource_source"] != "worker-observed":
         raise ValidationError("worker description observations must identify their source")
     _timestamp(value["captured_at"], "captured_at")
+    if schema == DESCRIPTION_SCHEMA:
+        validate_runtime_profile(value["runtime_profile"], expected_worker_id=worker_id)
     return dict(value)
 
 

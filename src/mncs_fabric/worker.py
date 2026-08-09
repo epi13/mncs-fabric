@@ -19,6 +19,7 @@ from .protocol import dispatch_binding_identity, make_envelope, validate_envelop
 from .store import FabricLedger
 from .receipts import build_execution_receipt
 from .worker_state import build_worker_description
+from .runtime import build_runtime_profile
 
 
 class LocalWorker:
@@ -43,12 +44,17 @@ class LocalWorker:
         node = self.node()
         return capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
 
+    def runtime_profile(self) -> dict[str, Any]:
+        """Describe the exact Python environment that launched this worker."""
+
+        return build_runtime_profile(self.worker_id)
+
     def description(self) -> dict[str, Any]:
         """Return a fresh bounded description owned by this worker."""
 
         node = self.node()
         snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
-        return build_worker_description(worker_id=self.worker_id, node=node, resource_snapshot=snapshot)
+        return build_worker_description(worker_id=self.worker_id, node=node, resource_snapshot=snapshot, runtime_profile=self.runtime_profile())
 
     def announcement(self, controller_id: str) -> dict[str, Any]:
         created = utc_now()

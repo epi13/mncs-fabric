@@ -70,7 +70,11 @@ does not establish independent freshness or custody.
 
 ## Phase 3 — heterogeneous cohort
 
-- Windows worker packaging and service operation;
+- [~] Windows worker packaging and bounded native lifecycle helper; direct
+  physical Windows acceptance remains blocked until an explicit operator SSH
+  endpoint is configured;
+- [~] runtime-profile identity and optional synchronized CUDA probe workload;
+  no physical CUDA proof is claimed by this iteration;
 - Raspberry Pi OS ARM worker packaging;
 - portable frozen bundles;
 - cross-OS and cross-architecture result comparison;
