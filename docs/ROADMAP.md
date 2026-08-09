@@ -65,8 +65,8 @@ does not establish independent freshness or custody.
   fixtures with deterministic decision identities;
 - [x] a Windows NVIDIA worker produced synchronized CUDA runtime evidence that
   was ingested and bound to resource-aware full-accelerator admission;
-- [~] sequential-offload runtime evidence remains unavailable; no Accelerate
-  environment is installed on the commissioned worker;
+- [x] physical Windows sequential-offload runtime evidence is bound to an
+  identity-addressed runtime environment and used for explicit/AUTO admission;
 - [ ] enforced resource reservations or production-grade accelerator sharing;
 
 ## Phase 3 — heterogeneous cohort
@@ -77,9 +77,10 @@ does not establish independent freshness or custody.
   commissioned Windows Python environment;
 - Raspberry Pi OS ARM worker packaging;
 - portable frozen bundles;
-- [~] cross-OS result comparison and a two-node heterogeneous collection are
-  recorded; three-node collection and cross-architecture comparison remain;
-- slow-node, timeout, and resource-pressure profiles.
+- [x] Fedora controller/local, Fedora remote, and Windows remote completed one
+  exact portable three-physical-node collection and cross-OS reconciliation;
+- [~] timeout and stale-resource profiles are physically recorded; controlled
+  slow-node/resource-pressure breadth remains incomplete;
 
 ## Phase 4 — controlled fault injection
 

@@ -1,0 +1,17 @@
+{
+  "schema_version": "mncs-fabric.heterogeneous-fault-profiles.v0.1",
+  "record_type": "mncs-fabric.heterogeneous-fault-profiles",
+  "claim_boundary": "operator-controlled bounded fault development evidence; not attestation, correctness, protected custody, independence, conformance, or certification",
+  "limitations": [
+    "Only Fabric processes were controlled; operating systems, SSH, networking, and firewalls were not disrupted.",
+    "The timeout profile records missing execution evidence as UNKNOWN rather than fabricating a result.",
+    "A slow-node scaling law was not inferred from this small cohort."
+  ],
+  "fabric_commit": "cbab38bf82378f4e8c0169b9e28721cda50643fd",
+  "profiles": {
+    "windows_offload_timeout": {"expected": "UNKNOWN", "observed": "UNKNOWN", "termination": "TIMEOUT", "record_identity": "sha256:88010906901ea2ce681b917dc60263e53f576ebe263a905dd23d8866835ef77e"},
+    "stale_runtime_admission": {"expected": "UNKNOWN", "observed": "UNKNOWN", "reason": "RESOURCE_OBSERVATION_STALE"},
+    "three_node_portable_collection": {"expected": "PASS", "observed": "PASS", "collection_identity": "sha256:ee5fc433b09015fc3415f9cdb1e2aea948f946bbace991727eb36fcc659a3395"},
+    "three_node_portable_reconciliation": {"expected": "PASS", "observed": "PASS", "cohort_identity": "sha256:66093d086e8f9f3d67d028021d6e2e37d28b6e82c72fc379ad2f73c8c8560fb7"}
+  }
+}

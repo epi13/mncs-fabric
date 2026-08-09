@@ -12,6 +12,12 @@ The public records are:
   optional runtime probe; and
 - `mncs-fabric.runtime-binding.v0.1`: linkage from an observation to a Fabric
   request, execution record, and receipt after execution completes.
+- `mncs-fabric.runtime-environment.v0.1`: a small identity of material
+  operator-provisioned components such as Torch and Accelerate; it is not a
+  package lock or package-manager contract; and
+- `mncs-fabric.runtime-capability-observation.v0.1` plus its binding: proof
+  that one exact worker runtime physically exercised a bounded capability such
+  as `sequential-cpu-offload`, before Fabric creates the final receipt.
 
 Worker descriptions carrying a runtime profile use additive
 `mncs-fabric.worker-description.v0.2`; historical v0.1 descriptions remain
@@ -46,3 +52,19 @@ GeForce RTX 4060 Laptop GPU. The runtime observation was ingested before
 dispatch and bound to the resource snapshot, admission decision, execution
 record, and receipt. This is bounded operator-controlled evidence; it is not
 attestation, semantic correctness, or independent evaluation.
+
+## Sequential CPU offload
+
+The consumer field `runtime_supports_sequential_cpu_offload` remains a
+declaration of provider intent/capability. It is not execution proof. An
+explicit sequential-offload request is strongly admitted only when the worker
+has a fresh `sequential-cpu-offload` capability observation bound to the same
+runtime profile and material runtime environment. Without that proof Fabric
+returns `UNKNOWN` and never silently falls back to CPU or full CUDA.
+
+The commissioned Windows runtime reported Torch 2.11.0+cu128 and Accelerate
+1.14.0. Its bounded layered MLP probe used `accelerate.cpu_offload`, executed
+real synchronized CUDA kernels, installed seven offload hooks, retained zero
+persistent CUDA parameter bytes after execution, and produced the same result
+digest as the full-CUDA baseline. This remains provider-runtime evidence, not
+hardware attestation or a claim that every worker supports offload.

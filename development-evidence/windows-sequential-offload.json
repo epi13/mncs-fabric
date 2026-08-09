@@ -1,0 +1,67 @@
+{
+  "schema_version": "mncs-fabric.windows-sequential-offload.v0.1",
+  "record_type": "mncs-fabric.windows-sequential-offload",
+  "claim_boundary": "operator-controlled development evidence; not attestation, correctness, protected custody, independence, conformance, or certification",
+  "limitations": [
+    "The worker and controller share one operator trust domain.",
+    "Fabric does not reserve VRAM or host RAM and runtime proof is time-sensitive.",
+    "Accelerate and Torch remain operator-provisioned provider-runtime components outside Fabric core."
+  ],
+  "fabric_commit": "cbab38bf82378f4e8c0169b9e28721cda50643fd",
+  "worker_fabric_commit": "cbab38bf82378f4e8c0169b9e28721cda50643fd",
+  "worker_identity": "collamore02-windows",
+  "direct_fabric_tls": true,
+  "ssh_tunnel_used": false,
+  "ssh_staged_candidate_material": false,
+  "transfer_status": "ALREADY_PRESENT",
+  "bundle_identity": "291d5f2baf5792a99a5515ffa35f9ffe0048ba6dfdb0edc9b571a38aee530bce",
+  "archive_identity": "sha256:dcf3b5a0c24baf2520fdf42fcdf9046e17b7da84819dd9595fee04a7d13c45b2",
+  "runtime_profile_identity": "sha256:446beab5e8a235ba8a24572c023ca990612d4e310a2764c23c222938c0164ac9",
+  "runtime_environment_identity": "sha256:4865a9d529fbea0ac164cc3bbf58ad32d519f6ec2bf756a39c72233155fd9b4c",
+  "runtime_capability_observation_identity": "sha256:c57129452f4a39cd566131357ab8e0506056aaa2c350ccc6802e3e5ca92ebf8e",
+  "placement_request_identity": "sha256:846a912c8c2467ae4bccec88a48b42fc4cf4eda7b8e7fc70a2826c5fbb053b51",
+  "admission_decision_identity": "sha256:c1db796e0c57eadaf3b19783571aa0c100684638e8e92bfe110185ef146a419a",
+  "resource_snapshot_identity": "sha256:63b59c8beddc322973f432dc46d9f518d4837df1ca01484f99fd7db83ee77d97",
+  "record_identity": "sha256:9c754cba8921e21bd191cfca22d4a6153837a19686af11f639bb11339ba33285",
+  "receipt_identity": "ed5fc338cb3093325759011e2042de0456d46608e358f12f033f6e4d884445cd",
+  "runtime_binding_identity": "sha256:611b09c60aba65a0ad83b3a062b1c3eb791d20e714241adeda6ffb5fefc70363",
+  "runtime": {
+    "python_version": "3.11.0",
+    "torch": "2.11.0+cu128",
+    "torch_cuda": "12.8",
+    "gpu": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "driver": "592.82",
+    "execution_probe": "PASS",
+    "precision_probes": {"float32": "PASS", "float16": "PASS", "bfloat16": "PASS"}
+  },
+  "offload_capability": {
+    "status": "PASS",
+    "actual_mode": "sequential-cpu-offload",
+    "mechanism": "accelerate.cpu_offload",
+    "cuda_execution": "PASS",
+    "offload_hook_count": 7,
+    "persistent_accelerator_parameter_bytes": 0,
+    "cpu_or_meta_parameter_bytes": 100712448,
+    "peak_allocated_bytes": 26402816,
+    "peak_reserved_bytes": 39845888,
+    "host_memory_bytes": 938483712,
+    "result_digest": "sha256:54d3146ce4dc2af9e69e5b613d3ad6eb8589aeb2f9b074c83cafc37af2ef98ec"
+  },
+  "admission": {
+    "mode": "sequential-cpu-offload",
+    "reason_code": "SEQUENTIAL_CPU_OFFLOAD_ELIGIBLE",
+    "effective_accelerator_budget_bytes": 67108864
+  },
+  "execution_outcome": "PASS",
+  "comparison": {
+    "cuda_offload_result": "EXACT",
+    "full_cuda_peak_allocated_bytes": 110346240,
+    "full_cuda_peak_reserved_bytes": 123731968,
+    "full_cuda_persistent_accelerator_parameter_bytes": 100712448,
+    "offload_peak_allocated_bytes": 26402816,
+    "offload_peak_reserved_bytes": 39845888,
+    "offload_persistent_accelerator_parameter_bytes": 0,
+    "offload_duration_seconds": 4.292147,
+    "full_cuda_duration_seconds": 0.048625
+  }
+}

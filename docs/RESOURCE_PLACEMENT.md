@@ -64,9 +64,11 @@ min(observed free VRAM, configured maximum) - reserve
 
 Sequential CPU offload requires executable accelerator evidence, a consumer
 declaration that its runtime supports offload, enough host memory, and a
-minimum accelerator working-memory requirement. It does not require the whole
-model to fit in VRAM. Actual layer movement remains the provider runtime's
-responsibility.
+minimum accelerator working-memory requirement. It also requires a fresh
+`mncs-fabric.runtime-capability-observation.v0.1` for the exact worker runtime
+when strong offload admission is requested. A consumer boolean alone is not
+physical proof. It does not require the whole model to fit in VRAM. Actual
+layer movement remains the provider runtime's responsibility.
 
 Explicit accelerator/offload requests return `UNKNOWN` when requirements are
 not established; they do not silently run on CPU. AUTO admission records the
@@ -92,3 +94,10 @@ Neither consumer needs to invent Fabric capability names or reconstruct a
 receipt. GIMP's GPU reserve, effective budget, real kernel probe, and separate
 CPU/offload observations informed this boundary, but its vision-specific
 runtime remains outside Fabric.
+
+The first three-physical-node cohort comprised the Fedora controller/local
+worker, `fabric-worker-01`, and `collamore02-windows`. One identical portable
+bundle produced the same declared result artifact on all three nodes and
+reconciled PASS. This is operator-controlled heterogeneous development
+evidence, not a four-node Fedora milestone, independent evaluation, or
+certification.

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from mncs_fabric import __version__
 
 from mncs_fabric.api import ConsumerContext, FabricClient, LocalWorkerConfig, PlacementRequest
 from mncs_fabric.artifacts import build_manifest
@@ -92,4 +93,4 @@ class PublicContractTests(unittest.TestCase):
             self.assertEqual(result["placement_admission"]["worker_identity"], "worker-placement")
             reference = result["receipt"]["placement"]["execution_placement_reference"]
             self.assertEqual(reference["placement_request_identity"], PlacementRequest(execution_device="cpu").placement_request_identity)
-            self.assertEqual(result["receipt"]["runner"]["runner_version"], "0.2.0a6")
+            self.assertEqual(result["receipt"]["runner"]["runner_version"], __version__)

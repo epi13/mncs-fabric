@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0a7 - physical sequential offload and three-node heterogeneous evidence
+
+- add identity-addressable runtime-environment and runtime-capability evidence
+  for sequential CPU offload without adding provider dependencies to Fabric;
+- require fresh exact-runtime offload proof for explicit and AUTO sequential
+  offload admission, while retaining consumer capability declaration as intent;
+- preserve Windows platform user identity variables in bounded child execution
+  environments so Accelerate/Torch Windows workloads run through Fabric;
+- record operator-controlled Windows sequential-offload evidence, a Fedora /
+  Fedora / Windows portable three-node collection, and bounded timeout/stale
+  resource fault profiles; and
+- advertise the runtime-capability/offload evidence path as physically proven
+  only within that bounded development evidence scope.
+
 ## 0.2.0a6 - runtime-aware placement admission and Windows CUDA evidence
 
 - bind a validated worker runtime observation to accelerator admission without

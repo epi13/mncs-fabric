@@ -52,11 +52,10 @@ unsupported.
 Resource placement is covered by `fabric-validation` through dependency-free
 fixtures for resource snapshots, stale/unknown handling, explicit no-fallback
 admission, deterministic identities, and receipt references. The provider
-advertises `resource-observation`, `placement-admission`, and
-`placement-evidence`; it does not advertise physical CUDA or sequential-
-offload evidence where no executable accelerator probe was performed. Physical
-resource runs remain optional operator-controlled evidence and are never
-required by CI.
+advertises `resource-observation`, `placement-admission`,
+`placement-evidence`, `runtime-capability-evidence`, and
+`sequential-offload-evidence`. Physical resource/offload runs remain
+operator-controlled evidence and are never required by CI.
 
 The provider also validates worker-description, liveness, generic collection,
 and sanitized physical worker-state evidence. This is offline structural
@@ -64,10 +63,19 @@ validation of operator-controlled records; Forge does not operate or certify
 the private Fedora node.
 
 Runtime-profile and runtime-observation fixtures are validated offline. The
-provider advertises the Windows launcher as a static safety surface, but does
-not advertise physical Windows, CUDA, or sequential-offload evidence without
-operator-collected records. An explicit Windows endpoint is required for any
-future direct Fedora-to-Windows run; Forge CI never scans or contacts the LAN.
+provider advertises the Windows launcher as a static safety surface and
+validates physical Windows/CUDA/offload records when operator-collected
+records are present. An explicit Windows endpoint is required for any direct
+Fedora-to-Windows run; Forge CI never scans or contacts the LAN.
+
+The current provider also validates the additive runtime-environment and
+runtime-capability contracts. The checked-in Windows sequential-offload record
+contains a synchronized CUDA probe, an Accelerate offload observation, exact
+runtime/placement/bundle/record/receipt identities, and a bounded full-CUDA
+comparison. The three-node evidence record validates the Fedora local,
+`fabric-worker-01`, and `collamore02-windows` collection and cross-OS
+reconciliation. These are offline checks of operator-controlled development
+records, not independent physical verification.
 
 The checked-in `development-evidence/fedora-resource-placement.json` is a
 bounded direct-mTLS CPU-placement run with native bundle transfer and a
