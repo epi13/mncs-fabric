@@ -5,7 +5,7 @@ import json
 import unittest
 from pathlib import Path
 
-from mncs_fabric.evidence import validate_native_bundle_two_host_evidence, validate_persistent_two_host_evidence, validate_two_host_evidence
+from mncs_fabric.evidence import validate_native_bundle_two_host_evidence, validate_persistent_two_host_evidence, validate_physical_evidence, validate_two_host_evidence
 
 
 class PhysicalEvidenceTests(unittest.TestCase):
@@ -48,3 +48,10 @@ class PhysicalEvidenceTests(unittest.TestCase):
             "limitations": ["operator-controlled"],
         }
         self.assertEqual(validate_native_bundle_two_host_evidence(evidence)["outcome"], "FAIL")
+
+    def test_worker_state_evidence_validates_description_collection_and_loss(self) -> None:
+        evidence = json.loads((Path(__file__).parents[1] / "development-evidence/fedora-worker-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(validate_physical_evidence(evidence)["outcome"], "PASS")
+        tampered = copy.deepcopy(evidence)
+        tampered["worker_description"]["worker_identity"] = "substituted-worker"
+        self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")

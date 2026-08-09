@@ -22,6 +22,7 @@ from .contracts import (
 )
 from .controller import LocalController, NetworkController
 from .bundle_transfer import transfer_archive
+from .collections import build_execution_collection, validate_execution_collection
 from .enrollment import TrustStore
 from .errors import ProtocolError, ValidationError
 from .protocol import dispatch_request_identity
@@ -35,6 +36,8 @@ from .resources import (
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .worker import LocalWorker
+from .models import validate_job_plan
+from .scheduler import WorkerSlot, schedule
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +98,7 @@ class RemoteWorkerConfig:
             "concurrency_limit": self.concurrency_limit,
             "transport": "tls-mutual-authenticated",
             "resource_snapshot_identity": self.resource_snapshot.get("resource_snapshot_identity") if self.resource_snapshot else None,
+            "capability_source": "operator-declared",
         }
 
 
@@ -193,9 +197,19 @@ class FabricClient:
         self.remote_configs[config.worker_id] = config
         return {"outcome": "PASS", **config.public_dict()}
 
+    def refresh_worker(self, worker_id: str) -> dict[str, Any]:
+        """Refresh one remote worker through authenticated Fabric protocol."""
+
+        if worker_id not in self.remote_configs:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        return self.network.refresh_remote(worker_id)
+
+    def refresh_workers(self) -> list[dict[str, Any]]:
+        return self.network.refresh_all()
+
     def workers(self) -> list[dict[str, Any]]:
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
-        remote = [{"worker_id": config.worker_id, "capabilities": list(config.capabilities), "concurrency_limit": config.concurrency_limit, "available": True, "transport": "tls-mutual-authenticated", "source": "remote", "resource_snapshot": config.resource_snapshot, "resource_snapshot_identity": config.resource_snapshot.get("resource_snapshot_identity") if config.resource_snapshot else None} for config in (self.remote_configs[key] for key in sorted(self.remote_configs))]
+        remote = [{**self.network.worker_state(worker_id), "source": "remote"} for worker_id in sorted(self.remote_configs)]
         return local + remote
 
     def execute(
@@ -222,6 +236,8 @@ class FabricClient:
                 rid = request_id or dispatch_request_identity(plan=self.service.validate_plan(plan), manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value) + f":{index}"
                 outputs.append(self.local.dispatch_via(InProcessTransport(worker), plan, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value))
             return [_consumer_result(response, context) for response in outputs]
+        if worker_id is None and self.local.workers and self.remote_configs:
+            return self._execute_registered(plan, manifest, replicas=replicas, request_id=request_id, challenge=challenge, context=context, context_value=context_value, execution_bundle=execution_bundle, placement_value=placement_value)
         if worker_id is not None or self.remote_configs:
             if worker_id is not None and worker_id not in self.remote_configs:
                 raise ProtocolError(f"worker is not registered: {worker_id}")
@@ -233,6 +249,35 @@ class FabricClient:
             return [_consumer_result(response, context) for response in responses]
         responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
         return [_consumer_result(response, context) for response in responses]
+
+    def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, placement_value: dict[str, Any] | None) -> list[dict[str, Any]]:
+        """Schedule across registered local and remote workers deterministically."""
+
+        checked = validate_job_plan(plan)
+        if placement_value is not None:
+            self.network.refresh_all()
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None)) for worker_id, worker in self.local.workers.items()]
+        remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items()]
+        decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
+        if decision.disposition != "PASS":
+            return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]
+        outputs: list[dict[str, Any]] = []
+        for worker_id in decision.worker_ids:
+            rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+            rid = rid + ":" + worker_id
+            try:
+                if worker_id in self.local.workers:
+                    response = self.local.dispatch_via(InProcessTransport(self.local.workers[worker_id]), checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value)
+                else:
+                    transport, _ = self.network.remote_workers[worker_id]
+                    remote_bundle = execution_bundle or self.bundle_links.get(worker_id)
+                    response = self.network.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=rid, challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value)
+                outputs.append(_consumer_result(response, context))
+            except (ProtocolError, OSError, TimeoutError) as exc:
+                if worker_id in self.remote_configs:
+                    self.network._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
+                outputs.append({"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": "UNKNOWN", "worker_identity": worker_id, "request_identity": rid, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": "WORKER_UNAVAILABLE", "diagnostic": str(exc)})
+        return outputs
 
     def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
         return self.execute(plan, manifest, replicas=replicas, consumer_context=consumer_context, placement=placement)
@@ -249,6 +294,15 @@ class FabricClient:
 
     def collect(self, results: list[Mapping[str, Any]]) -> list[dict[str, Any]]:
         return [dict(result) for result in results]
+
+    def collect_work_items(self, work_items: list[Mapping[str, Any]], results: list[Mapping[str, Any]]) -> dict[str, Any]:
+        """Collect generic identified work items without interpreting domains."""
+
+        collection = build_execution_collection(work_items, results)
+        return validate_execution_collection(collection)
+
+    def verify_collection(self, collection: object) -> dict[str, Any]:
+        return validate_execution_collection(collection)
 
     def reconcile(self, results: list[Mapping[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:
         records = [dict(result["record"]) for result in results if isinstance(result.get("record"), dict)]

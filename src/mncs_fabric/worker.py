@@ -18,6 +18,7 @@ from .resources import build_placement_reference, capture_resource_snapshot, eva
 from .protocol import dispatch_binding_identity, make_envelope, validate_envelope
 from .store import FabricLedger
 from .receipts import build_execution_receipt
+from .worker_state import build_worker_description
 
 
 class LocalWorker:
@@ -41,6 +42,13 @@ class LocalWorker:
     def resource_snapshot(self) -> dict[str, Any]:
         node = self.node()
         return capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
+
+    def description(self) -> dict[str, Any]:
+        """Return a fresh bounded description owned by this worker."""
+
+        node = self.node()
+        snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
+        return build_worker_description(worker_id=self.worker_id, node=node, resource_snapshot=snapshot)
 
     def announcement(self, controller_id: str) -> dict[str, Any]:
         created = utc_now()
@@ -68,6 +76,12 @@ class LocalWorker:
         message = validate_envelope(envelope, now=now)
         if message["message_type"] in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
             return self._handle_bundle_message(message)
+        if message["message_type"] == "worker.describe.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("description is bound to a different worker")
+            description = self.description()
+            self.ledger.append("protocol.description", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "description": description})
+            return self._response(message, "worker.describe.result", {"description": description})
         if message["message_type"] != "dispatch.request":
             raise ProtocolError("worker accepts dispatch.request messages only")
         if message["worker_id"] != self.worker_id:

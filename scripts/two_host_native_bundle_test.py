@@ -21,6 +21,7 @@ from mncs_fabric.api import ConsumerContext, FabricClient, RemoteWorkerConfig, P
 from mncs_fabric.artifacts import verify_manifest
 from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.challenges import ChallengeReplayStore, issue_execution_challenge
+from mncs_fabric.collections import build_work_item
 from mncs_fabric.enrollment import TrustStore
 from mncs_fabric.errors import FabricError, ProtocolError
 from mncs_fabric.io import load_json, write_json
@@ -101,13 +102,20 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     controller.register_remote_worker(RemoteWorkerConfig(args.worker_id, args.worker_host, args.worker_port, tuple(sorted(capability_names(node))), pki["ca"], pki["controller"], pki["controller_key"], output / "controller-trust.jsonl", timeout=8, resource_snapshot=remote_resources))
     controller.register_local_worker(LocalWorker("fabric-controller-local", source_root, output / "local-worker.jsonl"))
     pid: int | None = None
+    pid_after_replication: int | None = None
     pid_stable = False
     requests: list[dict[str, object]] = []
     replay_store = ChallengeReplayStore(output / "challenge-replay.jsonl")
     context = ConsumerContext("MNEL", "sha256:" + "1" * 64, experiment_identity="sha256:" + "2" * 64, forge_workflow_identity="sha256:" + "3" * 64, provider_identity="sha256:" + "4" * 64)
     placement = PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=64 * 1024 * 1024)
+    description_state: dict[str, object] | None = None
+    loss_state: dict[str, object] | None = None
+    recovery_state: dict[str, object] | None = None
+    incomplete: dict[str, object] | None = None
+    replicated: list[dict[str, object]] = []
     try:
-        pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port, max_requests=9, idle_timeout=30, bundle_root=remote_root + "/empty-bundle")
+        pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port, max_requests=24, idle_timeout=30, bundle_root=remote_root + "/empty-bundle")
+        description_state = controller.refresh_worker(args.worker_id)
         transfer = controller.ensure_bundle(args.worker_id, archive, expected_bundle_identity=bundle.bundle_identity)
         started = time.perf_counter()
         first = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context, placement=placement)
@@ -125,7 +133,32 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         requests.append({"request_id": "native-2", "disposition": fresh[0]["disposition"], "record_identity": fresh[0]["record_identity"], "receipt_identity": fresh[0]["receipt_identity"], "challenge_identity": challenge["challenge_identity"], "replay_identity": replay.replay_receipt["replay_identity"] if replay.replay_receipt else None})
         local = controller.execute(plan, manifest, worker_id="fabric-controller-local", consumer_context=context, placement=placement)[0]
         reconciliation = controller.reconcile([local, first[0]])
+        replicated = controller.replicate(plan, manifest, replicas=2, consumer_context=context, placement=placement)
+        replicated_reconciliation = controller.reconcile(replicated)
+        collection_items = [
+            build_work_item(job_identity=plan["job_identity"], partition_identity="sha256:" + "a" * 64, bundle_identity=bundle.bundle_identity, consumer_context_identity=context.context_identity, placement_request_identity=placement.placement_request_identity),
+            build_work_item(job_identity=plan["job_identity"], partition_identity="sha256:" + "b" * 64, bundle_identity=bundle.bundle_identity, consumer_context_identity=context.context_identity, placement_request_identity=placement.placement_request_identity),
+        ]
+        collection_results = [{"work_item_identity": item["work_item_identity"], "disposition": result.get("disposition"), "worker_identity": result.get("worker_identity"), "request_identity": result.get("request_identity"), "record_identity": result.get("record_identity"), "receipt_identity": result.get("receipt_identity")} for item, result in zip(collection_items, replicated)]
+        collection = controller.collect_work_items(collection_items, collection_results)
         pid_stable = remote.ssh(f"ps -o pid= -p {pid} 2>/dev/null || true").strip() == str(pid)
+
+        # Stop only the Fabric test process.  The failed refresh is an
+        # authenticated-network observation and therefore becomes UNKNOWN,
+        # not a fabricated execution failure.
+        _stop_worker(remote, remote_root, pid)
+        pid = None
+        try:
+            controller.refresh_worker(args.worker_id)
+            loss_state = {"availability": "UNEXPECTED_AVAILABLE"}
+        except (FabricError, OSError, TimeoutError, ProtocolError) as exc:
+            loss_state = {"availability": controller.network.worker_state(args.worker_id)["availability"], "disposition": "UNKNOWN", "diagnostic": type(exc).__name__}
+        incomplete = controller.replicate(plan, manifest, replicas=2, consumer_context=context, placement=placement)[0]
+
+        pid = _start_worker(remote, remote_root, worker_id=args.worker_id, controller_id=args.controller_id, host=args.worker_host, port=args.worker_port, max_requests=8, idle_timeout=30, bundle_root=remote_root + "/empty-bundle")
+        recovery_state = controller.refresh_worker(args.worker_id)
+        duplicate_after_restart = controller.execute(plan, manifest, worker_id=args.worker_id, request_id="native-1", consumer_context=context, placement=placement)[0]
+        pid_after_replication = int(remote.ssh(f"ps -o pid= -p {pid} 2>/dev/null || true").strip() or "0")
 
         revoked = TrustStore(output / "worker-trust-revoked.jsonl")
         revoked.enroll("controller", args.controller_id, _cert_fingerprint(pki["controller"]), metadata={"experiment": "native-bundle-two-host"})
@@ -141,8 +174,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         _stop_worker(remote, remote_root, pid)
 
     evidence = {
-        "schema_version": "mncs-fabric.native-bundle-two-host.v0.1",
-        "record_type": "mncs-fabric.native-bundle-two-host",
+        "schema_version": "mncs-fabric.physical-worker-state.v0.1",
+        "record_type": "mncs-fabric.physical-worker-state",
         "experiment_id": "native-bundle-two-host-" + run_id,
         "fabric_commit": fabric_commit,
         "worker_fabric_commit": fabric_commit,
@@ -154,7 +187,9 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "worker_identity": args.worker_id,
         "worker_hostname": args.expected_hostname,
         "persistent_pid_stable": pid_stable,
+        "persistent_pid_after_recovery": pid_after_replication,
         "bundle": {"logical_identity": bundle.bundle_identity, "archive_identity": bundle.archive_identity, "transfer_status": transfer["status"]},
+        "worker_description": description_state.get("description") if isinstance(description_state, dict) else None,
         "resource_snapshot": first[0].get("resource_snapshot", remote_resources),
         "resource_snapshot_preflight": remote_resources,
         "placement": {"request_identity": placement.placement_request_identity, "resource_snapshot_identity": first[0].get("resource_snapshot", {}).get("resource_snapshot_identity"), "admission_decision_identity": first[0].get("placement_admission", {}).get("decision_identity"), "mode": first[0].get("placement_admission", {}).get("admission_mode")},
@@ -163,9 +198,13 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         "local_record_identity": local["record_identity"],
         "remote_record_identity": first[0]["record_identity"],
         "reconciliation": reconciliation,
+        "worker_state": {"description": description_state, "loss": loss_state, "recovery": recovery_state},
+        "replication": {"results": [{"worker_identity": item.get("worker_identity"), "disposition": item.get("disposition"), "record_identity": item.get("record_identity")} for item in replicated], "reconciliation": replicated_reconciliation},
+        "collection": collection,
+        "fault_corpus": {"worker_loss": loss_state, "incomplete_replication": incomplete, "duplicate_after_restart": duplicate_after_restart["disposition"]},
         "adversarial": {"duplicate_request": requests[1]["disposition"], "conflicting_replay": requests[2]["disposition"], "revoked_controller": revoked_disposition, "challenge_replay": requests[3]["replay_identity"] is not None},
         "claim_boundary": "operator-controlled development evidence; native bundle transfer and direct mTLS observations only; no semantic consumer verdict, sandbox, correctness, custody, independence, conformance, or certification claim",
-        "limitations": ["The Fabric source, bootstrap trust, and certificates were staged through SSH; candidate execution material was transferred by Fabric.", "The two hosts share one operator trust domain.", "Consumer context is provenance-only and does not establish MNEL or RAVEL semantic truth."],
+        "limitations": ["The Fabric source, bootstrap trust, and certificates were staged through SSH; candidate execution material was transferred by Fabric.", "The two hosts share one operator trust domain.", "Worker descriptions and resources are authenticated self-reports, not attestation.", "Consumer context is provenance-only and does not establish MNEL or RAVEL semantic truth."],
     }
     write_json(output / "native-bundle-experiment-evidence.json", evidence)
     return evidence

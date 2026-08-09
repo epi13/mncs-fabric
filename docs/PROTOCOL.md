@@ -31,8 +31,9 @@ a validated fixed-argv job plan and matching artifact manifest identity; they
 do not carry arbitrary shell commands. Unknown protocol versions fail closed.
 
 The implemented local message families are worker announcement/capabilities,
-dispatch request/acknowledgement, execution result, status, collection, and
-replay disposition. Optional HMAC-SHA256 uses an operator-supplied key ID and
+authenticated worker description, dispatch request/acknowledgement, execution
+result, status, collection, and replay disposition. Optional HMAC-SHA256 uses
+an operator-supplied key ID and
 rejects unknown, inactive, revoked, wrong, or tampered keys. It is message
 authentication, not encrypted transport.
 
@@ -67,6 +68,13 @@ stable dispatch request identity. Explicit accelerator and sequential-offload
 requests remain `UNKNOWN` when executable runtime/resource evidence is not
 established; there is no silent CPU fallback. Placement references in a
 receipt remain observations, not hardware attestation.
+
+`worker.describe.request` / `worker.describe.result` are additive message
+types. The result carries the bounded `mncs-fabric.worker-description.v0.1`
+record, including node/resource/public-contract references and capture time.
+The controller validates the logical worker binding and retains the result in
+its append-only ledger. It derives `mncs-fabric.worker-liveness.v0.1` from
+authenticated contact; an expired lease is `UNKNOWN`, not presumed available.
 
 An optional EA-NEXT-005 challenge is carried as a validated dispatch companion.
 Its exact subject/candidate/bundle/policy/runner scope, nonce, and validity

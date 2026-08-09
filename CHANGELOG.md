@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0a4 - worker state and execution collections
+
+- added authenticated worker descriptions containing bounded worker-observed
+  node/resource/public-contract references;
+- added expiring liveness state and controller-side remote observation refresh;
+- added generic identity-addressed work-item and execution-collection
+  contracts with explicit missing and conflicting-result dispositions; and
+- added public-facade physical worker-state, scheduling, and loss/recovery
+  evidence paths.
+
 ## Unreleased
 
 - add `0.2.0a3` provider-neutral resource snapshots, placement requests,

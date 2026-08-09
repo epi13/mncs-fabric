@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.execution-collection.v0.1",
+  "type": "object",
+  "required": ["schema_version", "declaration_identity", "work_item_identities", "entries", "outcome", "collection_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.execution-collection.v0.1"},
+    "declaration_identity": {"type": "string"},
+    "work_item_identities": {"type": "array", "minItems": 1},
+    "entries": {"type": "array"},
+    "outcome": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+    "collection_identity": {"type": "string"}
+  }
+}

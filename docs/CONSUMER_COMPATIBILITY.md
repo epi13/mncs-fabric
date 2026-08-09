@@ -29,3 +29,10 @@ Placement migration: MNEL/RAVEL may translate their own resource budget into
 `PlacementRequest` and continue to own provider/runtime decisions. Fabric
 returns worker snapshot and admission identities; consumers may attach a
 runtime-produced placement observation through the public binding helper.
+
+Worker-state migration: consumers should treat `RemoteWorkerConfig` as endpoint
+and trust configuration, not as the source of current capabilities. Call
+`FabricClient.refresh_worker()` before resource-sensitive work and retain the
+returned description/resource/liveness identities. `collect_work_items()` can
+collect MNEL partitions or RAVEL trials as opaque work items; Fabric reports
+completeness and identity conflicts without interpreting their semantics.

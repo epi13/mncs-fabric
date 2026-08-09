@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a3` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a4` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -19,6 +19,12 @@ capability observations to the threat surface. Transfer is typed, size-bounded,
 sequenced, independently verified by the worker, and atomically published;
 partial material is unavailable to execution. These controls protect package
 integrity and protocol state, not execution isolation or worker honesty.
+
+Worker self-description adds an authenticated but worker-reported view of
+capabilities, resources, and service references. Authentication binds the
+report to an enrolled logical worker; it is not attestation or independent
+observation. The controller keeps every description/resource snapshot as
+immutable history and expires availability after a bounded lease.
 
 Resource placement adds consumer context and dynamic capacity to the protocol.
 Fabric rejects malformed or substituted placement requests and binds the
@@ -65,6 +71,11 @@ The current implementation detects or bounds:
   certificate-fingerprint enrollment, logical identity binding, revocation,
   bounded frames, and truncated/oversized/canonical framing rejection; and
 - remote worker loss and incomplete replicated responses as explicit `UNKNOWN`.
+- worker-description substitution, wrong-worker resource binding, stale
+  descriptions, expired liveness, and scheduling from an exact retained
+  observation;
+- missing work items, exact duplicate collection results, and conflicting
+  duplicate results with `UNKNOWN`/`FAIL` dominance; and
 - scoped EA-NEXT-005 challenge identity, nonce/window copying into receipts,
   single-use replay consumption, and persisted replay-store linkage;
 
@@ -87,6 +98,13 @@ The current implementation does not prevent:
 - resource exhaustion, VRAM/RAM changes between admission and execution,
   CUDA architecture/kernel incompatibility, and placement-observation
   substitution;
+- authenticated malicious workers can lie about capabilities, resources,
+  liveness, or service version; Fabric records the claim but cannot establish
+  its truth;
+- description/resource TOCTOU remains because observations are not locks or
+  hardware reservations; and
+- a consumer can lie about the meaning of a work-item or partition identity;
+  Fabric only preserves the opaque reference;
 - a controller selectively omitting unfavorable records;
 - shared-operator collusion across every machine;
 - compromise of GitHub, package distribution, or the development workstation; or

@@ -15,6 +15,13 @@ receipt reconstruction is not required. `ConsumerContext` retains opaque
 workload, experiment, provider, partition, and Forge workflow references as
 provenance only.
 
+The common worker-state profiles are `mncs-fabric.worker-description.v0.1`,
+`mncs-fabric.worker-liveness.v0.1`, `mncs-fabric.work-item.v0.1`, and
+`mncs-fabric.execution-collection.v0.1`. They let MNEL and RAVEL retain
+opaque workload/partition references while Fabric owns authenticated worker
+observations and collection completeness; consumer semantic, training,
+question, and aggregation authority remains outside Fabric.
+
 ## Native bundle transfer
 
 `mncs-fabric.bundle-transfer.v0.1` transfers a verified EA-NEXT-002 archive in

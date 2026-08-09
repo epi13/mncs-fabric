@@ -15,8 +15,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
-PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.4"}
-SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "placement-evidence", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity"]
+PROVIDER = {"id": "mncs-fabric-local", "name": "MNCS Fabric local validation", "identity": "mncs-fabric-local-v1", "version": "0.5"}
+SUPPORTED_CONSTRUCTS = ["fabric-unit-suite", "fabric-compile", "portable-example", "receipt-compatibility", "execution-bundle-compatibility", "execution-challenge-compatibility", "bounded-protocol-framing", "tls-loopback", "enrollment-revocation", "replay-adversarial", "scheduler-reconciliation", "resource-observation", "placement-admission", "placement-evidence", "remote-worker-description", "remote-resource-refresh", "worker-liveness", "execution-collection", "collection-completeness", "physical-fault-corpus", "two-host-harness-static-validation", "two-host-evidence-validation", "persistent-worker-evidence", "public-contract-validation", "public-consumer-api", "consumer-provenance-binding", "native-bundle-transfer", "bundle-cache-integrity"]
 
 
 def response(request: dict[str, object], status: str, summary: str, *, limitations: list[str] | None = None, witnesses: list[object] | None = None) -> dict[str, object]:
@@ -40,6 +40,9 @@ def run_validation() -> tuple[str, str, list[object]]:
     from mncs_fabric.io import load_json
     from mncs_fabric.service import FabricService
     from mncs_fabric.resources import PlacementRequest, ResourceSnapshot, evaluate_placement, validate_placement_observation
+    from mncs_fabric.collections import build_execution_collection, build_work_item, validate_execution_collection
+    from mncs_fabric.worker import LocalWorker
+    from mncs_fabric.worker_state import validate_worker_description
     service = FabricService()
     public_contract = build_public_contract(__import__("mncs_fabric").__version__)
     validate_public_contract(public_contract)
@@ -47,10 +50,21 @@ def run_validation() -> tuple[str, str, list[object]]:
         return "FAIL", "public contract does not advertise implemented native bundle transfer", []
     if public_contract["features"]["resource_observation"] is not True or public_contract["features"]["placement_request"] is not True:
         return "FAIL", "public contract does not advertise resource placement support", []
+    if not all(public_contract["features"].get(feature) is True for feature in ("remote_worker_description", "remote_resource_refresh", "worker_liveness", "execution_collections")):
+        return "FAIL", "public contract does not advertise worker-state and collection support", []
     snapshot = ResourceSnapshot(worker_identity="forge-resource", captured_at="2099-01-01T00:00:00Z", host_memory_total_bytes=8 * 1024**3, host_memory_available_bytes=4 * 1024**3, cpu_logical_count=2, architecture="fixture", accelerators=(), observation_source="forge-fixture").to_dict()
     admission = evaluate_placement(PlacementRequest(execution_device="cpu", minimum_host_memory_bytes=1024), snapshot)
     if admission["disposition"] != "PASS":
         return "FAIL", "resource placement fixture did not admit bounded CPU execution", [{"admission": admission}]
+    with tempfile.TemporaryDirectory(prefix="mncs-fabric-state-forge-") as directory:
+        root = Path(directory)
+        bundle_root = root / "bundle"
+        bundle_root.mkdir()
+        description = LocalWorker("forge-worker", bundle_root, root / "worker.jsonl").description()
+        validate_worker_description(description, expected_worker_id="forge-worker")
+        item = build_work_item(job_identity="sha256:" + "1" * 64)
+        collection = build_execution_collection([item], [{"work_item_identity": item["work_item_identity"], "disposition": "PASS", "record_identity": "sha256:" + "2" * 64}])
+        validate_execution_collection(collection)
     with tempfile.TemporaryDirectory(prefix="mncs-fabric-forge-") as directory:
         output = Path(directory)
         manifest = verify_manifest(ROOT / "examples/portable-python/bundle", load_json(ROOT / "examples/portable-python/artifact-manifest.json"))
@@ -67,13 +81,13 @@ def run_validation() -> tuple[str, str, list[object]]:
     if receipt_snapshot.get("unsupported_versions") != "fail-closed" or bundle_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted" or challenge_snapshot.get("unsupported_version_behavior") != "explicit UNKNOWN; never silently accepted":
         return "FAIL", "compatibility snapshots are not fail-closed", []
     evidence_reports = []
-    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json", ROOT / "development-evidence/fedora-native-bundle-two-host.json", ROOT / "development-evidence/fedora-resource-placement.json"):
+    for evidence_path in (ROOT / "development-evidence/fedora-two-host-phase1.json", ROOT / "development-evidence/fedora-persistent-two-host.json", ROOT / "development-evidence/fedora-native-bundle-two-host.json", ROOT / "development-evidence/fedora-resource-placement.json", ROOT / "development-evidence/fedora-worker-state.json"):
         if evidence_path.exists():
             evidence_report = validate_physical_evidence(json.loads(evidence_path.read_text(encoding="utf-8")))
             evidence_reports.append({"path": str(evidence_path.relative_to(ROOT)), "report": evidence_report})
             if evidence_report["outcome"] != "PASS":
                 return "FAIL", "sanitized physical evidence failed validation", [{"operation": "physical-evidence-validation", "report": evidence_report, "path": str(evidence_path.relative_to(ROOT))}]
-    return "PASS", "Fabric suite, public contract, consumer API, native bundle transfer, receipt/bundle/challenge compatibility, TLS loopback, replay checks, resource observation/admission, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "public_contract": public_contract["contract_identity"], "resource_placement": "fixture-covered; accelerator execution remains optional", "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
+    return "PASS", "Fabric suite, public contract, consumer API, worker description/liveness, generic collections, native bundle transfer, receipt/bundle/challenge compatibility, TLS loopback, replay checks, resource observation/admission, and sanitized physical evidence validation passed", [{"operation": "fabric-validation", "tests": result.testsRun, "public_contract": public_contract["contract_identity"], "worker_state": "description, refresh, liveness, and collection fixtures covered", "resource_placement": "fixture-covered; accelerator execution remains optional", "tls": "covered by unittest", "challenge": "covered by unittest", "physical_evidence": evidence_reports}]
 
 
 def main() -> int:

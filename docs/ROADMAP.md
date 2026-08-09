@@ -47,11 +47,18 @@ does not establish independent freshness or custody.
 - [x] stable tie breaking and explicit unsupported disposition;
 - [x] simple in-process and registered-transport replicated dispatch ordering;
 - [ ] four-node Fedora fabric;
-- sharded experiment collection;
+- [~] generic execution collection is implemented; semantic sharded experiment
+  scheduling remains consumer-owned;
 - [~] node-loss and delayed-result handling (explicit UNKNOWN for transport loss);
 - scaling measurements separated from semantic evidence;
 - [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
 - [~] physical two-node public-facade scheduling and recovery evidence;
+- [x] authenticated remote worker self-description and immutable refresh history;
+- [x] bounded worker liveness with explicit physical loss/recovery evidence;
+- [~] physical two-node public-facade scheduling/recovery is demonstrated for
+  CPU placement; four-node operation remains incomplete;
+- [~] generic identified execution collections are implemented; semantic
+  sharded workloads remain consumer-owned and untested;
 - [x] identity-addressable host/accelerator resource observations with
   explicit freshness and unknown-value handling;
 - [x] provider-neutral CPU/full-accelerator/sequential-offload admission
@@ -72,6 +79,7 @@ does not establish independent freshness or custody.
 ## Phase 4 — controlled fault injection
 
 - [~] bounded dropped, delayed, and duplicated request controls at the transport test boundary;
+- [x] physical worker-stop/restart, incomplete-replication, and duplicate-after-restart corpus;
 - corrupted bundles and checkpoints;
 - worker termination and restart;
 - capability disappearance;

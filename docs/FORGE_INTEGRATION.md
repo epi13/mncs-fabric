@@ -58,6 +58,11 @@ offload evidence where no executable accelerator probe was performed. Physical
 resource runs remain optional operator-controlled evidence and are never
 required by CI.
 
+The provider also validates worker-description, liveness, generic collection,
+and sanitized physical worker-state evidence. This is offline structural
+validation of operator-controlled records; Forge does not operate or certify
+the private Fedora node.
+
 The checked-in `development-evidence/fedora-resource-placement.json` is a
 bounded direct-mTLS CPU-placement run with native bundle transfer and a
 sanitized worker resource snapshot. It records the Quadro P620 as discovery

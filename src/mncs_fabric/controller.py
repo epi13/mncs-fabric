@@ -18,6 +18,14 @@ from .scheduler import WorkerSlot, schedule
 from .store import FabricLedger
 from .transport import EnvelopeTransport, InProcessTransport
 from .worker import LocalWorker
+from .worker_state import (
+    DESCRIPTION_LEASE_SECONDS,
+    build_liveness_observation,
+    liveness_is_fresh,
+    validate_liveness,
+    worker_description_is_fresh,
+    validate_worker_description,
+)
 
 
 class LocalController:
@@ -42,7 +50,8 @@ class LocalController:
         for worker_id in sorted(self.workers):
             worker = self.workers[worker_id]
             snapshot = worker.resource_snapshot()
-            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True, "resource_snapshot": snapshot})
+            description = worker.description()
+            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True, "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"]})
         return result
 
     def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -135,6 +144,8 @@ class NetworkController(LocalController):
     def __init__(self, controller_id: str, state_path: Path) -> None:
         super().__init__(controller_id, state_path)
         self.remote_workers: dict[str, tuple[EnvelopeTransport, WorkerSlot]] = {}
+        self.remote_descriptions: dict[str, dict[str, Any]] = {}
+        self.remote_liveness: dict[str, dict[str, Any]] = {}
         self._remote_lock = threading.Lock()
 
     def register_remote(self, worker_id: str, capabilities: frozenset[str], transport: EnvelopeTransport, *, concurrency_limit: int = 1, resource_snapshot: dict[str, Any] | None = None) -> None:
@@ -143,11 +154,82 @@ class NetworkController(LocalController):
         if resource_snapshot is not None:
             validate_resource_snapshot(resource_snapshot)
         self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=worker_id, capabilities=capabilities, concurrency_limit=concurrency_limit, resource_snapshot=resource_snapshot))
+        self.remote_liveness[worker_id] = build_liveness_observation(worker_id=worker_id, state="UNKNOWN", observed_at=utc_now(), description_identity=None, lease_seconds=DESCRIPTION_LEASE_SECONDS)
+
+    def describe_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None) -> dict[str, Any]:
+        """Request one authenticated, bounded worker description."""
+
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+        request = request_id or "describe-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "scope": "current-worker-description"})[7:]
+        scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.describe.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request, "scope": "current-worker-description"})
+        envelope = make_envelope("worker.describe.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request, job_id="worker-description", nonce="describe-" + sha256_identity({"request": request, "worker": worker_id})[7:55], payload={"description_request_identity": scope_identity}, created_at=created, expires_at=expires)
+        self.ledger.append("worker.description.request", envelope)
+        response = validate_envelope(transport.request(envelope))
+        if response.get("message_type") != "worker.describe.result" or response.get("worker_id") != worker_id or response.get("controller_id") != self.controller_id:
+            raise ProtocolError("worker description response identity is invalid")
+        description = validate_worker_description(response["payload"].get("description"), expected_worker_id=worker_id)
+        self.ledger.append("worker.description", description)
+        return description
+
+    def _set_remote_state(self, worker_id: str, *, description: dict[str, Any] | None, state: str, failure: str | None = None) -> dict[str, Any]:
+        if worker_id not in self.remote_workers:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        transport, slot = self.remote_workers[worker_id]
+        liveness = build_liveness_observation(worker_id=worker_id, state=state, observed_at=utc_now(), description_identity=description.get("description_identity") if description else (self.remote_liveness.get(worker_id, {}).get("description_identity")), lease_seconds=DESCRIPTION_LEASE_SECONDS, last_failure=failure)
+        self.remote_liveness[worker_id] = liveness
+        if description is not None:
+            self.remote_descriptions[worker_id] = description
+            node = description["node"]
+            from .node import capability_names
+            snapshot = description["resource_snapshot"]
+            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot)
+            self.remote_workers[worker_id] = (transport, slot)
+            self.ledger.append("worker.state", {"worker_id": worker_id, "description": description, "liveness": liveness})
+        else:
+            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot)
+            self.remote_workers[worker_id] = (transport, slot)
+            self.ledger.append("worker.liveness", liveness)
+        return self.worker_state(worker_id)
+
+    def refresh_remote(self, worker_id: str) -> dict[str, Any]:
+        if worker_id not in self.remote_workers:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        transport, _ = self.remote_workers[worker_id]
+        try:
+            description = self.describe_via(transport, worker_id=worker_id)
+        except (ProtocolError, OSError, TimeoutError) as exc:
+            self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
+            raise
+        if not worker_description_is_fresh(description):
+            return self._set_remote_state(worker_id, description=None, state="UNKNOWN", failure="worker description is stale")
+        return self._set_remote_state(worker_id, description=description, state="AVAILABLE")
+
+    def worker_state(self, worker_id: str) -> dict[str, Any]:
+        if worker_id not in self.remote_workers:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        _, slot = self.remote_workers[worker_id]
+        description = self.remote_descriptions.get(worker_id)
+        liveness = validate_liveness(self.remote_liveness[worker_id], expected_worker_id=worker_id)
+        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": liveness["state"] if liveness_is_fresh(liveness) else (liveness["state"] if liveness["state"] != "AVAILABLE" else "UNKNOWN"), "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
+
+    def refresh_all(self) -> list[dict[str, Any]]:
+        states = []
+        for worker_id in sorted(self.remote_workers):
+            try:
+                states.append(self.refresh_remote(worker_id))
+            except (ProtocolError, OSError, TimeoutError):
+                states.append(self.worker_state(worker_id))
+        return states
 
     def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
+        if placement_request is not None:
+            # Dynamic resource admission is made from a fresh authenticated
+            # worker observation, not from an operator's stale registration.
+            self.refresh_all()
         with self._remote_lock:
             decision = schedule(checked, [slot for _, slot in self.remote_workers.values()], replicas=replicas, placement=placement_request)
             if decision.disposition == "PASS":
@@ -164,6 +246,7 @@ class NetworkController(LocalController):
                 try:
                     outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request))
                 except (ProtocolError, OSError, TimeoutError) as exc:
+                    self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
                     outputs.append({"disposition": "UNKNOWN", "reason": "WORKER_UNAVAILABLE", "worker_id": worker_id, "diagnostic": str(exc)})
         finally:
             with self._remote_lock:
