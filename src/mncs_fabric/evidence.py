@@ -199,7 +199,95 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_native_bundle_two_host_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.physical-worker-state.v0.1":
         return validate_physical_worker_state_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.windows-gpu-worker.v0.1":
+        return validate_windows_gpu_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.heterogeneous-cross-os.v0.1":
+        return validate_heterogeneous_cross_os_evidence(evidence)
     return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}
+
+
+def _validate_claim_boundary(evidence: dict[str, Any], issues: list[str]) -> None:
+    boundary = evidence.get("claim_boundary")
+    for term in ("operator-controlled", "attestation", "correctness", "custody", "independence", "conformance"):
+        if not isinstance(boundary, str) or term not in boundary.lower():
+            issues.append(f"claim boundary omits:{term}")
+    if not isinstance(evidence.get("limitations"), list) or not evidence["limitations"]:
+        issues.append("limitations are missing")
+    if _contains_secret(evidence):
+        issues.append("private-key material is present")
+
+
+def validate_windows_gpu_evidence(evidence: object) -> dict[str, Any]:
+    """Validate sanitized evidence for one physically proven Windows GPU worker."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.windows-gpu-worker.v0.1":
+        issues.append("unsupported Windows GPU evidence schema")
+    if evidence.get("record_type") != "mncs-fabric.windows-gpu-worker":
+        issues.append("record type is invalid")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False:
+        issues.append("Fabric/SSH execution boundary is invalid")
+    for field in ("fabric_commit", "worker_fabric_commit"):
+        if not isinstance(evidence.get(field), str) or not _COMMIT.fullmatch(evidence[field]):
+            issues.append(f"invalid:{field}")
+    if evidence.get("fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions differ")
+    for field in ("node_fingerprint", "description_identity", "resource_snapshot_identity", "runtime_profile_identity", "runtime_observation_identity", "placement_request_identity", "admission_decision_identity", "record_identity", "runtime_binding_identity", "probe_identity"):
+        if not _identity(evidence.get(field)):
+            issues.append(f"invalid:{field}")
+    if not _identity(evidence.get("receipt_identity"), bare=True) or not _identity(evidence.get("bundle_identity"), bare=True) or not _identity(evidence.get("archive_identity")):
+        issues.append("execution/bundle identities are invalid")
+    if evidence.get("worker_identity") != "collamore02-windows":
+        issues.append("Windows worker identity is unexpected")
+    gpu = evidence.get("gpu")
+    if not isinstance(gpu, dict) or gpu.get("vendor") != "nvidia" or gpu.get("backend") != "cuda" or not isinstance(gpu.get("hardware_identity"), str) or not gpu["hardware_identity"]:
+        issues.append("GPU discovery facts are invalid")
+    runtime = evidence.get("runtime")
+    if not isinstance(runtime, dict) or runtime.get("execution_probe") != "PASS" or runtime.get("torch") != "2.11.0+cu128" or runtime.get("torch_cuda") != "12.8":
+        issues.append("synchronized runtime proof is invalid")
+    if not isinstance(runtime, dict) or not isinstance(runtime.get("precision_probes"), dict) or runtime["precision_probes"].get("float32") != "PASS" or runtime["precision_probes"].get("float16") != "PASS":
+        issues.append("required precision probes are incomplete")
+    if evidence.get("execution_outcome") != "PASS" or evidence.get("admission_reason_code") != "FULL_ACCELERATOR_ELIGIBLE":
+        issues.append("physical CUDA execution/admission did not pass")
+    if evidence.get("sequential_cpu_offload_evidence") is not False:
+        issues.append("sequential-offload status is overstated")
+    _validate_claim_boundary(evidence, issues)
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
+
+
+def validate_heterogeneous_cross_os_evidence(evidence: object) -> dict[str, Any]:
+    """Validate a sanitized portable Fedora/Windows cohort result."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.heterogeneous-cross-os.v0.1":
+        issues.append("unsupported heterogeneous evidence schema")
+    if evidence.get("record_type") != "mncs-fabric.heterogeneous-cross-os":
+        issues.append("record type is invalid")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False:
+        issues.append("cross-OS transport boundary is invalid")
+    if not isinstance(evidence.get("fabric_commit"), str) or not _COMMIT.fullmatch(evidence["fabric_commit"]):
+        issues.append("invalid:fabric_commit")
+    bundle = evidence.get("bundle")
+    if not isinstance(bundle, dict) or not _identity(bundle.get("archive_identity")) or not _identity(bundle.get("bundle_identity"), bare=True):
+        issues.append("bundle identities are invalid")
+    records = evidence.get("records")
+    if not isinstance(records, list) or len(records) != 2 or len({item.get("worker_identity") for item in records if isinstance(item, dict)}) != 2:
+        issues.append("cross-OS records are incomplete or not distinct")
+    else:
+        for item in records:
+            if not _identity(item.get("record_identity")) or not _identity(item.get("receipt_identity"), bare=True) or item.get("disposition") not in {"EXECUTED", "DUPLICATE_IDEMPOTENT"}:
+                issues.append("cross-OS record reference is invalid")
+    for field in ("cohort_identity", "collection_identity"):
+        if not _identity(evidence.get(field)):
+            issues.append(f"invalid:{field}")
+    if evidence.get("reconciliation_outcome") != "PASS" or evidence.get("collection_outcome") != "PASS":
+        issues.append("cross-OS reconciliation or collection did not pass")
+    _validate_claim_boundary(evidence, issues)
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
 
 
 def validate_physical_worker_state_evidence(evidence: object) -> dict[str, Any]:

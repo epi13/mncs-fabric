@@ -55,3 +55,13 @@ class PhysicalEvidenceTests(unittest.TestCase):
         tampered = copy.deepcopy(evidence)
         tampered["worker_description"]["worker_identity"] = "substituted-worker"
         self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")
+
+    def test_windows_gpu_and_cross_os_evidence_validate(self) -> None:
+        root = Path(__file__).parents[1] / "development-evidence"
+        windows = json.loads((root / "windows-gpu-worker.json").read_text(encoding="utf-8"))
+        heterogeneous = json.loads((root / "fedora-windows-heterogeneous.json").read_text(encoding="utf-8"))
+        self.assertEqual(validate_physical_evidence(windows)["outcome"], "PASS")
+        self.assertEqual(validate_physical_evidence(heterogeneous)["outcome"], "PASS")
+        tampered = copy.deepcopy(windows)
+        tampered["runtime"]["execution_probe"] = "UNKNOWN"
+        self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")
