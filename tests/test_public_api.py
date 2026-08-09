@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from mncs_fabric.api import ConsumerContext, FabricClient, LocalWorkerConfig
+from mncs_fabric.api import ConsumerContext, FabricClient, LocalWorkerConfig, PlacementRequest
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.canonical import verify_identity
 from mncs_fabric.models import validate_job_plan
@@ -77,3 +77,19 @@ class PublicContractTests(unittest.TestCase):
             self.assertEqual([item["worker_identity"] for item in results], ["worker-a", "worker-b"])
             self.assertEqual(client.reconcile(results)["outcome"], "PASS")
             self.assertEqual(client.reconcile(results + [{"disposition": "UNKNOWN"}])["outcome"], "UNKNOWN")
+
+    def test_public_api_returns_fabric_owned_placement_admission_and_receipt_reference(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "task.py").write_text("from pathlib import Path\nPath('result.json').write_text('placement')\n", encoding="utf-8")
+            plan, manifest = _plan(bundle)
+            client = FabricClient("placement-controller", root / "controller.jsonl")
+            client.register_local_worker(LocalWorkerConfig("worker-placement", bundle, root / "worker.jsonl"))
+            result = client.execute(plan, manifest, worker_id="worker-placement", placement=PlacementRequest(execution_device="cpu"))[0]
+            self.assertEqual(result["placement_admission"]["admission_mode"], "cpu")
+            self.assertEqual(result["placement_admission"]["worker_identity"], "worker-placement")
+            reference = result["receipt"]["placement"]["execution_placement_reference"]
+            self.assertEqual(reference["placement_request_identity"], PlacementRequest(execution_device="cpu").placement_request_identity)
+            self.assertEqual(result["receipt"]["runner"]["runner_version"], "0.2.0a3")

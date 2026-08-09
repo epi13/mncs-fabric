@@ -58,6 +58,16 @@ consumer/workflow/provider references and grants no evaluator, promotion,
 conformance, or semantic verdict authority. Dispatch replay identity includes
 this context and any typed execution-bundle binding.
 
+Resource-aware dispatch may add a validated
+`mncs-fabric.execution-placement-request.v0.1`. The worker captures a fresh
+`mncs-fabric.node-resources.v0.1` snapshot and returns a
+`mncs-fabric.placement-admission.v0.1` with explicit mode, decision identity,
+snapshot identity, and rejection reason. A placement request is part of the
+stable dispatch request identity. Explicit accelerator and sequential-offload
+requests remain `UNKNOWN` when executable runtime/resource evidence is not
+established; there is no silent CPU fallback. Placement references in a
+receipt remain observations, not hardware attestation.
+
 An optional EA-NEXT-005 challenge is carried as a validated dispatch companion.
 Its exact subject/candidate/bundle/policy/runner scope, nonce, and validity
 window are identity-bound into the request payload. The worker copies the

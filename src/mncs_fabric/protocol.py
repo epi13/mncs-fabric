@@ -82,7 +82,7 @@ def dispatch_binding_identity(envelope: dict[str, Any]) -> str:
     )
 
 
-def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any], challenge: object = None, consumer_context: object = None, execution_bundle: object = None) -> str:
+def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any], challenge: object = None, consumer_context: object = None, execution_bundle: object = None, placement_request: object = None) -> str:
     """Derive the stable semantic request identity used by controller and worker."""
 
     value: dict[str, Any] = {"job_plan": plan, "artifact_manifest": manifest}
@@ -92,6 +92,8 @@ def dispatch_request_identity(*, plan: dict[str, Any], manifest: dict[str, Any],
         value["consumer_context"] = consumer_context
     if execution_bundle is not None:
         value["execution_bundle"] = execution_bundle
+    if placement_request is not None:
+        value["placement_request"] = placement_request
     return sha256_identity(value)
 
 
@@ -116,7 +118,11 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if execution_bundle is not None:
             if set(execution_bundle) != {"bundle_identity", "archive_identity"} or not isinstance(execution_bundle.get("bundle_identity"), str) or len(execution_bundle["bundle_identity"]) != 64 or any(char not in "0123456789abcdef" for char in execution_bundle["bundle_identity"]) or not is_sha256_identity(execution_bundle.get("archive_identity")):
                 raise ProtocolError("dispatch execution-bundle binding is invalid")
-        if value.get("request_identity") != dispatch_request_identity(plan=plan, manifest=manifest, challenge=value.get("execution_challenge"), consumer_context=consumer_context, execution_bundle=execution_bundle):
+        placement_request = value.get("placement_request")
+        if placement_request is not None:
+            from .resources import validate_placement_request
+            validate_placement_request(placement_request)
+        if value.get("request_identity") != dispatch_request_identity(plan=plan, manifest=manifest, challenge=value.get("execution_challenge"), consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request):
             raise ProtocolError("dispatch request identity does not match its payload")
         if "execution_challenge" in value and not validate_execution_challenge(value["execution_challenge"]).valid:
             raise ProtocolError("dispatch execution challenge is invalid")
@@ -142,6 +148,18 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             binding = value["bundle_binding"]
             if not isinstance(binding, dict) or not isinstance(binding.get("binding_identity"), str) or not verify_identity(binding, "binding_identity"):
                 raise ProtocolError("execution result bundle binding identity is invalid")
+        if "resource_snapshot" in value:
+            from .resources import validate_resource_snapshot
+            validate_resource_snapshot(value["resource_snapshot"])
+        if "placement_admission" in value:
+            from .resources import validate_admission
+            validate_admission(value["placement_admission"])
+        if "placement_observation" in value:
+            from .resources import validate_placement_observation
+            validate_placement_observation(value["placement_observation"])
+        if "placement_binding" in value:
+            from .resources import validate_placement_binding
+            validate_placement_binding(value["placement_binding"])
     elif message_type in {"status.request", "result.collect"}:
         if not is_sha256_identity(value.get("job_identity")):
             raise ProtocolError("status and collection requests require a job identity")
@@ -154,6 +172,9 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     elif message_type == "worker.announce":
         if not isinstance(value.get("node"), dict):
             raise ProtocolError("worker announcement requires a node record")
+        if "resource_snapshot" in value:
+            from .resources import validate_resource_snapshot
+            validate_resource_snapshot(value["resource_snapshot"])
     elif message_type == "worker.capabilities":
         if not isinstance(value.get("capabilities"), list) or not all(isinstance(item, str) for item in value["capabilities"]):
             raise ProtocolError("capability report must contain a string array")

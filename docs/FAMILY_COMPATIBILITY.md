@@ -32,7 +32,7 @@ This iteration was aligned against these local sibling snapshots:
 | `MNCS-Commons` | `b1eb5a1081bbb63ee3a6284e8046035bd72a47bc` | append/recovery, locking, structured adapter, and public-node boundary concepts | Fabric-owned ledger/network; no private Commons dependency |
 | `mncs-forge-mcp` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
 | `mncs-language` | `f234cc8079faa5895a38b7abce0c96031f7d2565` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
-| `RAVEL` | `d572d68ab9c8eaf163425748d44729aaa8028e98` | lifecycle/episode identity awareness | no RAVEL conformance claim |
+| `RAVEL` | `99d39a1ce184c814a3ae6b15fe52612f6e708d92` | lifecycle/episode identity awareness | no RAVEL conformance claim |
 | `Machine-Native-Experimental-Learning` | `57b07b2d25a8ea9dad93ea396ae5cc0dff7f9f5b` | identity/lifecycle and native artifact vocabulary | no imported private contract |
 | `gimp-local-mcp` | `e824c6a25db2a262c4f9f55801d77d96c95eae43` | provider-neutral CPU/accelerator/offload placement direction | no CUDA-specific requirement imported |
 
@@ -79,3 +79,13 @@ promotion.
 
 Fabric does not emit MNCS/MNCDS conformance, execution assurance, protected
 custody, independent evaluation, sandbox, encryption, or attestation claims.
+
+## Resource/placement assumptions
+
+Fabric's additive resource profiles are provider-neutral. They preserve the
+generic concepts needed by MNEL and RAVEL—host memory, accelerator discovery,
+precision, reserves, model/workspace estimates, and placement identity—without
+importing either consumer's runtime policy. CUDA discovery is not a CUDA
+execution capability until a real runtime probe passes. Sequential CPU offload
+is a consumer/provider runtime behavior; Fabric only checks resource admission
+and retains a runtime observation if supplied.

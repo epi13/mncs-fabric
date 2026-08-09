@@ -48,3 +48,18 @@ operator-controlled. The provider also validates the public contract,
 consumer-result/provenance shape, native bundle-transfer/cache tests, and
 sanitized native-transfer evidence. Independent certification remains
 unsupported.
+
+Resource placement is covered by `fabric-validation` through dependency-free
+fixtures for resource snapshots, stale/unknown handling, explicit no-fallback
+admission, deterministic identities, and receipt references. The provider
+advertises `resource-observation`, `placement-admission`, and
+`placement-evidence`; it does not advertise physical CUDA or sequential-
+offload evidence where no executable accelerator probe was performed. Physical
+resource runs remain optional operator-controlled evidence and are never
+required by CI.
+
+The checked-in `development-evidence/fedora-resource-placement.json` is a
+bounded direct-mTLS CPU-placement run with native bundle transfer and a
+sanitized worker resource snapshot. It records the Quadro P620 as discovery
+only (`execution_probe=UNKNOWN`); it is not CUDA or sequential-offload
+evidence.

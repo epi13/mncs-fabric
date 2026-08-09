@@ -13,6 +13,7 @@ from .errors import ProtocolError
 from .models import validate_job_plan
 from .node import utc_now
 from .protocol import dispatch_request_identity, make_envelope, validate_envelope
+from .resources import validate_admission, validate_resource_snapshot, validate_placement_request
 from .scheduler import WorkerSlot, schedule
 from .store import FabricLedger
 from .transport import EnvelopeTransport, InProcessTransport
@@ -40,49 +41,56 @@ class LocalController:
         result = []
         for worker_id in sorted(self.workers):
             worker = self.workers[worker_id]
-            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True})
+            snapshot = worker.resource_snapshot()
+            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True, "resource_snapshot": snapshot})
         return result
 
-    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
-        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities()) for worker_id, worker in self.workers.items()], replicas=replicas)
+        if placement_request is not None:
+            validate_placement_request(placement_request)
+        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
         if decision.disposition != "PASS":
-            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids)}]
+            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": [dict(item) for item in decision.admissions]}]
         outputs = []
         for worker_id in decision.worker_ids:
             response = self.dispatch_via(
                 InProcessTransport(self.workers[worker_id]), checked, manifest,
                 worker_id=worker_id,
                 request_id=request_id or sha256_identity({"job_identity": checked["job_identity"], "worker_id": worker_id, "replica": len(outputs)}),
-                consumer_context=consumer_context, execution_bundle=execution_bundle,
+                consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request,
             )
             outputs.append(response)
         return outputs
 
-    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None) -> dict[str, Any]:
+    def dispatch_via(self, transport: EnvelopeTransport, plan: object, manifest: object, *, worker_id: str, request_id: str, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> dict[str, Any]:
         """Dispatch through a transport without moving protocol semantics into it."""
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
-        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": dispatch_request_identity(plan=checked, manifest=manifest, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle)}
+        if placement_request is not None:
+            validate_placement_request(placement_request)
+        payload = {"job_plan": checked, "artifact_manifest": manifest, "request_identity": dispatch_request_identity(plan=checked, manifest=manifest, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request)}
         if challenge is not None:
             payload["execution_challenge"] = challenge
         if consumer_context is not None:
             payload["consumer_context"] = consumer_context
         if execution_bundle is not None:
             payload["execution_bundle"] = execution_bundle
+        if placement_request is not None:
+            payload["placement_request"] = placement_request
         envelope = make_envelope("dispatch.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request_id, job_id=checked["job_id"], nonce="dispatch-" + sha256_identity({"request": request_id, "worker": worker_id})[7:55], payload=payload, created_at=created, expires_at=expires)
         self.ledger.append("protocol.controller-dispatch", envelope)
         response = transport.request(envelope)
         if response.get("message_type") == "execution.result":
-            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge, execution_bundle=execution_bundle)
+            return self.verify_response(response, worker_id=worker_id, job_identity=checked["job_identity"], candidate_identity=checked["candidate_identity"], artifact_manifest_identity=checked["artifact_manifest_identity"], challenge=challenge, execution_bundle=execution_bundle, placement_request=placement_request)
         return validate_envelope(response)
 
-    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None) -> dict[str, Any]:
+    def verify_response(self, response: object, *, worker_id: str, job_identity: str, candidate_identity: str | None = None, artifact_manifest_identity: str | None = None, challenge: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> dict[str, Any]:
         value = validate_envelope(response)
         record = value["payload"].get("record", {})
         if value["worker_id"] != worker_id or record.get("job_identity") != job_identity or (candidate_identity is not None and record.get("candidate_identity") != candidate_identity) or (artifact_manifest_identity is not None and record.get("artifact_manifest_identity") != artifact_manifest_identity):
@@ -99,6 +107,21 @@ class LocalController:
             receipt = value["payload"].get("receipt")
             if not isinstance(receipt, dict) or not bind_challenge_to_receipt(challenge, receipt).valid:
                 raise ProtocolError("controller response receipt does not bind to its execution challenge")
+        if placement_request is not None:
+            validate_placement_request(placement_request)
+            payload = value["payload"]
+            admission = payload.get("placement_admission")
+            snapshot = payload.get("resource_snapshot")
+            if not isinstance(admission, dict) or not isinstance(snapshot, dict):
+                raise ProtocolError("controller response is missing placement evidence")
+            validate_admission(admission)
+            validate_resource_snapshot(snapshot)
+            if admission.get("placement_request_identity") != placement_request["placement_request_identity"] or admission.get("worker_identity") != worker_id or snapshot.get("worker_identity") != worker_id:
+                raise ProtocolError("controller response placement binding does not match the dispatch")
+            receipt = value["payload"].get("receipt")
+            reference = receipt.get("placement", {}).get("execution_placement_reference") if isinstance(receipt, dict) else None
+            if not isinstance(reference, dict) or reference.get("placement_request_identity") != placement_request["placement_request_identity"] or reference.get("resource_snapshot_identity") != snapshot["resource_snapshot_identity"] or reference.get("admission_decision_identity") != admission["decision_identity"]:
+                raise ProtocolError("controller response receipt placement reference does not match the dispatch")
         return value
 
 
@@ -114,21 +137,23 @@ class NetworkController(LocalController):
         self.remote_workers: dict[str, tuple[EnvelopeTransport, WorkerSlot]] = {}
         self._remote_lock = threading.Lock()
 
-    def register_remote(self, worker_id: str, capabilities: frozenset[str], transport: EnvelopeTransport, *, concurrency_limit: int = 1) -> None:
+    def register_remote(self, worker_id: str, capabilities: frozenset[str], transport: EnvelopeTransport, *, concurrency_limit: int = 1, resource_snapshot: dict[str, Any] | None = None) -> None:
         if worker_id in self.remote_workers:
             raise ProtocolError(f"worker is already registered: {worker_id}")
-        self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=worker_id, capabilities=capabilities, concurrency_limit=concurrency_limit))
+        if resource_snapshot is not None:
+            validate_resource_snapshot(resource_snapshot)
+        self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=worker_id, capabilities=capabilities, concurrency_limit=concurrency_limit, resource_snapshot=resource_snapshot))
 
-    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None) -> list[dict[str, Any]]:
+    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
         with self._remote_lock:
-            decision = schedule(checked, [slot for _, slot in self.remote_workers.values()], replicas=replicas)
+            decision = schedule(checked, [slot for _, slot in self.remote_workers.values()], replicas=replicas, placement=placement_request)
             if decision.disposition == "PASS":
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active + 1, concurrency_limit=slot.concurrency_limit, available=slot.available))
+                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active + 1, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot))
         if decision.disposition != "PASS":
             return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids)}]
         outputs: list[dict[str, Any]] = []
@@ -137,14 +162,14 @@ class NetworkController(LocalController):
                 transport, _ = self.remote_workers[worker_id]
                 request = request_id or sha256_identity({"job_identity": checked["job_identity"], "worker_id": worker_id, "replica": len(outputs)})
                 try:
-                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle))
+                    outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request))
                 except (ProtocolError, OSError, TimeoutError) as exc:
                     outputs.append({"disposition": "UNKNOWN", "reason": "WORKER_UNAVAILABLE", "worker_id": worker_id, "diagnostic": str(exc)})
         finally:
             with self._remote_lock:
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=max(0, slot.active - 1), concurrency_limit=slot.concurrency_limit, available=slot.available))
+                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=max(0, slot.active - 1), concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot))
         return outputs
 
     def reconcile_dispatch(self, responses: list[dict[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:

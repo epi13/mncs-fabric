@@ -41,6 +41,16 @@ those remain supported advanced interfaces. The identity-addressable
 `mncs-fabric.public-contract.v0.1` descriptor reports the supported schemas and
 features.
 
+`resources.py` is the provider-neutral placement boundary. A `ResourceSnapshot`
+is a time-varying identity-addressed observation, not part of the stable node
+fingerprint. A `PlacementRequest` binds consumer resource intent without
+importing MNEL, RAVEL, Torch, or Accelerate. The scheduler evaluates it against
+a fresh snapshot and emits an identity-addressable admission with explicit
+reasons. A provider runtime may attach an
+`ExecutionPlacementObservation`; Fabric records and binds it but does not
+attest to its truth. CPU, full accelerator, and sequential CPU offload are
+placement modes, not implementations of model-layer movement.
+
 ### Protocol and durable state
 
 `protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `transport.py`
@@ -86,6 +96,11 @@ Artifacts are addressed by ordered SHA-256 manifests. Manifest verification reje
 ### Reconciler
 
 The reconciler verifies execution-record identities and requires agreement on job, candidate, evaluator, and artifact identities. A cohort fails when declared result artifacts disagree. A cohort remains `UNKNOWN` when any execution is incomplete or unsupported.
+
+Resource admission is time-of-check/time-of-use bounded: the snapshot used for
+a decision is retained in the result, but Fabric does not reserve VRAM or
+guarantee that resources remain available at launch. Dynamic resource
+quantities are operational evidence, not correctness or assurance.
 
 The bounded two-host harness uses SSH only for exact-revision bootstrap and
 material staging. It launches a narrow worker process and performs the actual

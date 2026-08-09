@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a2` experimental execution substrate. Local and authenticated network execution, Fabric-owned EA-NEXT-001 receipts, EA-NEXT-002 offline verification plus bounded native bundle transfer, EA-NEXT-005 challenge/replay compatibility, durable replay-safe state, deterministic scheduling, and bounded persistent workers are implemented. Production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a3` experimental execution substrate. Resource snapshots, placement requests, deterministic resource admission, and bounded placement evidence now complement authenticated execution, immutable bundle transfer, challenge/replay, persistent workers, and Fabric-owned receipts. Accelerator discovery is not executable CUDA proof; production lifecycle, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -40,6 +40,8 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
 - a versioned `FabricClient` consumer facade with identity-addressable public-contract metadata, typed remote-worker configuration, consumer provenance bindings, replication, reconciliation, and Fabric-owned receipts;
 - bounded native EA-NEXT-002 bundle transfer over Fabric envelopes with independent worker verification, chunk limits, atomic publication, and an immutable content-addressed cache;
+- identity-addressable host/CPU/accelerator resource observations, placement requests, deterministic admission, freshness bounds, and explicit no-fallback decisions;
+- placement references in Fabric-generated receipts, with optional runtime placement observations kept separate from hardware or semantic claims; and
 - explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
@@ -128,6 +130,13 @@ it is not general file transfer. `FabricClient.execute()` returns a versioned
 consumer result containing the Fabric record, Fabric-generated MNCS receipt,
 and optional provenance binding. Consumer projects retain semantic workload,
 evaluation, promotion, and learning authority.
+
+Resource-aware consumers can pass a `PlacementRequest` to `execute()` or
+`replicate()`. Fabric chooses an eligible worker from fresh resource evidence;
+it does not move model layers or choose a provider runtime policy. A discovered
+NVIDIA device remains `execution_probe=UNKNOWN` until a separate runtime
+performs a real synchronized kernel probe. See
+[docs/RESOURCE_PLACEMENT.md](docs/RESOURCE_PLACEMENT.md).
 
 `FabricService` remains the stable local/service boundary for node inspection,
 plan validation, local execution, verification, collection, and reconciliation.

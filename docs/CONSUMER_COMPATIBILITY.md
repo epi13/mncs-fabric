@@ -5,7 +5,7 @@ This iteration inspected the live consumer worktrees without modifying them:
 | Consumer | Commit/branch inspected | Current pressure | Fabric path |
 | --- | --- | --- | --- |
 | MNEL | `57b07b2d25a8ea9dad93ea396ae5cc0dff7f9f5b`, `agent/distributed-mnel-fabric-08` | low-level controller/transport wiring, consumer-side receipt reconstruction, and pre-staged bundle assumptions | `FabricClient`, `ConsumerContext`, Fabric-generated receipt, native `ensure_bundle` |
-| RAVEL | `d572d68ab9c8eaf163425748d44729aaa8028e98`, `agent/ravel-forge-world-abi` | RAVEL-owned semantic workload and development evidence need stable Fabric references | same facade; context remains opaque; reconciliation remains Fabric-owned |
+| RAVEL | `99d39a1ce184c814a3ae6b15fe52612f6e708d92`, `agent/ravel-forge-world-abi` | RAVEL-owned semantic workload and development evidence need stable Fabric references | same facade; context remains opaque; reconciliation remains Fabric-owned |
 
 Fabric does not special-case either project. `source_project`, workload,
 experiment, provider, partition, and Forge workflow values are bounded opaque
@@ -24,3 +24,8 @@ Migration guidance for consumers:
 
 Optional live sibling integration remains outside Fabric CI. A missing sibling
 is `UNKNOWN`, not a self-contained Fabric failure.
+
+Placement migration: MNEL/RAVEL may translate their own resource budget into
+`PlacementRequest` and continue to own provider/runtime decisions. Fabric
+returns worker snapshot and admission identities; consumers may attach a
+runtime-produced placement observation through the public binding helper.

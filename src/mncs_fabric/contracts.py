@@ -25,6 +25,12 @@ PUBLIC_FEATURES = {
     "bundle_verification": True,
     "native_bundle_transfer": True,
     "capability_scheduling": True,
+    "resource_observation": True,
+    "placement_request": True,
+    "resource_aware_admission": True,
+    "placement_evidence": True,
+    "cuda_execution_probe": False,
+    "sequential_cpu_offload_evidence": False,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {
@@ -142,6 +148,11 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
         "execution_record_schema": "mncs-fabric.execution-record.v0.1",
         "cohort_schema": "mncs-fabric.cohort-result.v0.1",
         "node_capability_schema": "mncs-fabric.node-capabilities.v0.1",
+        "node_resource_schema": "mncs-fabric.node-resources.v0.1",
+        "placement_request_schema": "mncs-fabric.execution-placement-request.v0.1",
+        "placement_admission_schema": "mncs-fabric.placement-admission.v0.1",
+        "placement_observation_schema": "mncs-fabric.execution-placement-observation.v0.1",
+        "placement_reference_schema": "mncs-fabric.placement-reference.v0.1",
         "protocol_schema": "mncs-fabric.protocol.v0.1",
         "receipt_profile": "0.1-experimental",
         "execution_bundle_profile": "0.1-experimental",
@@ -159,7 +170,7 @@ def validate_public_contract(value: object) -> dict[str, Any]:
         raise ValidationError("unsupported public contract schema")
     if not verify_identity(value, "contract_identity"):
         raise ValidationError("public contract identity does not verify")
-    if not isinstance(value.get("features"), dict) or value["features"].get("native_bundle_transfer") is not True:
+    if not isinstance(value.get("features"), dict) or value["features"].get("native_bundle_transfer") is not True or value["features"].get("resource_observation") is not True or value["features"].get("placement_request") is not True:
         raise ValidationError("public contract feature declaration is invalid")
     return dict(value)
 

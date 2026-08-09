@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a2` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a3` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -19,6 +19,15 @@ capability observations to the threat surface. Transfer is typed, size-bounded,
 sequenced, independently verified by the worker, and atomically published;
 partial material is unavailable to execution. These controls protect package
 integrity and protocol state, not execution isolation or worker honesty.
+
+Resource placement adds consumer context and dynamic capacity to the protocol.
+Fabric rejects malformed or substituted placement requests and binds the
+resource snapshot and admission decision into the dispatch/receipt reference.
+It does not make a consumer's model-size or offload declaration true, and it
+does not make a worker's free RAM, VRAM, driver, or runtime report truthful.
+Accelerator discovery is separate from executable-kernel proof; the current
+dependency-free probe reports NVIDIA discovery as UNKNOWN when `nvidia-smi`
+or a real runtime probe is unavailable.
 
 ## Protected assets
 
@@ -46,6 +55,9 @@ The current implementation detects or bounds:
 - duplicate dispatch and conflicting replay in the durable local worker ledger;
 - stale, changed-payload, wrong-worker, wrong-job, and unsupported-version protocol messages; and
 - deterministic capability mismatch and local admission exhaustion.
+- placement-request substitution, stale/unknown resource snapshots,
+  unsupported precision, insufficient host/accelerator memory, and explicit
+  no-fallback admission behavior;
 - EA-NEXT-002 archive traversal, absolute/drive/UNC paths, Unicode/case
   collisions, duplicate members, special files, expansion limits, canonical
   manifest, entry, logical identity, and exact archive identity checks;
@@ -71,6 +83,10 @@ The current implementation does not prevent:
 - descendant processes surviving termination on every supported platform;
 - network access, despite recording the declared network policy;
 - timing manipulation or dishonest host facts;
+- consumer lies about model/workspace sizes or sequential-offload support;
+- resource exhaustion, VRAM/RAM changes between admission and execution,
+  CUDA architecture/kernel incompatibility, and placement-observation
+  substitution;
 - a controller selectively omitting unfavorable records;
 - shared-operator collusion across every machine;
 - compromise of GitHub, package distribution, or the development workstation; or
@@ -129,6 +145,8 @@ iteration:
   address and CA; and
 - local root replacing certificate/trust state: out of scope for Fabric’s
   ordinary account controls and remains UNKNOWN.
+- resource reservations: Fabric does not reserve VRAM or host RAM; concurrent
+  accelerator workloads can invalidate an otherwise fresh admission.
 
 The boundaries are intentionally separate: TLS protects transport; HMAC
 authenticates a message; bundle verification protects package integrity;
