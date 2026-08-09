@@ -6,6 +6,8 @@
   concurrency, and graceful-shutdown limits;
 - add repeated physical-worker evidence covering PID continuity, challenge
   replay, duplicate/conflicting requests, and between-request revocation;
+- derive worker receipt runner versions from the package version so deployed
+  receipts do not retain the pre-0.2.0a1 bootstrap label;
 
 ## 0.2.0a1
 

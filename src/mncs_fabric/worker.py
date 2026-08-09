@@ -10,6 +10,7 @@ from .canonical import sha256_identity
 from .challenges import validate_execution_challenge
 from .errors import ProtocolError, StorageError
 from .executor import execute_local
+from . import __version__
 from .node import capability_names, collect_node_capabilities, utc_now
 from .protocol import dispatch_binding_identity, make_envelope, validate_envelope
 from .store import FabricLedger
@@ -85,7 +86,7 @@ class LocalWorker:
             record = execute_local(payload["job_plan"], self.bundle_root, payload["artifact_manifest"], self.worker_id)
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
-        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version="0.2.0a0", challenge=challenge) if challenge is not None else None
+        receipt = build_execution_receipt(record, runner_identity=f"mncs-fabric-worker-{self.worker_id}", runner_version=__version__, challenge=challenge) if challenge is not None else None
         result_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "record": record, "receipt": receipt}
         self.ledger.append("protocol.result", result_record)
         response_payload: dict[str, Any] = {"result_identity": record["record_id"], "record": record, "disposition": "EXECUTED"}
