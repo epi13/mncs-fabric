@@ -209,6 +209,8 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_three_node_heterogeneous_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.heterogeneous-fault-profiles.v0.1":
         return validate_heterogeneous_fault_profile_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.raspberry-pi-preflight.v0.1":
+        return validate_raspberry_pi_preflight_evidence(evidence)
     return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}
 
 
@@ -412,6 +414,45 @@ def validate_heterogeneous_fault_profile_evidence(evidence: object) -> dict[str,
         for name, profile in profiles.items():
             if not isinstance(name, str) or not isinstance(profile, dict) or profile.get("expected") != profile.get("observed"):
                 issues.append(f"fault profile is not reproducible:{name}")
+    _validate_claim_boundary(evidence, issues)
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
+
+
+def validate_raspberry_pi_preflight_evidence(evidence: object) -> dict[str, Any]:
+    """Validate strict, bounded Raspberry Pi/Linux bootstrap evidence.
+
+    ``UNKNOWN`` is intentional here: a known host key and a failed or
+    incomplete account mapping must not be promoted into worker or execution
+    evidence.  A future PASS preflight still proves only bootstrap facts;
+    Fabric execution requires a separate execution record.
+    """
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.raspberry-pi-preflight.v0.1":
+        issues.append("unsupported Raspberry Pi preflight schema")
+    if evidence.get("record_type") != "mncs-fabric.raspberry-pi-preflight":
+        issues.append("record type is invalid")
+    if evidence.get("outcome") not in {"PASS", "UNKNOWN"}:
+        issues.append("preflight outcome must be PASS or UNKNOWN")
+    for field in ("worker_identity", "controller_identity", "endpoint_configuration_source", "ssh_host_supplied", "expected_hostname"):
+        if not isinstance(evidence.get(field), str) or not evidence[field] or len(evidence[field]) > 256:
+            issues.append(f"invalid:{field}")
+    if evidence.get("strict_host_key_checking") is not True or evidence.get("public_key_only") is not True:
+        issues.append("SSH host-key/public-key boundary is invalid")
+    if evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False or evidence.get("fabric_execution_attempted") is not False:
+        issues.append("preflight must not claim an SSH tunnel, candidate staging, or Fabric execution")
+    if evidence.get("direct_fabric_tls") is not False:
+        issues.append("preflight direct_fabric_tls must remain false")
+    if evidence.get("outcome") == "UNKNOWN" and (not isinstance(evidence.get("blocker"), str) or not evidence["blocker"]):
+        issues.append("UNKNOWN preflight requires a bounded blocker")
+    if evidence.get("outcome") == "PASS":
+        observed = evidence.get("observed")
+        if not isinstance(observed, dict) or observed.get("os") != "linux" or not isinstance(observed.get("architecture"), str) or not observed["architecture"].startswith(("arm", "aarch")):
+            issues.append("PASS preflight does not establish an observed Linux ARM substrate")
+        if evidence.get("observed_hostname") != evidence.get("expected_hostname"):
+            issues.append("observed hostname does not match expected hostname")
     _validate_claim_boundary(evidence, issues)
     return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
 

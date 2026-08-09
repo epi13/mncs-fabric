@@ -51,6 +51,8 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
   the exact worker interpreter, without adding provider dependencies; and
 - a strict Windows worker preflight/lifecycle helper and optional synchronized
   Torch CUDA probe workload; and
+- a strict explicit-configuration Linux/ARM worker preflight and reusable
+  Raspberry Pi native-bundle harness; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
@@ -127,6 +129,13 @@ bounded process helper is `scripts/windows_worker_launcher.py`. The optional
 `scripts/probe_torch_cuda.py` workload must run in the same Python environment
 that launches the worker and reports synchronized kernel evidence separately
 from NVIDIA discovery. See [docs/RUNTIME_PROFILES.md](docs/RUNTIME_PROFILES.md).
+
+For Linux/ARM workers, `scripts/linux_worker_preflight.py` reads only the
+explicit `.fabric/operator/raspberry-pi-worker.local.json` configuration (or
+explicit CLI/environment overrides). `scripts/raspberry_pi_native_bundle_test.py`
+then delegates to the generic native-transfer harness. These helpers do not
+scan, guess accounts, disable host-key verification, open tunnels, or stage
+candidate material over SSH. See [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md).
 
 `scripts/two_host_persistent_test.py` exercises repeated requests, persistent
 PID continuity, replay dispositions, and trust revocation between requests.

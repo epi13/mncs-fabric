@@ -62,7 +62,16 @@ class Remote:
         self.user = user
         self.key = key
         self.destination = f"{user}@{host}"
-        self.options = ["-i", str(key), "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=10"]
+        self.options = [
+            "-i", str(key),
+            "-o", "IdentitiesOnly=yes",
+            "-o", "PreferredAuthentications=publickey",
+            "-o", "PasswordAuthentication=no",
+            "-o", "KbdInteractiveAuthentication=no",
+            "-o", "BatchMode=yes",
+            "-o", "StrictHostKeyChecking=yes",
+            "-o", "ConnectTimeout=10",
+        ]
 
     def ssh(self, command: str) -> str:
         return _run(["ssh", "-n", *self.options, self.destination, command], timeout=20)

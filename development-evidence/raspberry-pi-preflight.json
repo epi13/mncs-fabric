@@ -1,0 +1,28 @@
+{
+  "schema_version": "mncs-fabric.raspberry-pi-preflight.v0.1",
+  "record_type": "mncs-fabric.raspberry-pi-preflight",
+  "captured_at": "2026-08-09T23:29:47Z",
+  "worker_identity": "raspberry-pi",
+  "controller_identity": "fabric-controller-01",
+  "endpoint_configuration_source": "known_hosts-only; no SSH user/key mapping was present",
+  "ssh_host_supplied": "mncs-pi.local",
+  "fabric_worker_host_supplied": "mncs-pi.local",
+  "expected_hostname": "unknown-until-operator-configured",
+  "observed_hostname": null,
+  "strict_host_key_checking": true,
+  "public_key_only": true,
+  "direct_fabric_tls": false,
+  "ssh_tunnel_used": false,
+  "ssh_staged_candidate_material": false,
+  "fabric_execution_attempted": false,
+  "outcome": "UNKNOWN",
+  "blocker": "BLOCKED_BY_OPERATOR_SSH_USER_AND_KEY_CONFIGURATION",
+  "diagnostic": "Known host entry exists for mncs-pi.local, but no explicit SSH user/key mapping is available; a strict BatchMode public-key attempt as the controller account was rejected.",
+  "observed": null,
+  "claim_boundary": "operator-controlled Linux/ARM bootstrap preflight; not Fabric execution, attestation, correctness, custody, independence, conformance, or certification evidence",
+  "limitations": [
+    "This record covers only strict SSH bootstrap diagnostics; candidate execution was not attempted.",
+    "A known host key does not establish a usable SSH account or key mapping.",
+    "The worker report, if obtained, would remain an authenticated self-report rather than hardware attestation."
+  ]
+}

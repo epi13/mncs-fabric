@@ -75,10 +75,14 @@ does not establish independent freshness or custody.
   Fedora-to-Windows Fabric mTLS/native-bundle execution is recorded;
 - [x] runtime-profile identity and synchronized CUDA probe evidence for the
   commissioned Windows Python environment;
-- Raspberry Pi OS ARM worker packaging;
+- [~] explicit Linux/ARM worker preflight and config-aware native-bundle
+  harness are implemented; the local session found a known-host alias but no
+  usable operator SSH user/key mapping, so physical Pi commissioning remains
+  UNKNOWN;
 - portable frozen bundles;
 - [x] Fedora controller/local, Fedora remote, and Windows remote completed one
   exact portable three-physical-node collection and cross-OS reconciliation;
+- [ ] Raspberry Pi participation in the heterogeneous collection;
 - [~] timeout and stale-resource profiles are physically recorded; controlled
   slow-node/resource-pressure breadth remains incomplete;
 

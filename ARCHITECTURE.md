@@ -91,10 +91,17 @@ operator bootstrap channel for source, trust, and worker startup; it is no
 longer required to stage candidate execution material in the native-transfer
 path.
 
-The bounded operator harness in `scripts/two_host_fedora_test.py` stages the
+The bounded Linux operator harness in `scripts/two_host_fedora_test.py` stages the
 exact source, trust material, and verified execution material over SSH, then
 uses direct Fabric mTLS for the request. SSH is not a candidate execution
 path, and the harness requires explicit host/key arguments.
+
+`scripts/linux_worker_preflight.py` and
+`scripts/raspberry_pi_native_bundle_test.py` reuse this Linux path for ARM
+workers. The Raspberry Pi configuration is explicit and local-only; a known
+host key without a configured account/key mapping is recorded as `UNKNOWN`,
+not converted into a worker claim. The current ARM preflight evidence is
+therefore bootstrap evidence only and does not establish a commissioned Pi.
 
 ### Artifact store
 
