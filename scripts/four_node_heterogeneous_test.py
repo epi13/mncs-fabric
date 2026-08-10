@@ -38,7 +38,8 @@ from mncs_fabric.enrollment import TrustStore
 from mncs_fabric.errors import FabricError, ProtocolError
 from mncs_fabric.io import load_json, write_json
 from mncs_fabric.models import validate_job_plan
-from mncs_fabric.node import capability_names
+from mncs_fabric.node import capability_names, collect_node_capabilities
+from mncs_fabric.resources import capture_resource_snapshot, evaluate_placement
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.collections import build_work_item
 
@@ -202,8 +203,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     controller = FabricClient(args.controller_id, output / "controller-public.jsonl")
     controller.register_local_worker(LocalWorker("fabric-controller-local", source_root, output / "local-worker.jsonl"))
     descriptions: dict[str, Any] = {}
-    nodes = {"fabric-worker-01": linux_node, "raspberry-pi": pi_node, "collamore02-windows": windows_node}
-    resources = {"fabric-worker-01": linux_resources, "raspberry-pi": pi_resources, "collamore02-windows": windows_resources}
+    nodes = {"fabric-controller-local": collect_node_capabilities("fabric-controller-local"), "fabric-worker-01": linux_node, "raspberry-pi": pi_node, "collamore02-windows": windows_node}
+    resources = {"fabric-controller-local": capture_resource_snapshot("fabric-controller-local"), "fabric-worker-01": linux_resources, "raspberry-pi": pi_resources, "collamore02-windows": windows_resources}
     windows_worker_host = args.windows_worker_host or args.windows_host
     for worker_id, host, node in (("fabric-worker-01", args.fedora_worker_host, linux_node), ("raspberry-pi", args.pi_worker_host, pi_node), ("collamore02-windows", windows_worker_host, windows_node)):
         controller.register_remote_worker(RemoteWorkerConfig(worker_id, host, args.worker_port, tuple(sorted(capability_names(node))), pki["ca"], pki["controller"], pki["controller_key"], controller_trust_path, timeout=10, resource_snapshot=resources[worker_id]))
@@ -233,6 +234,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         collection = controller.collect_work_items(work_items, collection_results)
         reconciliation = controller.reconcile([results[worker_id] for worker_id in ["fabric-controller-local", *worker_ids]])
         cuda = PlacementRequest(execution_device="accelerator", accelerator_backend="cuda", precision="float32", model_storage_bytes=1, estimated_workspace_bytes=1)
+        current_pi_snapshot = controller.network.worker_state("raspberry-pi").get("resource_snapshot")
+        pi_cuda_admission = evaluate_placement(cuda, current_pi_snapshot) if isinstance(current_pi_snapshot, dict) else {"disposition": "UNKNOWN", "reason_code": "RESOURCE_OBSERVATION_UNKNOWN"}
         pi_cuda = controller.execute(plan, manifest, worker_id="raspberry-pi", request_id="pi-cuda-ineligible", consumer_context=context, placement=cuda)[0]
         _stop_worker(pi_remote, pi_root, pi_pid)
         pi_pid = None
@@ -260,7 +263,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "ssh_staged_candidate_material": False,
             "controller_identity": args.controller_id,
             "nodes": ["fabric-controller-local", *worker_ids],
-            "node_observations": {worker_id: {"machine_label": nodes[worker_id].get("machine_label"), "os": nodes[worker_id].get("os"), "architecture": nodes[worker_id].get("architecture"), "node_fingerprint": nodes[worker_id].get("node_fingerprint"), "resource_snapshot_identity": resources[worker_id].get("resource_snapshot_identity"), "runtime_profile_identity": ((descriptions[worker_id].get("description") or {}).get("runtime_profile") or {}).get("runtime_profile_identity") if isinstance(descriptions.get(worker_id), dict) else None} for worker_id in worker_ids},
+            "node_observations": {worker_id: {"machine_label": nodes[worker_id].get("machine_label"), "os": nodes[worker_id].get("os"), "architecture": nodes[worker_id].get("architecture"), "node_fingerprint": nodes[worker_id].get("node_fingerprint"), "resource_snapshot_identity": resources[worker_id].get("resource_snapshot_identity"), "runtime_profile_identity": ((descriptions[worker_id].get("description") or {}).get("runtime_profile") or {}).get("runtime_profile_identity") if isinstance(descriptions.get(worker_id), dict) else controller.local.workers[worker_id].runtime_profile().get("runtime_profile_identity") if worker_id in controller.local.workers else None} for worker_id in ["fabric-controller-local", *worker_ids]},
             "bundle": {"bundle_identity": bundle.bundle_identity, "archive_identity": bundle.archive_identity},
             "native_bundle_transfer": {worker_id: transfers[worker_id]["status"] for worker_id in worker_ids},
             "records": [{"worker_identity": worker_id, "record_identity": results[worker_id]["record_identity"], "receipt_identity": results[worker_id]["receipt_identity"], "result_identity": results[worker_id]["record"].get("results", [{}])[0].get("sha256"), "disposition": results[worker_id]["disposition"]} for worker_id in ["fabric-controller-local", *worker_ids]],
@@ -270,7 +273,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "reconciliation": reconciliation,
             "reconciliation_identity": reconciliation["cohort_id"],
             "reconciliation_outcome": reconciliation["outcome"],
-            "placement": {"request_identity": placement.placement_request_identity, "mode": "cpu", "pi_cuda_disposition": pi_cuda.get("disposition"), "pi_cuda_reason": pi_cuda.get("reason"), "pi_cuda_admissions": pi_cuda.get("admissions")},
+            "placement": {"request_identity": placement.placement_request_identity, "mode": "cpu", "pi_cuda_request_identity": cuda.placement_request_identity, "pi_cuda_admission": pi_cuda_admission, "pi_cuda_disposition": pi_cuda.get("disposition"), "pi_cuda_reason": pi_cuda.get("reason"), "pi_cuda_admissions": pi_cuda.get("admissions")},
             "fault": {"pi_loss": pi_loss, "pi_missing": pi_missing, "pi_recovery": {"availability": pi_recovery.get("availability"), "description_identity": pi_recovery.get("description", {}).get("description_identity") if isinstance(pi_recovery.get("description"), dict) else None}, "recovered_disposition": recovered.get("disposition")},
             "claim_boundary": "operator-controlled development evidence; cross-architecture execution, native transfer, collection, and reconciliation only; no attestation, sandbox, correctness, custody, independence, conformance, or certification claim",
             "limitations": ["SSH staged only Fabric source, trust material, certificates, and bounded worker bootstrap; candidate material used native Fabric transfer.", "Worker descriptions and resources are authenticated self-reports, not attestation.", "All machines share one operator trust domain.", "The portable result is a bounded deterministic fixture, not a general platform conformance claim."],

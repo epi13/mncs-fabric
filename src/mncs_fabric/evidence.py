@@ -459,7 +459,8 @@ def validate_four_node_heterogeneous_evidence(evidence: object) -> dict[str, Any
     if not isinstance(transfers, dict) or not all(transfers.get(worker_id) in {"COMMITTED", "ALREADY_PRESENT"} for worker_id in ("fabric-worker-01", "raspberry-pi", "collamore02-windows")):
         issues.append("remote native bundle transfer evidence is incomplete")
     placement = evidence.get("placement")
-    if not isinstance(placement, dict) or not _identity(placement.get("request_identity")) or placement.get("pi_cuda_disposition") not in {"UNKNOWN", "UNAVAILABLE"}:
+    pi_cuda_admission = placement.get("pi_cuda_admission") if isinstance(placement, dict) else None
+    if not isinstance(placement, dict) or not _identity(placement.get("request_identity")) or not _identity(placement.get("pi_cuda_request_identity")) or placement.get("pi_cuda_disposition") not in {"UNKNOWN", "UNAVAILABLE"} or not isinstance(pi_cuda_admission, dict) or pi_cuda_admission.get("disposition") not in {"UNKNOWN", "UNAVAILABLE"} or not _identity(pi_cuda_admission.get("decision_identity")):
         issues.append("constrained accelerator admission evidence is invalid")
     fault = evidence.get("fault")
     if not isinstance(fault, dict) or fault.get("pi_loss", {}).get("disposition") != "UNKNOWN" or fault.get("pi_missing", {}).get("disposition") != "UNKNOWN" or fault.get("recovered_disposition") != "EXECUTED":
