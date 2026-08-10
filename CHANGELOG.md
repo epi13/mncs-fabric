@@ -7,6 +7,9 @@
 - accept an explicitly operator-selected OpenSSH alias or configured agent for
   Linux/ARM bootstrap while retaining strict public-key-only authentication and
   bounded, secret-free diagnostics;
+- record the subsequent operator-supplied Pi key-mapping attempt separately;
+  the host accepted the offered public key but rejected authentication, so no
+  ARM worker or execution claim is promoted;
 - validate sanitized Raspberry Pi bootstrap evidence offline through Forge;
 - preserve the current `0.2.0a7` version because the Raspberry Pi was not
   physically commissioned in this session.
