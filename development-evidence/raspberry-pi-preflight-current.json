@@ -1,0 +1,32 @@
+{
+  "schema_version": "mncs-fabric.raspberry-pi-preflight.v0.1",
+  "record_type": "mncs-fabric.raspberry-pi-preflight",
+  "captured_at": "2026-08-09T23:58:12.047737Z",
+  "worker_identity": "raspberry-pi",
+  "controller_identity": "fabric-controller-01",
+  "endpoint_configuration_source": "explicit-cli",
+  "ssh_alias": null,
+  "ssh_host_supplied": "mncs-pi.local",
+  "ssh_user_supplied": true,
+  "ssh_key_supplied": true,
+  "fabric_worker_host_supplied": "mncs-pi.local",
+  "expected_hostname": "UNVERIFIED",
+  "observed_hostname": null,
+  "strict_host_key_checking": true,
+  "public_key_only": true,
+  "direct_fabric_tls": false,
+  "ssh_tunnel_used": false,
+  "ssh_staged_candidate_material": false,
+  "fabric_execution_attempted": false,
+  "outcome": "UNKNOWN",
+  "blocker": "SSH_PUBLICKEY_AUTHENTICATION_FAILED",
+  "diagnostic": "Permission denied (publickey,password).",
+  "observed": null,
+  "resolved_openssh": null,
+  "claim_boundary": "operator-controlled strict SSH bootstrap attempt; not Pi execution, attestation, correctness, custody, independence, conformance, or certification evidence",
+  "limitations": [
+    "The exact operator-supplied endpoint was tested with BatchMode, strict host-key checking, public-key-only authentication, and no password fallback.",
+    "The server acknowledged the offered public key but rejected the authentication signature; the remote host identity and ARM substrate were not observed.",
+    "No Fabric listener, native bundle transfer, candidate execution, record, receipt, or collection was attempted."
+  ]
+}

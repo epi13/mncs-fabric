@@ -73,6 +73,10 @@ MNCS conformance, or certification. A Raspberry Pi that lacks a required
 capability is explicitly ineligible or `UNKNOWN`; Fabric does not silently
 fall back or infer capabilities from the device name.
 
-The checked-in `development-evidence/raspberry-pi-preflight.json` records the
-current local state: a known-host alias was present, but no usable SSH account
-and key mapping was available, so physical commissioning remains `UNKNOWN`.
+The checked-in `development-evidence/raspberry-pi-preflight.json` is historical
+evidence from the earlier run: a known-host alias was present, but no usable
+SSH account and key mapping was available at that time. The later
+`raspberry-pi-preflight-current.json` records a separate strict attempt with
+the operator-supplied endpoint and key mapping; the host accepted the offered
+public key but rejected the signature, so commissioning remains `UNKNOWN` and
+no Fabric execution was attempted. Neither record overwrites the other.
