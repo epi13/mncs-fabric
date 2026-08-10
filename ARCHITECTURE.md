@@ -58,6 +58,54 @@ Descriptions are authenticated worker reports, not attestation.
 `collections.py` owns generic work-item and collection completeness; consumer
 projects retain partition meaning and semantic aggregation.
 
+### Distributed capability and target separation
+
+Fabric should support distributed agent harnesses without becoming an agent harness
+itself. A consumer may need to place inference on one worker while the authoritative
+workspace and tool execution remain on another host. Fabric therefore treats these
+as separate consumer concepts rather than collapsing them into a single worker:
+
+- **inference placement** identifies the worker/runtime selected to host model
+  execution;
+- **workspace authority** remains a consumer-owned reference to the host or service
+  that owns mutable task state; and
+- **tool execution target** identifies the enrolled worker or controller-local
+  executor on which an explicitly authorized bounded tool operation runs.
+
+Fabric may carry identity-addressed references and evidence for those targets, but it
+does not decide their semantic relationship. A remote model receiving inference
+placement does not thereby gain filesystem, SSH, shell, MCP, or workspace authority.
+Any tool request must return to the consuming harness or other control plane, which
+applies its own policy and then submits a separate bounded execution request if the
+tool truly belongs on a remote worker.
+
+Future authenticated worker descriptions may advertise provider-neutral capability
+facts such as:
+
+- installed model/runtime identities and declared runtime features;
+- worker-local executable/tool capabilities;
+- worker-local MCP endpoint identities;
+- CPU, accelerator, memory, architecture, and resource observations; and
+- bounded workspace or service references explicitly configured by the operator.
+
+These observations are inputs to consumer routing, not semantic recommendations.
+Fabric must not assert that one model is better for coding, that a particular MCP
+should be called, or that a task should be decomposed. Model suitability, task DAGs,
+reduction, verification, approval, and escalation remain consumer-owned.
+
+Controller-hosted capabilities do not need to be replicated onto every worker merely
+because inference runs remotely. A consumer may proxy a tool or MCP call through its
+own control plane and send only the bounded result back on the next inference turn.
+Conversely, worker-local tools may be invoked through an explicit Fabric execution
+target when the resource is inherently attached to that worker. Both paths preserve
+the distinction between inference authority and execution authority.
+
+Shell access remains intentionally narrow. Fabric's execution primitive continues to
+be fixed argv without an ambient shell. If a consumer introduces Bash or PowerShell
+script execution, the script must be represented as an explicit bounded workload and
+subject to consumer policy before Fabric receives it. Fabric must never fall back to
+arbitrary SSH or interactive remote shell access when a target is unavailable.
+
 ### Protocol and durable state
 
 `protocol.py` defines `mncs-fabric.protocol.v0.1` fixed envelopes. `transport.py`
@@ -133,6 +181,13 @@ not elevate a receipt, bundle, or physical host count into assurance.
 7. The reconciler compares records without rewriting their observations.
 8. Separate project evaluators or MNCS/MNCDS validators consume the resulting evidence.
 
+For a consumer-owned distributed agent session, an additional control loop may occur
+outside Fabric: the consumer places inference on one worker, receives a tool request,
+applies policy, optionally submits a separate bounded execution request to the
+controller or another worker, and returns the bounded result on a later inference
+turn. Fabric records each admitted execution independently and does not merge those
+steps into semantic agent authority.
+
 ## Status ordering
 
 - `FAIL`: a declared check contradicted the artifact, execution, or cohort requirements.
@@ -145,6 +200,8 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 
 - Kubernetes or general-purpose cluster orchestration;
 - arbitrary remote shell access;
+- granting a remote inference worker ambient authority over another host's workspace;
+- semantic model selection, task decomposition, agent planning, reduction, or escalation;
 - independent certification;
 - protected holdout custody;
 - network or kernel sandboxing;

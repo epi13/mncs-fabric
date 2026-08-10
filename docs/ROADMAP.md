@@ -67,7 +67,25 @@ does not establish independent freshness or custody.
   was ingested and bound to resource-aware full-accelerator admission;
 - [x] physical Windows sequential-offload runtime evidence is bound to an
   identity-addressed runtime environment and used for explicit/AUTO admission;
+- [ ] provider-neutral worker model/runtime inventory in authenticated worker
+  descriptions, including installed model identity and runtime capabilities;
+- [ ] explicit capability references for worker-local tools and MCP endpoints
+  without making Fabric the semantic tool router;
+- [ ] typed target metadata that lets consumers distinguish inference placement,
+  workspace authority, and tool-execution location without granting arbitrary
+  remote shell access;
+- [ ] bounded target-aware execution requests for consumer-authorized remote
+  tools, preserving argv-only execution and Fabric evidence boundaries;
+- [ ] physical evidence that a model placed on one host can participate in a
+  consumer-owned agent session whose workspace/tool execution remains on another
+  host, with no ambient cross-host filesystem or shell authority;
 - [ ] enforced resource reservations or production-grade accelerator sharing;
+
+The distributed capability work in this phase remains provider-neutral. Fabric may
+report authenticated facts such as installed runtimes, models, tools, MCP endpoint
+identities, hardware, liveness, and resource observations. The consuming harness
+retains semantic model selection, task decomposition, workspace meaning, permissions,
+tool choice, verification, reduction, and escalation.
 
 ## Phase 3 — heterogeneous cohort
 
@@ -86,6 +104,9 @@ does not establish independent freshness or custody.
 - [~] timeout and stale-resource profiles are physically recorded; a bounded
   Pi loss/recovery profile is now recorded, while slow-node/resource-pressure
   breadth remains incomplete;
+- [ ] heterogeneous capability-graph evidence spanning models, worker-local
+  tools, controller-proxied capabilities, and execution targets without
+  weakening worker identity or admission semantics;
 
 ## Phase 4 — controlled fault injection
 
@@ -97,7 +118,11 @@ does not establish independent freshness or custody.
 - worker termination and restart;
 - capability disappearance;
 - bounded bandwidth and latency profiles;
-- harness self-tests with expected dispositions.
+- harness self-tests with expected dispositions;
+- target-routing faults where inference worker, workspace authority, and
+  execution target disagree, disappear, or become stale;
+- verify that a failed or stale remote target becomes UNKNOWN/denied rather than
+  falling back to ambient SSH, shell, or filesystem authority.
 
 ## Phase 5 — distributed RAVEL study
 
