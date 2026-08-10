@@ -1,0 +1,39 @@
+{
+  "blocker": null,
+  "captured_at": "2026-08-10T00:36:19.911860Z",
+  "claim_boundary": "operator-controlled Linux/ARM bootstrap preflight; not Fabric execution, attestation, correctness, custody, independence, conformance, or certification evidence",
+  "controller_identity": "fabric-controller-01",
+  "diagnostic": null,
+  "direct_fabric_tls": false,
+  "endpoint_configuration_source": ".fabric/operator/raspberry-pi-worker.local.json",
+  "expected_hostname": "mncs-pi",
+  "fabric_execution_attempted": false,
+  "fabric_worker_host_supplied": "mncs-pi.local",
+  "limitations": [
+    "This record covers only strict SSH bootstrap diagnostics; candidate execution was not attempted.",
+    "A known host key does not establish a usable SSH account or key mapping.",
+    "The worker report, if obtained, would remain an authenticated self-report rather than hardware attestation."
+  ],
+  "observed": {
+    "architecture": "aarch64",
+    "cpu_count": 4,
+    "os": "linux",
+    "os_release": "6.6.51+rpt-rpi-v8",
+    "python_implementation": "CPython",
+    "python_version": "3.11.2"
+  },
+  "observed_hostname": "mncs-pi",
+  "outcome": "PASS",
+  "public_key_only": true,
+  "record_type": "mncs-fabric.raspberry-pi-preflight",
+  "resolved_openssh": null,
+  "schema_version": "mncs-fabric.raspberry-pi-preflight.v0.1",
+  "ssh_alias": null,
+  "ssh_host_supplied": "mncs-pi.local",
+  "ssh_key_supplied": true,
+  "ssh_staged_candidate_material": false,
+  "ssh_tunnel_used": false,
+  "ssh_user_supplied": true,
+  "strict_host_key_checking": true,
+  "worker_identity": "raspberry-pi"
+}
