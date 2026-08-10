@@ -90,7 +90,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         remote.scp_to(pki[key], remote_root + "/certs/" + pki[key].name)
     remote.scp_to(output / "worker-trust.jsonl", remote_root + "/trust/worker-trust.jsonl")
     remote.ssh(f"chmod 700 {_shell_quote(remote_root + '/certs')} {_shell_quote(remote_root + '/trust')} {_shell_quote(remote_root + '/state')} {_shell_quote(remote_root + '/logs')} && chmod 600 {_shell_quote(remote_root + '/certs/worker.key')} {_shell_quote(remote_root + '/trust/worker-trust.jsonl')}")
-    remote.ssh(f"tar -xzf {_shell_quote(remote_root + '/source.tar.gz')} -C {_shell_quote(remote_root + '/repo')} && python3 -m venv --system-site-packages {_shell_quote(remote_root + '/venv')} && {_shell_quote(remote_root + '/venv/bin/python')} -m pip install --no-deps --no-build-isolation {_shell_quote(remote_root + '/repo')} >/dev/null")
+    remote.ssh(f"tar -xzf {_shell_quote(remote_root + '/source.tar.gz')} -C {_shell_quote(remote_root + '/repo')} && python3 -m venv --system-site-packages {_shell_quote(remote_root + '/venv')} && {_shell_quote(remote_root + '/venv/bin/python')} -m pip install --no-deps --no-build-isolation {_shell_quote(remote_root + '/repo')} >/dev/null", timeout=180)
     if remote.ssh(f"sha256sum {_shell_quote(remote_root + '/source.tar.gz')}").split()[0] != source_archive_identity[7:]:
         raise RuntimeError("remote source subset identity differs")
 

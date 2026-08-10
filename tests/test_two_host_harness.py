@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import unittest
 from pathlib import Path
 
@@ -33,6 +34,9 @@ class TwoHostHarnessTests(unittest.TestCase):
         self.assertIn("PreferredAuthentications=publickey", remote.options)
         self.assertIn("PasswordAuthentication=no", remote.options)
         self.assertNotIn("-i", remote.options)
+
+    def test_remote_ssh_timeout_is_bounded_and_overrideable(self) -> None:
+        self.assertEqual(inspect.signature(Remote.ssh).parameters["timeout"].default, 20)
 
     def test_windows_harness_requires_explicit_endpoint_and_stays_out_of_band(self) -> None:
         parser_text = build_windows_parser().format_help()

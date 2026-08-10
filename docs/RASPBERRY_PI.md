@@ -79,4 +79,10 @@ SSH account and key mapping was available at that time. The later
 `raspberry-pi-preflight-current.json` records a separate strict attempt with
 the operator-supplied endpoint and key mapping; the host accepted the offered
 public key but rejected the signature, so commissioning remains `UNKNOWN` and
-no Fabric execution was attempted. Neither record overwrites the other.
+no Fabric execution was attempted. The subsequent
+`raspberry-pi-preflight-pass.json` and `raspberry-pi-native-bundle.json`
+records are chronological PASS evidence from the resolved agent-backed mapping;
+neither historical record is overwritten. The reusable
+`scripts/four_node_heterogeneous_test.py` additionally records a direct-mTLS
+portable collection across Fedora local, Fedora remote, Windows, and the Pi,
+plus bounded Pi loss/recovery.

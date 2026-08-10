@@ -207,6 +207,8 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_windows_sequential_offload_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.three-node-heterogeneous.v0.1":
         return validate_three_node_heterogeneous_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.four-node-heterogeneous.v0.1":
+        return validate_four_node_heterogeneous_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.heterogeneous-fault-profiles.v0.1":
         return validate_heterogeneous_fault_profile_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.raspberry-pi-preflight.v0.1":
@@ -391,6 +393,78 @@ def validate_three_node_heterogeneous_evidence(evidence: object) -> dict[str, An
     transfers = evidence.get("native_bundle_transfer")
     if not isinstance(transfers, dict) or not all(transfers.get(node) in {"COMMITTED", "ALREADY_PRESENT"} for node in ("fabric-worker-01", "collamore02-windows")):
         issues.append("remote native bundle transfer evidence is incomplete")
+    _validate_claim_boundary(evidence, issues)
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
+
+
+def validate_four_node_heterogeneous_evidence(evidence: object) -> dict[str, Any]:
+    """Validate a bounded four-node Linux/Windows/ARM cohort record."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.four-node-heterogeneous.v0.1":
+        issues.append("unsupported four-node evidence schema")
+    if evidence.get("record_type") != "mncs-fabric.four-node-heterogeneous":
+        issues.append("record type is invalid")
+    for field in ("fabric_commit", "worker_fabric_commit"):
+        if not isinstance(evidence.get(field), str) or not _COMMIT.fullmatch(evidence[field]):
+            issues.append(f"invalid:{field}")
+    if evidence.get("fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions differ")
+    if evidence.get("direct_fabric_tls") is not True or evidence.get("ssh_tunnel_used") is not False or evidence.get("ssh_staged_candidate_material") is not False:
+        issues.append("four-node transport boundary is invalid")
+    expected_nodes = {"fabric-controller-local", "fabric-worker-01", "collamore02-windows", "raspberry-pi"}
+    nodes = evidence.get("nodes")
+    if not isinstance(nodes, list) or set(nodes) != expected_nodes or len(nodes) != 4:
+        issues.append("four distinct physical node identities are required")
+    observations = evidence.get("node_observations")
+    if not isinstance(observations, dict):
+        issues.append("node observations are missing")
+    else:
+        architectures = {item.get("architecture") for item in observations.values() if isinstance(item, dict)}
+        if not {"x86_64", "aarch64"}.issubset(architectures):
+            issues.append("cross-architecture observations are incomplete")
+        if not any(item.get("os") == "windows" for item in observations.values() if isinstance(item, dict)):
+            issues.append("Windows observation is missing")
+        for worker_id, item in observations.items():
+            if not isinstance(worker_id, str) or not isinstance(item, dict) or not _identity(item.get("node_fingerprint")) or not _identity(item.get("resource_snapshot_identity")):
+                issues.append("node observation identity is invalid")
+    bundle = evidence.get("bundle")
+    if not isinstance(bundle, dict) or not _identity(bundle.get("archive_identity")) or not _identity(bundle.get("bundle_identity"), bare=True):
+        issues.append("bundle identities are invalid")
+    records = evidence.get("records")
+    if not isinstance(records, list) or len(records) != 4:
+        issues.append("four execution records are required")
+    else:
+        if {item.get("worker_identity") for item in records if isinstance(item, dict)} != expected_nodes:
+            issues.append("execution workers are not the declared four nodes")
+        for item in records:
+            if not isinstance(item, dict) or not _identity(item.get("record_identity")) or not _identity(item.get("result_identity")) or not _identity(item.get("receipt_identity"), bare=True) or item.get("disposition") != "EXECUTED":
+                issues.append("execution record reference is invalid")
+    for field in ("collection_identity", "reconciliation_identity"):
+        if not _identity(evidence.get(field)):
+            issues.append(f"invalid:{field}")
+    try:
+        from .collections import validate_execution_collection
+        collection = validate_execution_collection(evidence.get("collection"))
+        if collection.get("outcome") != "PASS" or collection.get("collection_identity") != evidence.get("collection_identity"):
+            issues.append("four-node collection is incomplete or substituted")
+    except (FabricError, ValueError, TypeError):
+        issues.append("four-node collection is invalid")
+    reconciliation = evidence.get("reconciliation")
+    if not isinstance(reconciliation, dict) or reconciliation.get("outcome") != "PASS" or reconciliation.get("cohort_id") != evidence.get("reconciliation_identity"):
+        issues.append("four-node reconciliation is incomplete or substituted")
+    transfers = evidence.get("native_bundle_transfer")
+    if not isinstance(transfers, dict) or not all(transfers.get(worker_id) in {"COMMITTED", "ALREADY_PRESENT"} for worker_id in ("fabric-worker-01", "raspberry-pi", "collamore02-windows")):
+        issues.append("remote native bundle transfer evidence is incomplete")
+    placement = evidence.get("placement")
+    pi_cuda_admission = placement.get("pi_cuda_admission") if isinstance(placement, dict) else None
+    if not isinstance(placement, dict) or not _identity(placement.get("request_identity")) or not _identity(placement.get("pi_cuda_request_identity")) or placement.get("pi_cuda_disposition") not in {"UNKNOWN", "UNAVAILABLE"} or not isinstance(pi_cuda_admission, dict) or pi_cuda_admission.get("disposition") not in {"UNKNOWN", "UNAVAILABLE"} or not _identity(pi_cuda_admission.get("decision_identity")):
+        issues.append("constrained accelerator admission evidence is invalid")
+    fault = evidence.get("fault")
+    if not isinstance(fault, dict) or fault.get("pi_loss", {}).get("disposition") != "UNKNOWN" or fault.get("pi_missing", {}).get("disposition") != "UNKNOWN" or fault.get("recovered_disposition") != "EXECUTED":
+        issues.append("Pi loss/recovery evidence is invalid")
     _validate_claim_boundary(evidence, issues)
     return {"outcome": "PASS" if not issues else "FAIL", "issues": issues}
 

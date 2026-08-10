@@ -75,21 +75,24 @@ does not establish independent freshness or custody.
   Fedora-to-Windows Fabric mTLS/native-bundle execution is recorded;
 - [x] runtime-profile identity and synchronized CUDA probe evidence for the
   commissioned Windows Python environment;
-- [~] explicit Linux/ARM worker preflight and config-aware native-bundle
-  harness are implemented; the local session found a known-host alias but no
-  usable operator SSH user/key mapping, so physical Pi commissioning remains
-  UNKNOWN;
+- [x] explicit Linux/ARM worker preflight and config-aware native-bundle
+  harness are implemented; the operator-supplied strict agent-backed mapping
+  commissioned `mncs-pi` as an authenticated `aarch64` worker;
 - portable frozen bundles;
 - [x] Fedora controller/local, Fedora remote, and Windows remote completed one
   exact portable three-physical-node collection and cross-OS reconciliation;
-- [ ] Raspberry Pi participation in the heterogeneous collection;
-- [~] timeout and stale-resource profiles are physically recorded; controlled
-  slow-node/resource-pressure breadth remains incomplete;
+- [x] Raspberry Pi participation in a four-node Fedora/Fedora/Windows/Linux
+  ARM collection with cross-architecture reconciliation;
+- [~] timeout and stale-resource profiles are physically recorded; a bounded
+  Pi loss/recovery profile is now recorded, while slow-node/resource-pressure
+  breadth remains incomplete;
 
 ## Phase 4 — controlled fault injection
 
 - [~] bounded dropped, delayed, and duplicated request controls at the transport test boundary;
 - [x] physical worker-stop/restart, incomplete-replication, and duplicate-after-restart corpus;
+- [x] bounded Raspberry Pi worker loss, incomplete dispatch, and recovery
+  evidence in the four-node cohort;
 - corrupted bundles and checkpoints;
 - worker termination and restart;
 - capability disappearance;

@@ -1,18 +1,24 @@
 # Changelog
 
-## Unreleased - Raspberry Pi commissioning path
+## Unreleased - Raspberry Pi commissioning and four-node cohort
 
 - add an explicit Linux/ARM worker preflight and config-aware native-bundle
   harness without LAN discovery, password fallback, or SSH candidate staging;
 - accept an explicitly operator-selected OpenSSH alias or configured agent for
   Linux/ARM bootstrap while retaining strict public-key-only authentication and
   bounded, secret-free diagnostics;
-- record the subsequent operator-supplied Pi key-mapping attempt separately;
-  the host accepted the offered public key but rejected authentication, so no
-  ARM worker or execution claim is promoted;
+- record the earlier failed Pi key-mapping attempt as historical evidence and
+  add chronological PASS evidence after the operator's strict agent-backed
+  mapping was commissioned;
+- add a bounded four-node Fedora/Fedora/Windows/Raspberry Pi collection harness
+  using Fabric native transfer for candidate material and the Windows lifecycle
+  helper for GPU-host bootstrap;
+- validate cross-architecture node/record/receipt identities, constrained Pi
+  accelerator admission, and Pi stop/restart UNKNOWN/recovery evidence offline
+  through Forge; and
 - validate sanitized Raspberry Pi bootstrap evidence offline through Forge;
-- preserve the current `0.2.0a7` version because the Raspberry Pi was not
-  physically commissioned in this session.
+- retain the current `0.2.0a7` version pending the repository's next release
+  decision.
 
 ## 0.2.0a7 - physical sequential offload and three-node heterogeneous evidence
 

@@ -74,3 +74,12 @@ class PhysicalEvidenceTests(unittest.TestCase):
         offload = json.loads((root / "windows-sequential-offload.json").read_text(encoding="utf-8"))
         offload["offload_capability"]["actual_mode"] = "cpu"
         self.assertEqual(validate_physical_evidence(offload)["outcome"], "FAIL")
+
+    def test_raspberry_pi_and_four_node_evidence_validate(self) -> None:
+        root = Path(__file__).parents[1] / "development-evidence"
+        for name in ("raspberry-pi-preflight-pass.json", "raspberry-pi-native-bundle.json", "four-node-heterogeneous.json"):
+            evidence = json.loads((root / name).read_text(encoding="utf-8"))
+            self.assertEqual(validate_physical_evidence(evidence)["outcome"], "PASS", name)
+        tampered = json.loads((root / "four-node-heterogeneous.json").read_text(encoding="utf-8"))
+        tampered["records"][0]["worker_identity"] = "raspberry-pi"
+        self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")
