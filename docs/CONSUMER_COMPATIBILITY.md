@@ -22,6 +22,12 @@ Migration guidance for consumers:
 5. Use `ensure_bundle` for typed EA-NEXT-002 archives; SSH pre-staging is not
    required for candidate execution material in this path.
 
+For request-scoped bundles that are not pre-staged, consumers may pass an
+`execution_bundle_archive` to `FabricClient.execute()` or `replicate()`. Fabric
+first admits the request, then transfers the verified typed archive only to the
+selected remote worker before dispatch. This preserves placement authority and
+avoids broadcasting prompt or input material to ineligible workers.
+
 Optional live sibling integration remains outside Fabric CI. A missing sibling
 is `UNKNOWN`, not a self-contained Fabric failure.
 

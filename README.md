@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a7` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Production lifecycle, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a8` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Production lifecycle, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -40,6 +40,7 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
 - a versioned `FabricClient` consumer facade with identity-addressable public-contract metadata, typed remote-worker configuration, consumer provenance bindings, replication, reconciliation, and Fabric-owned receipts;
 - bounded native EA-NEXT-002 bundle transfer over Fabric envelopes with independent worker verification, chunk limits, atomic publication, and an immutable content-addressed cache;
+- request-scoped verified execution-bundle staging after placement admission for remote consumers;
 - identity-addressable host/CPU/accelerator resource observations, placement requests, deterministic admission, freshness bounds, and explicit no-fallback decisions;
 - placement references in Fabric-generated receipts, with optional runtime placement observations kept separate from hardware or semantic claims; and
 - authenticated worker descriptions, immutable remote observation history,
@@ -53,9 +54,6 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
   Torch CUDA probe workload; and
 - a strict explicit-configuration Linux/ARM worker preflight and reusable
   Raspberry Pi native-bundle harness; and
-- a physically commissioned Raspberry Pi/Linux ARM worker path with direct
-  mTLS/native transfer, constrained accelerator admission evidence, and a
-  four-node Linux/Windows/ARM collection; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
@@ -155,8 +153,10 @@ mncs-fabric contract show --json
 `FabricClient.ensure_bundle()` transfers only a verified typed execution bundle;
 it is not general file transfer. `FabricClient.execute()` returns a versioned
 consumer result containing the Fabric record, Fabric-generated MNCS receipt,
-and optional provenance binding. Consumer projects retain semantic workload,
-evaluation, promotion, and learning authority.
+and optional provenance binding. Request-scoped consumers may pass an
+`execution_bundle_archive`; Fabric admits placement first, then stages the verified
+archive only to the selected remote worker. Consumer projects retain semantic
+workload, evaluation, promotion, and learning authority.
 
 `FabricClient.refresh_worker()` obtains the current authenticated worker
 description. `FabricClient.workers()` exposes observation source, availability,
