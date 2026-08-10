@@ -77,11 +77,21 @@ comparison. The three-node evidence record validates the Fedora local,
 reconciliation. These are offline checks of operator-controlled development
 records, not independent physical verification.
 
-The provider also validates the explicit Raspberry Pi/Linux ARM preflight
-profile offline. A `PASS` preflight establishes only a strict SSH bootstrap
-and observed Linux/ARM substrate; an `UNKNOWN` preflight, such as the current
-record with no usable account/key mapping, remains valid evidence of an
-unresolved operator prerequisite and is not promoted to worker execution.
+The provider validates chronological Raspberry Pi/Linux ARM preflight and
+native-bundle records offline. A `PASS` preflight establishes only a strict SSH
+bootstrap and observed Linux/ARM substrate; the earlier `UNKNOWN` preflight
+remains historical evidence and is not rewritten. The later native-bundle
+record establishes direct mTLS execution, worker-state/replay boundaries, and
+identity-linked receipts without claiming attestation.
+
+The four-node evidence record validates one exact portable bundle across the
+Fedora local node, remote Fedora worker, Windows worker, and Raspberry Pi
+`aarch64` worker. It checks cross-architecture observations, native transfer,
+four distinct records/receipts, collection completeness, reconciliation, Pi
+accelerator ineligibility, and bounded Pi loss/recovery. This remains
+operator-controlled development evidence; Forge does not contact the private
+machines or certify their honesty, correctness, custody, independence, or
+conformance.
 
 The checked-in `development-evidence/fedora-resource-placement.json` is a
 bounded direct-mTLS CPU-placement run with native bundle transfer and a
