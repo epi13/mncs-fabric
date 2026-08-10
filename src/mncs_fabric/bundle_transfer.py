@@ -31,6 +31,14 @@ def _raw_identity(value: object) -> bool:
     return isinstance(value, str) and len(value) == 64 and all(char in "0123456789abcdef" for char in value)
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 class BundleCache:
     """Publish verified bundles atomically and expose only complete roots."""
 
@@ -72,24 +80,133 @@ class BundleCache:
             raise StorageError("published bundle metadata uses an unsupported version")
         return value
 
+    def _discard_published_target(self, target: Path) -> None:
+        """Remove only a derived cache entry whose exact target was already validated."""
+
+        if target.parent != self.bundle_root or not _raw_identity(target.name):
+            raise StorageError("refusing to remove a path outside the published bundle cache")
+        if target.is_symlink():
+            target.unlink()
+        elif target.exists():
+            if not target.is_dir():
+                target.unlink()
+            else:
+                shutil.rmtree(target)
+
+    def _verify_published_target(
+        self,
+        target: Path,
+        *,
+        bundle_identity: str,
+        archive_identity: str,
+    ) -> BundleReport:
+        """Verify both immutable archive bytes and their extracted execution content."""
+
+        if target.is_symlink() or not target.is_dir():
+            raise StorageError("published bundle cache target is not a regular directory")
+        metadata = self._published_metadata(target)
+        if metadata is None:
+            raise StorageError("published bundle metadata is missing")
+        if metadata.get("bundle_identity") != bundle_identity:
+            raise StorageError("published bundle metadata identity does not match cache target")
+        if metadata.get("archive_identity") != archive_identity:
+            raise ProtocolError("logical bundle identity is already bound to different archive bytes")
+
+        archive = target / "archive.zip"
+        report = verify_bundle_archive(
+            archive,
+            expected_bundle_identity=bundle_identity,
+            expected_archive_identity=archive_identity,
+        )
+        if not report.valid or report.manifest is None:
+            raise StorageError("published bundle archive failed verification")
+
+        content = target / "content"
+        if content.is_symlink() or not content.is_dir():
+            raise StorageError("published bundle content directory is missing or unsafe")
+        expected_entries = {
+            str(entry["path"]): entry
+            for entry in report.manifest.get("entries", [])
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str)
+        }
+        observed_paths: set[str] = set()
+        for path in content.rglob("*"):
+            if path.is_symlink():
+                raise StorageError("published bundle content contains a symbolic link")
+            if path.is_dir():
+                continue
+            if not path.is_file():
+                raise StorageError("published bundle content contains a special file")
+            observed_paths.add(path.relative_to(content).as_posix())
+        if observed_paths != set(expected_entries):
+            missing = sorted(set(expected_entries) - observed_paths)
+            extras = sorted(observed_paths - set(expected_entries))
+            raise StorageError(
+                f"published bundle content path set differs; missing={missing}, extras={extras}"
+            )
+        for relative, entry in expected_entries.items():
+            path = content / relative
+            try:
+                size = path.stat().st_size
+                identity = _file_sha256(path)
+            except OSError as exc:
+                raise StorageError(
+                    f"published bundle content cannot be read: {relative}: {exc}"
+                ) from exc
+            if size != entry.get("size_bytes") or identity != entry.get("identity"):
+                raise StorageError(f"published bundle content identity mismatch: {relative}")
+        return report
+
+    def _healthy_published_target(
+        self,
+        target: Path,
+        *,
+        bundle_identity: str,
+        archive_identity: str,
+    ) -> bool:
+        """Return whether a same-identity cache entry is safe to reuse.
+
+        Corrupt/incomplete derived cache material is discarded so a subsequent
+        transfer can rebuild it. Identity substitution remains fail-closed.
+        """
+
+        if not target.exists() and not target.is_symlink():
+            return False
+        try:
+            self._verify_published_target(
+                target,
+                bundle_identity=bundle_identity,
+                archive_identity=archive_identity,
+            )
+        except ProtocolError:
+            raise
+        except (OSError, StorageError, ValueError):
+            self._discard_published_target(target)
+            return False
+        return True
+
     def begin(self, *, transfer_id: str, bundle_identity: str, archive_identity: str, total_bytes: int, chunk_bytes: int, chunk_count: int) -> str:
         if not transfer_id or not is_sha256_identity(archive_identity) or not _raw_identity(bundle_identity):
             raise ProtocolError("bundle transfer identities are invalid")
         if not 1 <= total_bytes <= MAX_ARCHIVE_BYTES or not 1 <= chunk_bytes <= MAX_CHUNK_BYTES or not 1 <= chunk_count <= MAX_CHUNKS or chunk_count != (total_bytes + chunk_bytes - 1) // chunk_bytes:
             raise ProtocolError("bundle transfer bounds are invalid")
         target = self._target(bundle_identity)
-        published = self._published_metadata(target) if target.exists() else None
-        if published is not None:
-            if published.get("archive_identity") != archive_identity:
-                raise ProtocolError("logical bundle identity is already bound to different archive bytes")
+        if self._healthy_published_target(
+            target,
+            bundle_identity=bundle_identity,
+            archive_identity=archive_identity,
+        ):
             return "ALREADY_PRESENT"
         if len([path for path in self.staging_root.iterdir() if path.is_dir()]) >= MAX_IN_PROGRESS:
             raise ProtocolError("bundle transfer concurrency limit exhausted")
         state = self._state(transfer_id)
         if state.exists():
-            metadata = self._published_metadata(state)
-            if metadata is not None and metadata.get("archive_identity") != archive_identity:
-                raise ProtocolError("transfer identity is bound to different archive bytes")
+            try:
+                metadata = json.loads((state / "state.json").read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise StorageError("bundle transfer state is corrupt") from exc
+            if metadata.get("archive_identity") != archive_identity or metadata.get("bundle_identity") != bundle_identity:
+                raise ProtocolError("transfer identity is bound to different bundle bytes")
             return "TRANSFER_REQUIRED"
         state.mkdir(mode=0o700)
         write_json(state / "state.json", {"schema_version": TRANSFER_SCHEMA, "transfer_id": transfer_id, "bundle_identity": bundle_identity, "archive_identity": archive_identity, "total_bytes": total_bytes, "chunk_bytes": chunk_bytes, "chunk_count": chunk_count, "next_sequence": 0, "received_bytes": 0})
@@ -136,10 +253,11 @@ class BundleCache:
         if not report.valid:
             return report.category, report, None
         target = self._target(bundle_identity)
-        published = self._published_metadata(target) if target.exists() else None
-        if published is not None:
-            if published.get("archive_identity") != archive_identity:
-                raise ProtocolError("published logical bundle identity is substituted")
+        if self._healthy_published_target(
+            target,
+            bundle_identity=bundle_identity,
+            archive_identity=archive_identity,
+        ):
             shutil.rmtree(state)
             return "ALREADY_PRESENT", report, target / "content"
         if self._cache_bytes() + archive.stat().st_size > self.max_cache_bytes:
@@ -159,30 +277,31 @@ class BundleCache:
                         shutil.copyfileobj(source_stream, destination_stream, length=64 * 1024)
                     os.chmod(destination, int(entry["mode"], 8))
             shutil.copyfile(archive, temporary / "archive.zip")
-            write_json(temporary / "metadata.json", {"schema_version": TRANSFER_SCHEMA, "bundle_identity": bundle_identity, "archive_identity": archive_identity, "content_bytes": sum(path.stat().st_size for path in (temporary / "content").rglob("*" ) if path.is_file())})
+            write_json(temporary / "metadata.json", {"schema_version": TRANSFER_SCHEMA, "bundle_identity": bundle_identity, "archive_identity": archive_identity, "content_bytes": sum(path.stat().st_size for path in (temporary / "content").rglob("*") if path.is_file())})
             os.replace(temporary, target)
             shutil.rmtree(state)
             return "COMMITTED", report, target / "content"
         except FileExistsError:
             shutil.rmtree(temporary, ignore_errors=True)
-            published = self._published_metadata(target)
-            if published and published.get("archive_identity") == archive_identity:
+            if self._healthy_published_target(
+                target,
+                bundle_identity=bundle_identity,
+                archive_identity=archive_identity,
+            ):
                 shutil.rmtree(state, ignore_errors=True)
                 return "ALREADY_PRESENT", report, target / "content"
-            raise ProtocolError("bundle publication raced with a conflicting identity")
+            raise ProtocolError("bundle publication raced with an invalid cache entry")
         except BaseException:
             shutil.rmtree(temporary, ignore_errors=True)
             raise
 
     def root_for(self, bundle_identity: str, archive_identity: str) -> Path:
         target = self._target(bundle_identity)
-        metadata = self._published_metadata(target)
-        if metadata is None or metadata.get("archive_identity") != archive_identity:
-            raise ProtocolError("requested bundle is not available in the immutable cache")
-        archive = target / "archive.zip"
-        report = verify_bundle_archive(archive, expected_bundle_identity=bundle_identity, expected_archive_identity=archive_identity)
-        if not report.valid or not (target / "content").is_dir():
-            raise StorageError("published bundle cache entry failed verification")
+        self._verify_published_target(
+            target,
+            bundle_identity=bundle_identity,
+            archive_identity=archive_identity,
+        )
         return target / "content"
 
     def report_for(self, bundle_identity: str, archive_identity: str) -> BundleReport:
