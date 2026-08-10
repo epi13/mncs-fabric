@@ -339,8 +339,11 @@ class FabricClient:
                 raise ProtocolError(f"worker is not registered: {worker_id}")
             if worker_id is not None:
                 if execution_bundle is None and execution_bundle_archive is not None:
-                    self.ensure_bundle(worker_id, execution_bundle_archive)
-                    execution_bundle = self.bundle_links[worker_id]
+                    report = self.ensure_bundle(worker_id, execution_bundle_archive)
+                    execution_bundle = {
+                        "bundle_identity": report["bundle_identity"],
+                        "archive_identity": report["archive_identity"],
+                    }
                 transport, _ = self.network.remote_workers[worker_id]
                 selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
                 selected_capability = dict(runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) if (runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) else None
@@ -366,8 +369,11 @@ class FabricClient:
         for worker_id in decision.worker_ids:
             remote_bundle = execution_bundle or self.bundle_links.get(worker_id)
             if worker_id in self.remote_configs and remote_bundle is None and execution_bundle_archive is not None:
-                self.ensure_bundle(worker_id, execution_bundle_archive)
-                remote_bundle = self.bundle_links[worker_id]
+                report = self.ensure_bundle(worker_id, execution_bundle_archive)
+                remote_bundle = {
+                    "bundle_identity": report["bundle_identity"],
+                    "archive_identity": report["archive_identity"],
+                }
             selected_runtime = dict(runtime_observation or self.runtime_observations.get(worker_id)) if (runtime_observation or self.runtime_observations.get(worker_id)) else None
             selected_capability = dict(runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) if (runtime_capability_observation or self.runtime_capability_observations.get(worker_id)) else None
             rid = request_id or dispatch_request_identity(plan=checked, manifest=dict(manifest), challenge=challenge, consumer_context=context_value, execution_bundle=remote_bundle, placement_request=placement_value, runtime_observation=selected_runtime, runtime_capability_observation=selected_capability)
