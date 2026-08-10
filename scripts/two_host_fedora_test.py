@@ -80,8 +80,8 @@ class Remote:
             "-o", "ConnectTimeout=10",
         ]
 
-    def ssh(self, command: str) -> str:
-        return _run(["ssh", "-n", *self.options, self.destination, command], timeout=20)
+    def ssh(self, command: str, *, timeout: float = 20) -> str:
+        return _run(["ssh", "-n", *self.options, self.destination, command], timeout=timeout)
 
     def scp_to(self, source: Path, destination: str) -> None:
         _run(["scp", *self.options, str(source), f"{self.destination}:{destination}"], timeout=60)
