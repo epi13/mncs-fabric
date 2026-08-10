@@ -9,6 +9,8 @@ from mncs_fabric.api import ConsumerContext, FabricClient, LocalWorkerConfig, Pl
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.canonical import verify_identity
 from mncs_fabric.models import validate_job_plan
+from mncs_fabric.resources import capture_resource_snapshot
+from mncs_fabric.scheduler import WorkerSlot
 from mncs_fabric.worker import LocalWorker
 
 
@@ -94,3 +96,50 @@ class PublicContractTests(unittest.TestCase):
             reference = result["receipt"]["placement"]["execution_placement_reference"]
             self.assertEqual(reference["placement_request_identity"], PlacementRequest(execution_device="cpu").placement_request_identity)
             self.assertEqual(result["receipt"]["runner"]["runner_version"], __version__)
+
+    def test_execution_bundle_archive_is_staged_after_remote_admission(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "task.py").write_text("from pathlib import Path\nPath('result.json').write_text('ok')\n", encoding="utf-8")
+            plan, manifest = _plan(bundle)
+            client = FabricClient("lazy-bundle-controller", root / "controller.jsonl")
+            snapshot = capture_resource_snapshot("remote-worker")
+            client.remote_configs["remote-worker"] = object()  # type: ignore[assignment]
+            client.network.remote_workers["remote-worker"] = (
+                object(),
+                WorkerSlot(
+                    worker_id="remote-worker",
+                    capabilities=frozenset({"python"}),
+                    resource_snapshot=snapshot,
+                ),
+            )
+            client.network.refresh_all = lambda: []  # type: ignore[method-assign]
+            archive = root / "inference.zip"
+            archive.write_bytes(b"fixture")
+            staged = {"bundle_identity": "a" * 64, "archive_identity": "sha256:" + "b" * 64}
+            calls: list[Path] = []
+
+            def fake_ensure(worker_id: str, archive_path: Path, **_kwargs: object) -> dict[str, str]:
+                self.assertEqual(worker_id, "remote-worker")
+                calls.append(archive_path)
+                return staged
+
+            client.ensure_bundle = fake_ensure  # type: ignore[method-assign]
+            client.network.dispatch_via = lambda *args, **kwargs: {  # type: ignore[method-assign]
+                "worker_id": "remote-worker",
+                "payload": {
+                    "disposition": "EXECUTED",
+                    "record": {"job_identity": plan["job_identity"], "worker_identity": "remote-worker"},
+                    "receipt": None,
+                },
+            }
+            result = client.execute(
+                plan,
+                manifest,
+                placement=PlacementRequest(execution_device="cpu"),
+                execution_bundle_archive=archive,
+            )[0]
+            self.assertEqual(result["worker_identity"], "remote-worker")
+            self.assertEqual(calls, [archive])
