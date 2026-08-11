@@ -10,6 +10,12 @@ Resident-model selection, tool policy, Commons meaning, and model-role routing
 remain Harness responsibilities. Distributed DAG scheduling and arbitrary remote
 MCP invocation remain future work.
 
+Future residency work must preserve this boundary. Fabric may carry factual loaded
+state, provider timing/memory observations, transition history, and opaque session
+provenance, but it must not choose resident models, evictions, session affinity, or
+speculative warming. See
+[Provider-neutral residency and session observations](PROVIDER_RESIDENCY_OBSERVATIONS.md).
+
 ## Phase 0 — foundation (complete)
 
 - canonical identities;
@@ -82,6 +88,17 @@ does not establish independent freshness or custody.
 - [x] provider-neutral, identity-bound worker capability observations with bounded
   model/runtime entries, durable history, public API exposure, and explicit
   freshness/availability (additive to authenticated worker descriptions);
+- [ ] extend provider-neutral model/runtime observations with optional factual residency
+  fields such as loaded state, observed load duration, provider-reported memory/cache
+  usage, and exact runtime/model identity while preserving UNKNOWN for unsupported
+  facts;
+- [ ] add bounded load/unload/reuse transition history without inventing eviction
+  causality when a provider reports only weaker state changes;
+- [ ] carry opaque provider-session references as consumer provenance bound to exact
+  worker/runtime/model identities, with tests proving those references grant no
+  filesystem, shell, MCP, workspace, or execution authority;
+- [ ] support explicit consumer/provider warm-operation evidence as a bounded operation
+  without adding autonomous Fabric prefetch, eviction, or residency policy;
 - [ ] explicit capability references for worker-local tools and MCP endpoints
   without making Fabric the semantic tool router;
 - [~] a first consumer now carries typed inference/workspace/tool target metadata;
@@ -100,9 +117,10 @@ does not establish independent freshness or custody.
 
 The distributed capability work in this phase remains provider-neutral. Fabric may
 report authenticated facts such as installed runtimes, models, tools, MCP endpoint
-identities, hardware, liveness, and resource observations. The consuming harness
-retains semantic model selection, task decomposition, workspace meaning, permissions,
-tool choice, verification, reduction, and escalation.
+identities, hardware, liveness, resource observations, and bounded provider residency
+observations. The consuming harness retains semantic model selection, task decomposition,
+workspace meaning, permissions, session-affinity policy, resident working-set policy,
+speculative warming, tool choice, verification, reduction, and escalation.
 
 ## Phase 3 — heterogeneous cohort
 
@@ -124,6 +142,9 @@ tool choice, verification, reduction, and escalation.
 - [ ] heterogeneous capability-graph evidence spanning models, worker-local
   tools, controller-proxied capabilities, and execution targets without
   weakening worker identity or admission semantics;
+- [ ] heterogeneous residency-observation evidence across supported CPU/GPU,
+  Windows/Linux/ARM, and multiple provider runtimes, explicitly documenting fields a
+  provider cannot establish instead of inventing normalized values;
 
 ## Phase 4 — controlled fault injection
 
@@ -138,6 +159,9 @@ tool choice, verification, reduction, and escalation.
 - harness self-tests with expected dispositions;
 - target-routing faults where inference worker, workspace authority, and
   execution target disagree, disappear, or become stale;
+- provider-residency faults where loaded state disappears, a session reference becomes
+  stale, a warm operation fails, or transition telemetry conflicts, preserving UNKNOWN
+  rather than silently fabricating current state or causality;
 - verify that a failed or stale remote target becomes UNKNOWN/denied rather than
   falling back to ambient SSH, shell, or filesystem authority.
 
