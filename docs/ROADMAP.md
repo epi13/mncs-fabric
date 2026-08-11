@@ -16,7 +16,33 @@ provenance, but it must not choose resident models, evictions, session affinity,
 speculative warming. See
 [Provider-neutral residency and session observations](PROVIDER_RESIDENCY_OBSERVATIONS.md).
 
-## Proposed worker bootstrap, discovery, and lifecycle
+## Worker bootstrap, discovery, and lifecycle
+
+### Implemented in 0.2.0a14 — Phase A foundation
+
+- [x] versioned short-lived, single-use enrollment authorization with hashed
+  token material, bounded metadata, expiry, revocation, and atomic replay state;
+- [x] bounded versioned enrollment requests with strict fields, public-key
+  validation, untrusted descriptive bootstrap claims, and duplicate/conflict
+  rejection;
+- [x] immutable approval/denial/expiry decisions bound to the exact request and
+  public-key identity, with active identity rebind rejection;
+- [x] additive fleet membership/revocation records separate from
+  `mncs-fabric.worker-registry.v0.1` endpoint configuration;
+- [x] authenticated session generations, stale/disconnected/duplicate identity
+  handling, and separate capability/resource freshness outputs;
+- [x] Fabric-owned lifecycle paths usable across client/process restarts;
+- [x] controller `status`, `doctor`, and bounded foreground `service run`
+  foundation; and
+- [x] deterministic CLI inspection and machine-readable lifecycle output.
+
+The controller runtime foundation is persistent-state ownership, not a completed
+network daemon: no worker rendezvous, mDNS/DNS-SD, certificate issuance, or OS
+installation is claimed. `FabricClient` retains embedded/in-process compatibility
+and can be pointed at a shared lifecycle state path for development. Consumers
+do not own worker presence or disconnect state.
+
+### Planned after Phase A
 
 Fabric's current explicit endpoint registry and physical multi-host evidence prove the
 execution substrate, but commissioning remains too manual for normal fleet operation.
@@ -72,12 +98,9 @@ Key roadmap constraints:
 - [x] Fabric-owned receipts and generic consumer provenance bindings;
 - [x] bounded native EA-NEXT-002 bundle transfer with worker-side verification
   and immutable cache, including direct physical execution evidence;
-- [ ] versioned enrollment authorization/request/decision records with bounded,
-  single-use replay state;
+- [ ] service transport for `FabricClient` to connect to a running controller;
 - [ ] production-shaped installed worker service lifecycle for Linux and Windows;
 - [ ] authenticated worker-initiated rendezvous with bounded reconnect/session state;
-- [ ] durable fleet membership/presence representation that preserves
-  `worker-registry.v0.1` endpoint semantics;
 - [ ] automatic TrustStore/fleet registration only after explicit approved enrollment;
 - [ ] optional local controller discovery with cryptographic controller verification;
 

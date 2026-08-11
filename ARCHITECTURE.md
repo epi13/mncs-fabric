@@ -62,6 +62,22 @@ worker liveness without converting a stale claim into current availability.
 `collections.py` owns generic work-item and collection completeness; consumer
 projects retain partition meaning and semantic aggregation.
 
+`lifecycle.py` owns the additive `mncs-fabric.*.v0.1` commissioning contracts:
+single-use enrollment authorization, bounded bootstrap request, immutable
+approval/denial/expiry decision, fleet membership/revocation, and authenticated
+session presence. It uses the existing append-only ledger and never changes the
+meaning of `worker-registry.v0.1` or turns TrustStore into a CA. Membership,
+presence, liveness, capability freshness, and resource freshness remain separate
+claims; only a fresh enrolled authenticated session can report current
+availability.
+
+`controller_service.py` is a platform-neutral foreground service foundation.
+It owns the lifecycle ledger independently of a consumer process and exposes
+status/doctor checks suitable for a thin systemd or Windows supervisor. It does
+not yet expose a LAN administrative listener or worker-initiated rendezvous.
+The embedded `FabricClient`/controller path remains supported for tests and
+development; a future service transport will be additive.
+
 ### Distributed capability and target separation
 
 Fabric should support distributed agent harnesses without becoming an agent harness
@@ -226,4 +242,6 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - hardware attestation;
 - a distributed RAVEL mechanism; and
 - public semantic ownership for MNEL/RAVEL workloads or collection aggregation; and
-- production daemon supervision or unlimited worker service operation.
+- worker-initiated rendezvous and production multi-host daemon installation;
+- certificate provisioning, mDNS/DNS-SD discovery, and installer packaging; and
+- arbitrary remote shell, ambient SSH/WinRM, or consumer-owned controller state.
