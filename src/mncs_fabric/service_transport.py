@@ -128,7 +128,7 @@ def _safe_endpoint_path(path: Path) -> None:
         raise ProtocolError("service socket parent is not a real directory")
     if os.name == "posix" and parent_stat.st_uid != os.getuid():
         raise ProtocolError("service socket parent is owned by another account")
-    if parent_stat.st_mode & 0o022:
+    if os.name == "posix" and parent_stat.st_mode & 0o022:
         raise ProtocolError("service socket parent is writable by another account")
     if path.exists() or path.is_symlink():
         entry = os.lstat(path)
@@ -159,7 +159,7 @@ class ControllerServiceOwnership:
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         parent_stat = os.lstat(self.path.parent)
-        if stat.S_ISLNK(parent_stat.st_mode) or not stat.S_ISDIR(parent_stat.st_mode) or (os.name == "posix" and parent_stat.st_uid != os.getuid()) or parent_stat.st_mode & 0o022:
+        if stat.S_ISLNK(parent_stat.st_mode) or not stat.S_ISDIR(parent_stat.st_mode) or (os.name == "posix" and parent_stat.st_uid != os.getuid()) or (os.name == "posix" and parent_stat.st_mode & 0o022):
             raise ProtocolError("controller ownership directory is unsafe")
         if self.path.is_symlink():
             raise ProtocolError("controller ownership path is a symlink")
