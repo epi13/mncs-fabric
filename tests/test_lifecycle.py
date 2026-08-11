@@ -9,6 +9,7 @@ from tempfile import TemporaryDirectory
 from mncs_fabric.api import FabricClient
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.errors import ProtocolError, StorageError, ValidationError
+from mncs_fabric.canonical import verify_identity
 from mncs_fabric.lifecycle import (
     AUTHORIZATION_SCHEMA,
     LifecycleStore,
@@ -230,8 +231,53 @@ class LifecycleTests(unittest.TestCase):
         result = service.run(max_seconds=0.01)
         self.assertEqual(result["outcome"], "PASS")
         doctor = service.doctor(now="2026-01-01T00:00:01Z")
-        self.assertEqual(doctor["checks"]["administrative_listener"], "NOT_EXPOSED")
+        self.assertEqual(doctor["checks"]["administrative_listener"], "LOCAL_OPERATOR_SOCKET")
         self.assertEqual(doctor["checks"]["worker_rendezvous"], "NOT_IMPLEMENTED")
+        self.assertEqual(LifecycleStore(self.store.path).doctor()["outcome"], "PASS")
+        self.assertEqual(LifecycleStore(self.store.path).memberships(), [])
+        restarted_service = ControllerService(config)
+        self.assertEqual(restarted_service.status()["service_ledger"]["outcome"], "PASS")
+
+    def test_concurrent_sessions_are_decided_under_one_ledger_lock(self) -> None:
+        enrolled = self._enroll()
+        worker_id = str(enrolled["request"]["worker_identity"])
+        key_identity = str(enrolled["request"]["public_key_identity"])
+        barrier = threading.Barrier(2)
+        results: list[dict[str, object]] = []
+        errors: list[Exception] = []
+
+        def authenticate(session_id: str) -> None:
+            try:
+                barrier.wait()
+                results.append(self.store.authenticate_session(worker_id, public_key_identity_value=key_identity, session_id=session_id, generation=1, now="2026-01-01T00:05:00Z"))
+            except Exception as exc:  # pragma: no cover - assertion below diagnoses unexpected failures.
+                errors.append(exc)
+
+        threads = [threading.Thread(target=authenticate, args=(session,)) for session in ("session-a", "session-b")]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(len(results), 2)
+        events = [entry["record"] for entry in self.store.ledger.records() if entry["record_type"] == "presence.session"]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(sum(event["event"] == "authenticated" for event in events), 1)
+        self.assertEqual(sum(event["event"] == "duplicate-identity" for event in events), 1)
+        self.assertEqual(self.store.status(worker_id, now="2026-01-01T00:05:01Z")["availability"], "UNKNOWN")
+
+    def test_stale_session_reconnect_and_old_generation_reject(self) -> None:
+        enrolled = self._enroll()
+        worker_id = str(enrolled["request"]["worker_identity"])
+        key_identity = str(enrolled["request"]["public_key_identity"])
+        self.store.authenticate_session(worker_id, public_key_identity_value=key_identity, session_id="old", generation=1, now="2026-01-01T00:00:00Z")
+        reconnect = self.store.authenticate_session(worker_id, public_key_identity_value=key_identity, session_id="new", generation=2, now="2026-01-01T00:06:00Z")
+        self.assertEqual(reconnect["session_id"], "new")
+        self.assertEqual(reconnect["presence"], "PRESENT")
+        for entry in self.store.ledger.records(record_type="presence.session"):
+            self.assertTrue(verify_identity(entry["record"], "presence_event_id"))
+        with self.assertRaises(ProtocolError):
+            self.store.authenticate_session(worker_id, public_key_identity_value=key_identity, session_id="old", generation=1, now="2026-01-01T00:07:00Z")
 
 
 if __name__ == "__main__":

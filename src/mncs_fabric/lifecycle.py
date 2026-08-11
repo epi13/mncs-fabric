@@ -533,46 +533,58 @@ class LifecycleStore:
         if not isinstance(generation, int) or generation < 1 or generation > 2**31:
             raise ValidationError("session generation is outside the bounded range")
         current_time = _timestamp(now or utc_now(), "authenticated_at")
-        records = self._records()
-        member = _latest_membership(records, worker_id)
-        if member is None or member.get("membership_status") != "ENROLLED":
-            raise ProtocolError("worker is not enrolled")
-        if member.get("public_key_identity") != public_key_identity_value:
-            raise ProtocolError("session credential does not match enrolled worker")
-        current = self._current_session(records, worker_id)
-        if current and current["session_id"] != session_id:
-            conflict = attach_identity({
-                "schema_version": PRESENCE_SCHEMA,
-                "worker_id": worker_id,
-                "public_key_identity": public_key_identity_value,
-                "session_id": session_id,
-                "generation": generation,
-                "observed_at": current_time,
-                "event": "duplicate-identity",
-                "conflicts_with_session_id": current["session_id"],
-            }, "presence_event_id")
-            self.ledger.append("presence.session-conflict", conflict)
-            return self.status(worker_id, now=current_time)
-        if current and generation < current["generation"]:
-            raise ProtocolError("session generation regressed")
-        event_name = "authenticated" if not current or generation > current["generation"] else "heartbeat"
-        event = attach_identity({
+        event = {
             "schema_version": PRESENCE_SCHEMA,
             "worker_id": worker_id,
             "public_key_identity": public_key_identity_value,
             "session_id": session_id,
             "generation": generation,
             "observed_at": current_time,
-            "event": event_name,
-        }, "presence_event_id")
-        self.ledger.append("presence.session", event)
+            "event": "authenticated",
+        }
+        def admit(records: list[dict[str, Any]]) -> None:
+            # Membership, current-session selection, duplicate detection, and
+            # the append must share one FabricLedger lock.  Reading current
+            # presence before append would allow two controller threads to
+            # both admit different sessions for the same logical identity.
+            member = _latest_membership(records, worker_id)
+            if member is None or member.get("membership_status") != "ENROLLED":
+                raise ProtocolError("worker is not enrolled")
+            if member.get("public_key_identity") != public_key_identity_value:
+                raise ProtocolError("session credential does not match enrolled worker")
+            current = self._current_session(records, worker_id)
+            if current is None:
+                event.update(attach_identity(event, "presence_event_id"))
+                return
+            if generation < current["generation"]:
+                raise ProtocolError("session generation regressed")
+            if current["session_id"] == session_id:
+                event["event"] = "heartbeat" if generation == current["generation"] else "reconnected"
+                event.update(attach_identity(event, "presence_event_id"))
+                return
+            age = (_instant(current_time) - _instant(current["observed_at"])).total_seconds()
+            if generation > current["generation"] and age > SESSION_MAX_AGE_SECONDS:
+                event["event"] = "reconnected"
+                event["replaces_session_id"] = current["session_id"]
+                event["replaces_generation"] = current["generation"]
+                event.update(attach_identity(event, "presence_event_id"))
+                return
+            event["event"] = "duplicate-identity"
+            event["conflicts_with_session_id"] = current["session_id"]
+            event["conflicts_with_generation"] = current["generation"]
+            event.update(attach_identity(event, "presence_event_id"))
+
+        self.ledger.append_if("presence.session", event, admit)
+        # The conflict evidence is intentionally retained in the same scoped
+        # presence ledger record.  status() projects it to UNKNOWN rather than
+        # allowing it to masquerade as current availability.
         return self.status(worker_id, now=current_time)
 
     def _current_session(self, records: list[dict[str, Any]], worker_id: str) -> dict[str, Any] | None:
         sessions = [entry["record"] for entry in records if entry["record_type"] in {"presence.session", "presence.session-ended", "presence.session-conflict"} and entry["record"].get("worker_id") == worker_id]
         active: dict[str, Any] | None = None
         for event in sessions:
-            if event.get("event") in {"authenticated", "heartbeat"}:
+            if event.get("event") in {"authenticated", "heartbeat", "reconnected"}:
                 if active is None or (event["generation"], event["observed_at"]) >= (active["generation"], active["observed_at"]):
                     active = event
             elif event.get("event") == "ended" and active and event.get("session_id") == active["session_id"] and event.get("generation") == active["generation"]:
@@ -582,10 +594,6 @@ class LifecycleStore:
     def disconnect_session(self, worker_id: str, *, session_id: str, generation: int, now: str | None = None) -> dict[str, Any]:
         worker_id = _identity(worker_id, "worker_id")
         session_id = _session_id(session_id)
-        records = self._records()
-        current = self._current_session(records, worker_id)
-        if current is None or current["session_id"] != session_id or current["generation"] != generation:
-            raise ProtocolError("session is not current")
         event = attach_identity({
             "schema_version": PRESENCE_SCHEMA,
             "worker_id": worker_id,
@@ -594,7 +602,12 @@ class LifecycleStore:
             "observed_at": _timestamp(now or utc_now(), "disconnected_at"),
             "event": "ended",
         }, "presence_event_id")
-        self.ledger.append("presence.session-ended", event)
+        def disconnect(records: list[dict[str, Any]]) -> None:
+            current = self._current_session(records, worker_id)
+            if current is None or current["session_id"] != session_id or current["generation"] != generation:
+                raise ProtocolError("session is not current")
+
+        self.ledger.append_if("presence.session-ended", event, disconnect)
         return self.status(worker_id, now=now)
 
     def status(self, worker_id: str, *, now: str | None = None, max_age_seconds: float = SESSION_MAX_AGE_SECONDS) -> dict[str, Any]:
@@ -607,7 +620,7 @@ class LifecycleStore:
         if member is None:
             raise ProtocolError("worker membership is unknown")
         session = self._current_session(records, worker_id)
-        conflict = next((entry["record"] for entry in reversed(records) if entry["record_type"] == "presence.session-conflict" and entry["record"].get("worker_id") == worker_id), None)
+        conflict = next((entry["record"] for entry in reversed(records) if entry["record"].get("worker_id") == worker_id and entry["record"].get("event") == "duplicate-identity"), None)
         conflict_after_session = bool(conflict and (session is None or conflict.get("observed_at", "") >= session.get("observed_at", "")))
         age = None if session is None else (_instant(current_time) - _instant(session["observed_at"])).total_seconds()
         fresh = session is not None and 0 <= age <= max_age_seconds

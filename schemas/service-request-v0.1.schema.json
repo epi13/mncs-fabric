@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.service-request.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "client_identity", "operation", "arguments", "created_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.service-request.v0.1"},
+    "request_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "client_identity": {"type": "string", "minLength": 1, "maxLength": 128},
+    "operation": {"type": "string", "maxLength": 64},
+    "arguments": {"type": "object", "maxProperties": 32},
+    "created_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -10,6 +10,7 @@ from .enrollment import TrustStore
 from .io import load_json, write_json
 from .lifecycle import LifecycleStore, default_lifecycle_path
 from .controller_service import ControllerConfig, ControllerService
+from .api import FabricAdminClient, FabricClient
 from .registry import RegistryWorker, WorkerRegistry
 from .service import FabricService
 from .transport import TLSWorkerServer
@@ -191,6 +192,7 @@ def build_parser() -> argparse.ArgumentParser:
     enrollment_expire.add_argument("--json", action="store_true")
     for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire):
         enrollment_command.add_argument("--state", type=_path, default=default_lifecycle_path())
+        enrollment_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
 
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
@@ -203,6 +205,8 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_doctor.add_argument("--json", action="store_true")
     for fleet_command in (fleet_list, fleet_status, fleet_doctor):
         fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
+        fleet_command.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
+        fleet_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
 
     worker_revoke = worker_sub.add_parser("revoke", help="revoke durable fleet membership")
     worker_revoke.add_argument("worker_id")
@@ -213,17 +217,22 @@ def build_parser() -> argparse.ArgumentParser:
     worker_status.add_argument("worker_id")
     worker_status.add_argument("--state", type=_path, default=default_lifecycle_path())
     worker_status.add_argument("--json", action="store_true")
+    worker_status.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
     worker_doctor = worker_sub.add_parser("doctor", help="verify worker lifecycle state")
     worker_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
     worker_doctor.add_argument("--json", action="store_true")
+    worker_doctor.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
+    worker_revoke.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
 
     controller = sub.add_parser("controller", help="inspect or run the persistent Fabric controller foundation")
     controller.add_argument("--controller-id", default="local")
     controller_sub = controller.add_subparsers(dest="controller_command", required=True)
     controller_status = controller_sub.add_parser("status", help="inspect controller and lifecycle health")
     controller_status.add_argument("--json", action="store_true")
+    controller_status.add_argument("--socket", type=_path, help="query an already-running controller")
     controller_doctor = controller_sub.add_parser("doctor", help="run controller durability checks")
     controller_doctor.add_argument("--json", action="store_true")
+    controller_doctor.add_argument("--socket", type=_path, help="query an already-running controller")
     controller_service = controller_sub.add_parser("service", help="run the foreground controller service")
     controller_service_sub = controller_service.add_subparsers(dest="service_command", required=True)
     controller_run = controller_service_sub.add_parser("run", help="run until SIGTERM/SIGINT or a bounded test deadline")
@@ -299,6 +308,27 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return 0
         if args.command == "enrollment":
+            if args.admin_socket and args.enrollment_command != "request":
+                admin = FabricAdminClient.connect(args.admin_socket)
+                if args.enrollment_command == "create":
+                    result = admin.create_enrollment_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
+                elif args.enrollment_command == "list":
+                    result = {"outcome": "PASS", "authorizations": admin.enrollment_authorizations()}
+                elif args.enrollment_command == "pending":
+                    result = {"outcome": "PASS", "requests": admin.enrollment_pending()}
+                elif args.enrollment_command == "inspect":
+                    result = admin.enrollment_request(args.request_id)
+                elif args.enrollment_command == "approve":
+                    result = admin.approve_enrollment(args.request_id, worker_id=args.worker_id)
+                elif args.enrollment_command == "deny":
+                    result = admin.deny_enrollment(args.request_id, reason=args.reason)
+                elif args.enrollment_command == "expire":
+                    result = admin.expire_enrollment(args.request_id)
+                else:
+                    raise AssertionError("unreachable service enrollment command")
+                admin.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
             lifecycle = LifecycleStore(args.state)
             if args.enrollment_command == "create":
                 result = lifecycle.create_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
@@ -330,6 +360,25 @@ def main(argv: list[str] | None = None) -> int:
             write_json(None, result)
             return 0
         if args.command == "fleet":
+            if args.fleet_command == "doctor" and args.admin_socket:
+                admin = FabricAdminClient.connect(args.admin_socket)
+                result = admin.fleet_doctor()
+                admin.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
+            if args.socket:
+                client = FabricClient.connect(args.socket)
+                if args.fleet_command == "list":
+                    result = {"outcome": "PASS", "workers": client.fleet()}
+                elif args.fleet_command == "status":
+                    result = client.fleet_status(args.worker_id)
+                elif args.fleet_command == "doctor":
+                    result = client.fleet_doctor()
+                else:
+                    raise AssertionError("unreachable service fleet command")
+                client.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
             lifecycle = LifecycleStore(args.state)
             if args.fleet_command == "list":
                 result = {"outcome": "PASS", "workers": lifecycle.memberships()}
@@ -342,6 +391,18 @@ def main(argv: list[str] | None = None) -> int:
             write_json(None, result)
             return _status_code(result.get("outcome", "PASS"))
         if args.command == "worker" and args.worker_command in {"revoke", "status", "doctor"}:
+            if args.worker_command == "revoke" and args.admin_socket:
+                admin = FabricAdminClient.connect(args.admin_socket)
+                result = admin.revoke_worker(args.worker_id, reason=args.reason)
+                admin.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
+            if args.worker_command in {"status", "doctor"} and args.socket:
+                client = FabricClient.connect(args.socket)
+                result = client.fleet_status(args.worker_id) if args.worker_command == "status" else client.fleet_doctor()
+                client.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
             lifecycle = LifecycleStore(args.state)
             if args.worker_command == "revoke":
                 result = lifecycle.revoke_worker(args.worker_id, reason=args.reason)
@@ -352,6 +413,12 @@ def main(argv: list[str] | None = None) -> int:
             write_json(None, result)
             return _status_code(result.get("outcome", "PASS"))
         if args.command == "controller":
+            if args.controller_command in {"status", "doctor"} and args.socket:
+                client = FabricClient.connect(args.socket)
+                result = client.controller_status() if args.controller_command == "status" else client.controller_doctor()
+                client.close()
+                write_json(None, result)
+                return _status_code(result.get("outcome", "PASS"))
             service = ControllerService(ControllerConfig(args.controller_id, args.state))
             if args.controller_command == "status":
                 result = service.status()
