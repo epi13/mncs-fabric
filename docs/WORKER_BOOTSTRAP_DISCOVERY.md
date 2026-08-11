@@ -1,8 +1,9 @@
 # Worker bootstrap, discovery, and lifecycle
 
-Status: **Phase A foundation implemented; later discovery/rendezvous phases planned**
+Status: **Phase A and local persistent-controller transport implemented; worker
+rendezvous and discovery remain planned**
 
-Implemented in `0.2.0a14`:
+Implemented in `0.2.0a15`:
 
 - versioned, append-only enrollment authorization, request, decision, fleet
   membership, revocation, and session-presence records;
@@ -10,14 +11,21 @@ Implemented in `0.2.0a14`:
   explicit replay/expiry handling;
 - strict bounded request validation and exact public-key approval binding;
 - durable separation of membership, authenticated presence, liveness,
-  capability freshness, and resource freshness; and
-- controller `status`, `doctor`, and foreground `service run` foundations.
+  capability freshness, and resource freshness;
+- controller `status`, `doctor`, and foreground `service run` foundations;
+- separate lifecycle and controller-service ledgers;
+- atomic session admission, stale-session replacement, generation checks, and
+  duplicate-identity evidence; and
+- a bounded local AF_UNIX consumer/operator service transport with
+  `FabricClient.connect()` and explicit `FabricAdminClient` authority.
 
 The controller runtime owns this state independently of Local Harness or any
 other consumer process. `FabricClient` remains the ordinary consumer boundary
 and retains embedded/in-process compatibility. No worker-initiated rendezvous,
-mDNS/DNS-SD discovery, certificate issuance, installer, or production OS service
-is implemented by this phase.
+Windows service transport, mDNS/DNS-SD discovery, certificate issuance,
+installer, or production OS service is implemented by this phase. The local
+transport is deterministic-test verified but not physically verified under
+systemd, Windows services, or cross-host deployment.
 
 This document describes a path from Fabric's current explicitly commissioned
 multi-host alpha to an operator-controlled fleet that can be installed, enrolled,

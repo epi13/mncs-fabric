@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0a15 - persistent controller transport foundation
+
+- separate controller service start/stop/request evidence from the lifecycle
+  ledger, preserving lifecycle reads across service restarts;
+- make authenticated session admission and disconnect checks atomic under the
+  Fabric ledger lock, with stale-session replacement and generation regression
+  handling;
+- add bounded versioned local AF_UNIX consumer and operator service transport,
+  exclusive controller ownership, peer/path safety checks, request deadlines,
+  and replay rejection;
+- add `FabricClient.connect()` and explicit `FabricAdminClient` modes while
+  preserving embedded compatibility and denying consumer administrative calls;
+- add controller/fleet/enrollment CLI paths for persistent local service use; and
+- leave worker rendezvous, certificate provisioning, discovery, Windows service
+  transport, and physical reboot validation planned.
+
 ## 0.2.0a14 - worker lifecycle foundation
 
 - add Fabric-owned, append-only enrollment authorization, request, decision,

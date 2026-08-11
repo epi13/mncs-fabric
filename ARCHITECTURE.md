@@ -72,11 +72,17 @@ claims; only a fresh enrolled authenticated session can report current
 availability.
 
 `controller_service.py` is a platform-neutral foreground service foundation.
-It owns the lifecycle ledger independently of a consumer process and exposes
-status/doctor checks suitable for a thin systemd or Windows supervisor. It does
-not yet expose a LAN administrative listener or worker-initiated rendezvous.
-The embedded `FabricClient`/controller path remains supported for tests and
-development; a future service transport will be additive.
+It owns lifecycle state independently of a consumer process and exposes
+status/doctor checks suitable for a thin systemd or Windows supervisor. Its
+experimental local transport is a versioned, bounded AF_UNIX service with
+separate consumer and operator sockets, a service ledger, replayed-request
+rejection, restrictive path/peer checks, and an exclusive controller-state
+owner lock. `FabricClient.connect()` reads the persistent controller without
+loading controller ledgers into the consumer; `FabricAdminClient` is the
+explicit operator surface. The embedded `FabricClient`/controller path remains
+supported for tests and development. Windows local transport, LAN listeners,
+worker-initiated rendezvous, and execution dispatch over the service boundary
+remain planned.
 
 ### Distributed capability and target separation
 
@@ -135,6 +141,12 @@ sequence and SHA-256 linkage, exclusive writer locking, bounded reads, `fsync`,
 corruption detection, and explicit tail recovery. `controller.py` and
 `worker.py` use the ledger to distinguish idempotent duplicate delivery from
 conflicting replay.
+
+The persistent controller keeps `lifecycle.jsonl` semantically scoped to
+enrollment, membership, and presence records. Controller start/stop and local
+service-request evidence is written to the separate
+`controller-service.jsonl`. A client connection closing is not a worker
+disconnect event; only the worker session owner may publish presence changes.
 
 Transport timeouts have distinct scopes. Connection establishment, TLS handshake,
 worker description refresh, control messages, and listener idle periods use short
