@@ -120,6 +120,21 @@ corruption detection, and explicit tail recovery. `controller.py` and
 `worker.py` use the ledger to distinguish idempotent duplicate delivery from
 conflicting replay.
 
+Transport timeouts have distinct scopes. Connection establishment, TLS handshake,
+worker description refresh, control messages, and listener idle periods use short
+operator bounds. Only a validated `dispatch.request` widens its response deadline,
+using the declared job `timeout_seconds` plus a small bounded protocol overhead.
+The job executor retains its own deadline and emits an execution record terminated
+with `TIMEOUT`; failure to receive any complete result by the network deadline is
+instead `TRANSPORT_TIMEOUT`. Framing uses one monotonic total deadline, so partial
+bytes cannot keep a socket alive indefinitely.
+
+Fabric does not interpret Commons records or invoke Commons tools. A consumer such
+as Local Harness may place a model through Fabric, execute a controller-owned
+Commons operation under its own policy, and submit the next model turn through
+Fabric. Fabric carries the invocation and opaque consumer provenance while remaining
+neutral about the tool meaning, authorization, and truth of translated evidence.
+
 ### Family receipt adapter
 
 `receipts.py` produces the current experimental MNCS typed execution receipt as a companion observation. It maps only facts present in a Fabric execution record and emits UNKNOWN or `not-asserted` for sandboxing, network isolation, custody, independence, attestation, correctness, and conformance. See [docs/FAMILY_COMPATIBILITY.md](docs/FAMILY_COMPATIBILITY.md).

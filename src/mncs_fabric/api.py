@@ -30,7 +30,7 @@ from .controller import LocalController, NetworkController
 from .bundle_transfer import transfer_archive
 from .collections import build_execution_collection, validate_execution_collection
 from .enrollment import TrustStore
-from .errors import ProtocolError, ValidationError
+from .errors import ProtocolError, TransportTimeoutError, ValidationError
 from .protocol import dispatch_request_identity
 from .receipts import verify_execution_receipt
 from .resources import (
@@ -86,6 +86,9 @@ class RemoteWorkerConfig:
     trust_state: Path
     concurrency_limit: int = 1
     timeout: float = 5.0
+    connect_timeout: float | None = None
+    control_timeout: float | None = None
+    execution_timeout_overhead: float = 5.0
     resource_snapshot: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -93,7 +96,13 @@ class RemoteWorkerConfig:
             raise ValidationError("remote worker identity, host, or port is invalid")
         if not self.capabilities or len(set(self.capabilities)) != len(self.capabilities):
             raise ValidationError("remote worker capabilities must be unique and non-empty")
-        if self.concurrency_limit < 1 or self.timeout <= 0:
+        if (
+            self.concurrency_limit < 1
+            or self.timeout <= 0
+            or (self.connect_timeout is not None and self.connect_timeout <= 0)
+            or (self.control_timeout is not None and self.control_timeout <= 0)
+            or not 0 < self.execution_timeout_overhead <= 300
+        ):
             raise ValidationError("remote worker bounds are invalid")
         for field in ("ca_file", "client_certificate", "client_key", "trust_state"):
             value = Path(getattr(self, field))
@@ -111,6 +120,9 @@ class RemoteWorkerConfig:
             "port": self.port,
             "capabilities": list(self.capabilities),
             "concurrency_limit": self.concurrency_limit,
+            "connect_timeout": self.connect_timeout or self.timeout,
+            "control_timeout": self.control_timeout or self.timeout,
+            "execution_timeout_overhead": self.execution_timeout_overhead,
             "transport": "tls-mutual-authenticated",
             "resource_snapshot_identity": self.resource_snapshot.get("resource_snapshot_identity") if self.resource_snapshot else None,
             "capability_source": "operator-declared",
@@ -221,6 +233,9 @@ class FabricClient:
             expected_worker_id=config.worker_id,
             trust_store=TrustStore(config.trust_state),
             timeout=config.timeout,
+            connect_timeout=config.connect_timeout,
+            control_timeout=config.control_timeout,
+            execution_timeout_overhead=config.execution_timeout_overhead,
         )
         self.network.register_remote(config.worker_id, frozenset(config.capabilities), transport, concurrency_limit=config.concurrency_limit, resource_snapshot=config.resource_snapshot)
         self.remote_configs[config.worker_id] = config
@@ -513,7 +528,12 @@ class FabricClient:
             except (ProtocolError, OSError, TimeoutError) as exc:
                 if worker_id in self.remote_configs:
                     self.network._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
-                outputs.append({"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": "UNKNOWN", "worker_identity": worker_id, "request_identity": rid, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": "WORKER_UNAVAILABLE", "diagnostic": str(exc)})
+                reason = (
+                    "TRANSPORT_TIMEOUT"
+                    if isinstance(exc, TransportTimeoutError)
+                    else "WORKER_UNAVAILABLE"
+                )
+                outputs.append({"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": "UNKNOWN", "worker_identity": worker_id, "request_identity": rid, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": reason, "diagnostic": str(exc)})
         return outputs
 
     def replicate(self, plan: object, manifest: object, *, replicas: int, consumer_context: ConsumerContext | Mapping[str, Any] | None = None, execution_bundle_archive: Path | None = None, placement: PlacementRequest | Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:

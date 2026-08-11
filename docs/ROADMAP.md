@@ -50,6 +50,8 @@ does not establish independent freshness or custody.
 - [~] generic execution collection is implemented; semantic sharded experiment
   scheduling remains consumer-owned;
 - [~] node-loss and delayed-result handling (explicit UNKNOWN for transport loss);
+- [x] short control-plane waits separated from validated job-bounded execution
+  response waits, with explicit executor and transport timeout dispositions;
 - scaling measurements separated from semantic evidence;
 - [x] explicit dispatch reconciliation preserving missing results as UNKNOWN.
 - [~] physical two-node public-facade scheduling and recovery evidence;
@@ -77,7 +79,11 @@ does not establish independent freshness or custody.
   authority, while a shared Fabric target-reference contract remains future work;
 - [ ] bounded target-aware execution requests for consumer-authorized remote
   tools, preserving argv-only execution and Fabric evidence boundaries;
-- [ ] physical evidence that a model placed on one host can participate in a
+- [x] deterministic and operator-controlled physical Local Harness integration proves
+  that `gemma4:e4b` on `collamore02-windows` can request controller-owned Commons while
+  workspace/tools remain on Fedora; the companion evidence is retained by Local
+  Harness and does not convert execution success into Commons verification;
+- [ ] broader physical evidence that a model placed on one host can participate in a
   consumer-owned agent session whose workspace/tool execution remains on another
   host, with no ambient cross-host filesystem or shell authority;
 - [ ] enforced resource reservations or production-grade accelerator sharing;
