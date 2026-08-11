@@ -49,3 +49,11 @@ and trust configuration, not as the source of current capabilities. Call
 returned description/resource/liveness identities. `collect_work_items()` can
 collect MNEL partitions or RAVEL trials as opaque work items; Fabric reports
 completeness and identity conflicts without interpreting their semantics.
+
+Capability-inventory migration (added in `0.2.0a11`): consumers that obtain
+provider-specific facts through a bounded worker workflow should normalize them into
+generic entries and call `FabricClient.ingest_capability_observation()`. Read current
+truth through `capability_inventory()` or the additive fields on `workers()`; do not
+route from retained observations whose status is `STALE`, `UNKNOWN`, or `UNAVAILABLE`.
+Older consumers remain compatible because the public contract and worker records are
+extended additively. Consumers that require this API should pin `mncs-fabric>=0.2.0a11`.

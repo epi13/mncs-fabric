@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
@@ -41,6 +42,17 @@ class PublicContractTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertTrue(verify_identity(first, "contract_identity"))
         self.assertTrue(first["features"]["native_bundle_transfer"])
+        self.assertTrue(first["features"]["worker_capability_observation"])
+        self.assertEqual(
+            first["worker_capability_observation_schema"],
+            "mncs-fabric.worker-capability-observation.v0.1",
+        )
+        schema = json.loads(
+            (Path(__file__).parents[1] / "schemas" / "public-contract-v0.1.schema.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(set(first), set(schema["required"]))
+        self.assertEqual(set(first), set(schema["properties"]))
 
     def test_local_consumer_execution_owns_receipt_and_provenance(self) -> None:
         with TemporaryDirectory() as directory:
@@ -119,6 +131,10 @@ class PublicContractTests(unittest.TestCase):
             archive = root / "inference.zip"
             archive.write_bytes(b"fixture")
             staged = {"bundle_identity": "a" * 64, "archive_identity": "sha256:" + "b" * 64}
+            client.bundle_links["remote-worker"] = {
+                "bundle_identity": "c" * 64,
+                "archive_identity": "sha256:" + "d" * 64,
+            }
             calls: list[Path] = []
 
             def fake_ensure(worker_id: str, archive_path: Path, **_kwargs: object) -> dict[str, str]:

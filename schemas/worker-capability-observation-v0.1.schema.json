@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric worker capability observation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "availability", "capabilities", "captured_at", "observation_source", "status_reason", "attestation", "claim_boundary", "capability_observation_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.worker-capability-observation.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "availability": {"enum": ["AVAILABLE", "UNAVAILABLE", "UNKNOWN"]},
+    "capabilities": {
+      "type": "array",
+      "maxItems": 256,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "namespace", "name", "version", "subject_identity", "attributes", "capability_identity"],
+        "properties": {
+          "kind": {"enum": ["model", "runtime", "tool", "mcp", "service", "other"]},
+          "namespace": {"type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+          "name": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+          "version": {"type": ["string", "null"], "minLength": 1, "maxLength": 128, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+          "subject_identity": {"type": ["string", "null"], "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+          "attributes": {
+            "type": "object",
+            "maxProperties": 24,
+            "propertyNames": {"pattern": "^[a-z][a-z0-9_.-]{0,63}$"},
+            "additionalProperties": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "boolean"},
+                {"type": "integer", "minimum": 0, "maximum": 9223372036854775807},
+                {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+                {"type": "array", "maxItems": 32, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"}}
+              ]
+            }
+          },
+          "capability_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+        }
+      }
+    },
+    "captured_at": {"type": "string", "format": "date-time", "maxLength": 64},
+    "observation_source": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "status_reason": {"type": ["string", "null"], "minLength": 1, "maxLength": 512, "pattern": "^[^\\u0000-\\u001f\\u007f-\\u009f]+$"},
+    "attestation": {"const": "NOT_ASSERTED"},
+    "claim_boundary": {"const": "identity-bound capability observation supplied by an authenticated or registered worker workflow; not attestation, authorization, availability guarantee, semantic suitability, correctness, or conformance"},
+    "capability_observation_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

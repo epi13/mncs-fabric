@@ -2,7 +2,7 @@
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a8` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Production lifecycle, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a11` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations are implemented; production lifecycle, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -50,6 +50,8 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - explicit transport fault controls for bounded replay/drop/delay adversarial tests; and
 - identity-addressable runtime profiles and optional runtime observations tied to
   the exact worker interpreter, without adding provider dependencies; and
+- bounded provider-neutral worker capability observations with durable history,
+  explicit freshness/availability, and public `FabricClient` access; and
 - a strict Windows worker preflight/lifecycle helper and optional synchronized
   Torch CUDA probe workload; and
 - a strict explicit-configuration Linux/ARM worker preflight and reusable
@@ -160,7 +162,11 @@ workload, evaluation, promotion, and learning authority.
 
 `FabricClient.refresh_worker()` obtains the current authenticated worker
 description. `FabricClient.workers()` exposes observation source, availability,
-last contact, and description/resource identities. Use
+last contact, description/resource identities, and current/stale/unknown capability
+inventory. Consumers publish normalized facts with
+`ingest_capability_observation()`; Fabric never calls a provider or treats inventory
+as authorization. See [docs/CAPABILITY_OBSERVATIONS.md](docs/CAPABILITY_OBSERVATIONS.md).
+Use
 `collect_work_items()` for generic partitioned collection; Fabric does not
 interpret MNEL or RAVEL partition semantics. See
 [docs/WORKER_STATE.md](docs/WORKER_STATE.md) and

@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from . import __version__
+from .capabilities import (
+    MAX_CAPABILITY_AGE_SECONDS,
+    build_capability_observation,
+    capability_observation_is_fresh,
+    validate_capability_observation,
+)
 from .contracts import (
     CONSUMER_RESULT_SCHEMA,
     ConsumerContext,
@@ -38,7 +44,6 @@ from .runtime import (
     build_runtime_capability_observation,
     build_runtime_environment,
     build_runtime_observation,
-    validate_runtime_capability_observation,
     validate_runtime_environment,
     validate_runtime_observation,
     validate_runtime_profile,
@@ -198,9 +203,13 @@ class FabricClient:
     def register_local_worker(self, worker: Any) -> dict[str, Any]:
         if isinstance(worker, LocalWorkerConfig):
             worker = LocalWorker(worker.worker_id, worker.bundle_root, worker.state_path, concurrency_limit=worker.concurrency_limit, bundle_cache_root=worker.bundle_cache_root)
+        if worker.worker_id in self.remote_configs:
+            raise ProtocolError(f"worker identity is already registered remotely: {worker.worker_id}")
         return self.local.register(worker)
 
     def register_remote_worker(self, config: RemoteWorkerConfig) -> dict[str, Any]:
+        if config.worker_id in self.local.workers:
+            raise ProtocolError(f"worker identity is already registered locally: {config.worker_id}")
         if config.worker_id in self.remote_configs:
             raise ProtocolError(f"worker is already registered: {config.worker_id}")
         transport = TLSNetworkTransport(
@@ -294,10 +303,120 @@ class FabricClient:
         validate_runtime_observation(observation, expected_worker_id=worker_id)
         return binding
 
-    def workers(self) -> list[dict[str, Any]]:
+    def _capability_ledger(self, worker_id: str):
+        if worker_id in self.local.workers:
+            return self.local.ledger
+        if worker_id in self.remote_configs:
+            return self.network.ledger
+        raise ProtocolError(f"worker is not registered: {worker_id}")
+
+    def ingest_capability_observation(
+        self,
+        worker_id: str,
+        capabilities: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *,
+        availability: str = "AVAILABLE",
+        captured_at: str | None = None,
+        observation_source: str = "consumer-bounded-worker-probe",
+        status_reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Validate and durably retain one worker-bound capability observation."""
+
+        ledger = self._capability_ledger(worker_id)
+        observation = build_capability_observation(
+            worker_identity=worker_id,
+            capabilities=capabilities,
+            availability=availability,
+            captured_at=captured_at,
+            observation_source=observation_source,
+            status_reason=status_reason,
+        )
+        validate_capability_observation(observation, expected_worker_id=worker_id)
+        ledger.append("worker.capability-observation", observation)
+        return observation
+
+    def capability_observations(
+        self,
+        worker_id: str,
+        *,
+        limit: int = 1000,
+    ) -> list[dict[str, Any]]:
+        """Return retained observations in append order for one registered worker."""
+
+        ledger = self._capability_ledger(worker_id)
+        observations: list[dict[str, Any]] = []
+        for entry in ledger.records(record_type="worker.capability-observation", limit=limit):
+            record = entry["record"]
+            if record.get("worker_identity") != worker_id:
+                continue
+            observations.append(
+                validate_capability_observation(record, expected_worker_id=worker_id)
+            )
+        return observations
+
+    def latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        observations = self.capability_observations(worker_id)
+        return observations[-1] if observations else None
+
+    def capability_inventory(
+        self,
+        worker_id: str,
+        *,
+        max_age_seconds: float = MAX_CAPABILITY_AGE_SECONDS,
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        """Return current/stale/unknown status without discarding retained evidence."""
+
+        observation = self.latest_capability_observation(worker_id)
+        if worker_id in self.local.workers:
+            worker_availability = "AVAILABLE"
+        else:
+            worker_availability = str(
+                self.network.worker_state(worker_id).get("availability", "UNKNOWN")
+            )
+        fresh = bool(
+            observation
+            and capability_observation_is_fresh(
+                observation,
+                max_age_seconds=max_age_seconds,
+                now=now,
+            )
+        )
+        if worker_availability != "AVAILABLE":
+            status = "UNAVAILABLE" if worker_availability == "UNAVAILABLE" else "UNKNOWN"
+        elif observation is None:
+            status = "UNKNOWN"
+        elif not fresh:
+            status = "STALE"
+        elif observation["availability"] == "AVAILABLE":
+            status = "CURRENT"
+        else:
+            status = observation["availability"]
+        return {
+            "worker_identity": worker_id,
+            "status": status,
+            "fresh": fresh,
+            "worker_availability": worker_availability,
+            "observation": dict(observation) if observation is not None else None,
+        }
+
+    def workers(
+        self,
+        *,
+        capability_max_age_seconds: float = MAX_CAPABILITY_AGE_SECONDS,
+    ) -> list[dict[str, Any]]:
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
         remote = [{**self.network.worker_state(worker_id), "source": "remote"} for worker_id in sorted(self.remote_configs)]
-        return local + remote
+        workers = local + remote
+        for worker in workers:
+            inventory = self.capability_inventory(
+                str(worker["worker_id"]),
+                max_age_seconds=capability_max_age_seconds,
+            )
+            worker["capability_inventory_status"] = inventory["status"]
+            worker["capability_observation_fresh"] = inventory["fresh"]
+            worker["capability_observation"] = inventory["observation"]
+        return workers
 
     def execute(
         self,
@@ -317,7 +436,11 @@ class FabricClient:
     ) -> list[dict[str, Any]]:
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
-        if execution_bundle is None and worker_id is not None:
+        if (
+            execution_bundle is None
+            and worker_id is not None
+            and execution_bundle_archive is None
+        ):
             execution_bundle = self.bundle_links.get(worker_id)
         if worker_id is not None and worker_id in self.local.workers:
             outputs = []
@@ -367,7 +490,9 @@ class FabricClient:
             return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]
         outputs: list[dict[str, Any]] = []
         for worker_id in decision.worker_ids:
-            remote_bundle = execution_bundle or self.bundle_links.get(worker_id)
+            remote_bundle = execution_bundle
+            if remote_bundle is None and execution_bundle_archive is None:
+                remote_bundle = self.bundle_links.get(worker_id)
             if worker_id in self.remote_configs and remote_bundle is None and execution_bundle_archive is not None:
                 report = self.ensure_bundle(worker_id, execution_bundle_archive)
                 remote_bundle = {

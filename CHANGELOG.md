@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0a11 - provider-neutral worker capability observations
+
+- add `mncs-fabric.worker-capability-observation.v0.1` with strict bounded
+  entries, deterministic identities, an explicit source/claim boundary, and
+  non-attestation semantics;
+- extend `FabricClient` with durable worker-bound ingestion, history/latest reads,
+  freshness evaluation, and explicit current/stale/unknown/unavailable exposure in
+  `workers()` for both local and remote workers;
+- reject wrong-worker claims and preserve prior evidence without preserving false
+  current availability after worker loss or failed scans; and
+- ensure an explicitly supplied request bundle cannot reuse an older cached bundle
+  selected during a previous capability probe.
+
 ## Unreleased - Raspberry Pi commissioning and four-node cohort
 
 - add an explicit Linux/ARM worker preflight and config-aware native-bundle

@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a7` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a11` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -25,6 +25,13 @@ capabilities, resources, and service references. Authentication binds the
 report to an enrolled logical worker; it is not attestation or independent
 observation. The controller keeps every description/resource snapshot as
 immutable history and expires availability after a bounded lease.
+
+Worker capability observations add consumer-normalized model/runtime/tool/MCP/service
+facts. Fabric binds them to exactly one registered worker, rejects unsupported or
+oversized metadata, and retains history in its append-only ledger. Freshness and
+worker liveness are evaluated separately: retained evidence cannot remain a current
+availability claim after expiry or worker loss. Capability presence never grants
+execution, workspace, filesystem, shell, SSH, MCP, or semantic routing authority.
 
 Resource placement adds consumer context and dynamic capacity to the protocol.
 Fabric rejects malformed or substituted placement requests and binds the
@@ -90,6 +97,9 @@ The current implementation detects or bounds:
   certificate-fingerprint enrollment, logical identity binding, revocation,
   bounded frames, and truncated/oversized/canonical framing rejection; and
 - remote worker loss and incomplete replicated responses as explicit `UNKNOWN`.
+- wrong-worker capability substitution, stale/future capability observations,
+  malformed names, nested/unbounded metadata, and false-current inventory after
+  worker loss or a failed replacement scan;
 - worker-description substitution, wrong-worker resource binding, stale
   descriptions, expired liveness, and scheduling from an exact retained
   observation;
@@ -120,6 +130,9 @@ The current implementation does not prevent:
 - authenticated malicious workers can lie about capabilities, resources,
   liveness, or service version; Fabric records the claim but cannot establish
   its truth;
+- an authenticated consumer can normalize dishonest provider output before
+  capability ingestion; the observation source and non-attestation boundary retain
+  that limitation but cannot independently detect the lie;
 - description/resource TOCTOU remains because observations are not locks or
   hardware reservations; and
 - a consumer can lie about the meaning of a work-item or partition identity;
