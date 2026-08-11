@@ -18,7 +18,7 @@ speculative warming. See
 
 ## Worker bootstrap, discovery, and lifecycle
 
-### Implemented in 0.2.0a14 — Phase A foundation
+### Implemented in 0.2.0a15 — Phase A and local controller transport
 
 - [x] versioned short-lived, single-use enrollment authorization with hashed
   token material, bounded metadata, expiry, revocation, and atomic replay state;
@@ -33,14 +33,23 @@ speculative warming. See
   handling, and separate capability/resource freshness outputs;
 - [x] Fabric-owned lifecycle paths usable across client/process restarts;
 - [x] controller `status`, `doctor`, and bounded foreground `service run`
-  foundation; and
+-  foundation;
+- [x] separate controller-service evidence ledger and lifecycle ledger with
+  restart-safe reads;
+- [x] atomic session admission/disconnect decisions with stale reconnect,
+  generation checks, and duplicate-identity evidence;
+- [x] bounded local versioned AF_UNIX consumer/operator transport with exclusive
+  controller ownership and replay rejection;
+- [x] embedded `FabricClient` compatibility plus `FabricClient.connect()` and
+  explicit `FabricAdminClient`; and
 - [x] deterministic CLI inspection and machine-readable lifecycle output.
 
-The controller runtime foundation is persistent-state ownership, not a completed
-network daemon: no worker rendezvous, mDNS/DNS-SD, certificate issuance, or OS
-installation is claimed. `FabricClient` retains embedded/in-process compatibility
-and can be pointed at a shared lifecycle state path for development. Consumers
-do not own worker presence or disconnect state.
+The controller now has a usable local foreground service transport and persistent
+state ownership. It is not a completed network daemon: no worker rendezvous,
+mDNS/DNS-SD, certificate issuance, Windows transport, or OS installation is
+claimed. Consumers do not own worker presence or disconnect state. The local
+transport and controller service have deterministic automated tests but are not
+physically verified under systemd or across hosts.
 
 ### Planned after Phase A
 
@@ -98,7 +107,8 @@ Key roadmap constraints:
 - [x] Fabric-owned receipts and generic consumer provenance bindings;
 - [x] bounded native EA-NEXT-002 bundle transfer with worker-side verification
   and immutable cache, including direct physical execution evidence;
-- [ ] service transport for `FabricClient` to connect to a running controller;
+- [x] local service transport for `FabricClient` to connect to a running
+  controller; LAN/Windows transport remains planned;
 - [ ] production-shaped installed worker service lifecycle for Linux and Windows;
 - [ ] authenticated worker-initiated rendezvous with bounded reconnect/session state;
 - [ ] automatic TrustStore/fleet registration only after explicit approved enrollment;

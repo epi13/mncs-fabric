@@ -1,6 +1,6 @@
 # MNCS Fabric
 
-Fabric 0.2.0a14 includes a versioned controller-local registry for explicitly
+Fabric 0.2.0a15 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
@@ -10,8 +10,9 @@ state: short-lived enrollment authorization, bounded enrollment requests,
 immutable approval/denial/expiry decisions, fleet membership/revocation, and
 authenticated session presence. `FabricClient` can open a controller-owned
 lifecycle ledger explicitly; closing a consumer does not record worker loss.
-The foreground controller service foundation is available through
-`mncs-fabric controller status|doctor|service run`, but worker rendezvous,
+The foreground controller service and local AF_UNIX consumer/operator transport
+are available through `mncs-fabric controller status|doctor|service run` and
+`FabricClient.connect()`/`FabricAdminClient.connect()`. Worker rendezvous,
 certificate provisioning, discovery, and OS service installation remain planned.
 
 Loaded-model attributes are factual generic capability observations. Fabric does
@@ -19,7 +20,7 @@ not choose resident models or semantic routes; Local Harness owns those policies
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a14` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations, a local operator registry, bounded execution-specific transport waits, and the Phase A worker lifecycle foundation are implemented; rendezvous, production service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a15` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations, a local operator registry, bounded execution-specific transport waits, the Phase A worker lifecycle foundation, and a deterministic local persistent-controller transport are implemented; rendezvous, production service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -73,6 +74,10 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
   Torch CUDA probe workload; and
 - a strict explicit-configuration Linux/ARM worker preflight and reusable
   Raspberry Pi native-bundle harness; and
+- a Fabric-owned persistent-controller foundation with separate lifecycle and
+  service ledgers, exclusive state ownership, local AF_UNIX consumer/operator
+  transport, bounded request framing, replay rejection, and embedded/service
+  `FabricClient` modes; and
 - additive EA-NEXT-005 scoped execution challenges and durable single-use replay evidence; and
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
@@ -139,6 +144,23 @@ mncs-fabric controller status|doctor
 mncs-fabric controller service run
 ```
 
+The controller service is a foreground, local-development transport foundation:
+
+```bash
+mncs-fabric controller service run --state STATE/lifecycle.jsonl
+mncs-fabric controller status --socket STATE/controller.sock
+mncs-fabric fleet list --socket STATE/controller.sock
+mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock --ttl 10m
+```
+
+`FabricClient.connect(socket_path)` is the ordinary consumer mode for the
+persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
+operator mode; consumer sockets cannot approve enrollment or revoke workers.
+The local service is implemented on POSIX with restrictive Unix-socket checks.
+Windows local transport, worker-initiated rendezvous, and OS service
+installation are planned and not physically verified here. Closing a consumer
+does not publish worker disconnect state.
+
 `worker serve` is explicit and serves one bounded TLS request by default. An
 operator can opt into a bounded persistent service with `--max-requests` and
 optional `--idle-timeout`; every connection is independently authenticated and
@@ -167,7 +189,7 @@ candidate material over SSH. See [docs/RASPBERRY_PI.md](docs/RASPBERRY_PI.md).
 `scripts/two_host_persistent_test.py` exercises repeated requests, persistent
 PID continuity, replay dispositions, and trust revocation between requests.
 
-External consumers should import `FabricClient`, `LocalWorkerConfig`,
+External consumers should import `FabricClient`, `FabricAdminClient`, `LocalWorkerConfig`,
 `RemoteWorkerConfig`, and
 `ConsumerContext` from `mncs_fabric.api`. The machine-readable compatibility
 descriptor is available without a worker or network:

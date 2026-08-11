@@ -186,12 +186,24 @@ not discover controllers, issue certificates, or establish worker-initiated
 rendezvous. The foreground controller runtime owns lifecycle state independently
 of consumers; the embedded `FabricClient` path remains a compatibility mode.
 
+The experimental persistent-controller transport is local-only on POSIX. It uses
+separate restrictive AF_UNIX consumer and operator sockets, peer-UID checks,
+bounded canonical frames, request deadlines, service-ledger replay rejection,
+and an exclusive controller-state lock. Socket parents and stale endpoints are
+checked for symlink, ownership, type, and unsafe-permission conditions. The
+operator socket is an explicit local administrative boundary, not an anonymous
+LAN API; a same-account local compromise remains able to act as that operator.
+Malformed, oversized, truncated, expired, replayed, or unauthorized requests
+fail closed. The service ledger is separate from the lifecycle ledger so service
+events cannot make lifecycle projections unreadable.
+
 Phase A mitigations include hashed one-time enrollment tokens with atomic
 consumption, bounded exact-field requests, immutable decision records, exact
 public-key binding, durable active-identity rebind rejection, explicit fleet
 revocation, session generation checks, and deterministic duplicate-session
 `DUPLICATE_IDENTITY` state. Lifecycle diagnostics omit raw tokens and private key
 material. Controller status/doctor does not expose a LAN administrative listener.
+The service boundary does not yet carry execution dispatch or worker rendezvous.
 
 Remaining service threats include controller daemon compromise, unauthorized local
 clients, restart/reconnect storms, and state corruption/recovery. They remain

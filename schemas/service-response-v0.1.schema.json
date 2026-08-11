@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.service-response.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "response_id", "request_id", "disposition", "payload", "error", "served_at", "controller_id"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.service-response.v0.1"},
+    "response_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "disposition": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+    "payload": {"type": "object"},
+    "error": {"type": ["object", "null"]},
+    "served_at": {"type": "string", "format": "date-time"},
+    "controller_id": {"type": "string", "minLength": 1, "maxLength": 128}
+  }
+}
