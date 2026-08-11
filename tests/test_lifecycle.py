@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import unittest
 from pathlib import Path
@@ -231,7 +232,8 @@ class LifecycleTests(unittest.TestCase):
         result = service.run(max_seconds=0.01)
         self.assertEqual(result["outcome"], "PASS")
         doctor = service.doctor(now="2026-01-01T00:00:01Z")
-        self.assertEqual(doctor["checks"]["administrative_listener"], "LOCAL_OPERATOR_SOCKET")
+        expected_listener = "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED"
+        self.assertEqual(doctor["checks"]["administrative_listener"], expected_listener)
         self.assertEqual(doctor["checks"]["worker_rendezvous"], "NOT_IMPLEMENTED")
         self.assertEqual(LifecycleStore(self.store.path).doctor()["outcome"], "PASS")
         self.assertEqual(LifecycleStore(self.store.path).memberships(), [])

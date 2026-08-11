@@ -157,8 +157,6 @@ class ControllerServiceOwnership:
         self._handle: Any = None
 
     def acquire(self) -> None:
-        if os.name != "posix" or fcntl is None:
-            raise ProtocolError("controller ownership is not implemented on this platform")
         self.path.parent.mkdir(parents=True, exist_ok=True)
         parent_stat = os.lstat(self.path.parent)
         if stat.S_ISLNK(parent_stat.st_mode) or not stat.S_ISDIR(parent_stat.st_mode) or (os.name == "posix" and parent_stat.st_uid != os.getuid()) or parent_stat.st_mode & 0o022:
@@ -168,7 +166,19 @@ class ControllerServiceOwnership:
         self._handle = self.path.open("a+b", buffering=0)
         try:
             os.chmod(self.path, 0o600)
-            fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if os.name == "posix" and fcntl is not None:
+                fcntl.flock(self._handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            elif os.name == "nt":
+                import msvcrt
+
+                self._handle.seek(0, os.SEEK_END)
+                if self._handle.tell() == 0:
+                    self._handle.write(b"\0")
+                    self._handle.flush()
+                self._handle.seek(0)
+                msvcrt.locking(self._handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                raise ProtocolError("controller ownership is not implemented on this platform")
         except (BlockingIOError, OSError) as exc:
             self._handle.close()
             self._handle = None

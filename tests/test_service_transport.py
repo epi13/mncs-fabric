@@ -19,6 +19,7 @@ from mncs_fabric.service_transport import SERVICE_MAX_FRAME_BYTES, SERVICE_REQUE
 from mncs_fabric.canonical import attach_identity
 
 
+@unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
 class ServiceTransportTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = TemporaryDirectory()

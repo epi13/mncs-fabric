@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import signal
 import time
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -105,7 +106,7 @@ class ControllerService:
             "admin_socket": str(self.config.admin_socket_path_value),
             "lifecycle": health,
             "worker_rendezvous": "PLANNED",
-            "consumer_transport": "LOCAL_UNIX_SOCKET",
+            "consumer_transport": "LOCAL_UNIX_SOCKET" if os.name == "posix" else "PLANNED_WINDOWS_LOCAL_TRANSPORT",
             "claim_boundary": "controller health is independent from worker availability and consumer connection",
         }
 
@@ -115,7 +116,7 @@ class ControllerService:
             "config": "PASS",
             "lifecycle_ledger": result["lifecycle"]["outcome"],
             "service_ledger": result["service_ledger"]["outcome"],
-            "administrative_listener": "LOCAL_OPERATOR_SOCKET",
+            "administrative_listener": "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED",
             "worker_rendezvous": "NOT_IMPLEMENTED",
         }
         return result
@@ -226,7 +227,14 @@ class ControllerService:
                     signal.signal(signum, stop_handler)
                 except (OSError, ValueError):
                     pass
-            server.start()
+            try:
+                server.start()
+            except ProtocolError:
+                if os.name == "posix":
+                    raise
+                # The platform-neutral runtime remains useful under a Windows
+                # supervisor while named-pipe transport is still planned.
+                server = ControllerServiceServer(self)
             while not self._stop.is_set():
                 if max_seconds is not None and time.monotonic() - started >= max_seconds:
                     break
