@@ -8,7 +8,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Iterator
+from typing import Any, BinaryIO, Callable, Iterator
 
 from .canonical import canonical_json_bytes, sha256_identity
 from .errors import StorageError
@@ -184,6 +184,99 @@ class FabricLedger:
                 stream.flush()
                 os.fsync(stream.fileno())
             return entry
+
+    def append_if(
+        self,
+        record_type: str,
+        record: dict[str, Any],
+        predicate: Callable[[list[dict[str, Any]]], None],
+    ) -> dict[str, Any]:
+        """Append one record while checking a state predicate under the lock.
+
+        Lifecycle authorization is intentionally a read/decision/write
+        operation.  Keeping the predicate in the ledger critical section
+        prevents two controller processes from consuming the same one-time
+        authorization.
+        """
+        if not isinstance(record_type, str) or not record_type:
+            raise StorageError("record_type must be a non-empty string")
+        with _exclusive_lock(self.path):
+            records, diagnostics, _ = self._read_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            predicate(records)
+            record_identity = sha256_identity(record)
+            for existing in records:
+                if existing["record_identity"] == record_identity:
+                    if existing["record_type"] != record_type or existing["record"] != record:
+                        raise StorageError("conflicting duplicate record identity")
+                    return existing
+            previous = records[-1] if records else None
+            entry: dict[str, Any] = {
+                "schema_version": LEDGER_SCHEMA,
+                "sequence": len(records) + 1,
+                "previous_identity": previous["entry_identity"] if previous else None,
+                "record_type": record_type,
+                "record": record,
+                "record_identity": record_identity,
+            }
+            entry["entry_identity"] = sha256_identity(entry)
+            with self.path.open("ab") as stream:
+                stream.write(canonical_json_bytes(entry) + b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            return entry
+
+    def append_many_if(
+        self,
+        records_to_append: list[tuple[str, dict[str, Any]]],
+        predicate: Callable[[list[dict[str, Any]]], None],
+    ) -> list[dict[str, Any]]:
+        """Append a bounded batch after one locked state check.
+
+        This is used when an authorization consumption and its enrollment
+        request must become one durable controller decision.  The batch is
+        small and all records are prepared before any bytes are written.
+        """
+        if not records_to_append or len(records_to_append) > 8:
+            raise StorageError("ledger append batch is outside the bounded range")
+        if any(not isinstance(record_type, str) or not record_type for record_type, _ in records_to_append):
+            raise StorageError("record_type must be a non-empty string")
+        with _exclusive_lock(self.path):
+            records, diagnostics, _ = self._read_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            predicate(records)
+            entries: list[dict[str, Any]] = []
+            previous = records[-1] if records else None
+            for record_type, record in records_to_append:
+                record_identity = sha256_identity(record)
+                for existing in records + entries:
+                    if existing["record_identity"] == record_identity:
+                        if existing["record_type"] != record_type or existing["record"] != record:
+                            raise StorageError("conflicting duplicate record identity")
+                        entries.append(existing)
+                        break
+                else:
+                    entry = {
+                        "schema_version": LEDGER_SCHEMA,
+                        "sequence": len(records) + len(entries) + 1,
+                        "previous_identity": previous["entry_identity"] if previous else None,
+                        "record_type": record_type,
+                        "record": record,
+                        "record_identity": record_identity,
+                    }
+                    entry["entry_identity"] = sha256_identity(entry)
+                    entries.append(entry)
+                    previous = entry
+            new_entries = [entry for entry in entries if entry not in records]
+            if new_entries:
+                with self.path.open("ab") as stream:
+                    for entry in new_entries:
+                        stream.write(canonical_json_bytes(entry) + b"\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            return entries
 
     def records(self, *, record_type: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
         if not isinstance(limit, int) or limit < 0 or limit > 100000:

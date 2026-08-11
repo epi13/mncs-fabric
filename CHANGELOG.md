@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0a14 - worker lifecycle foundation
+
+- add Fabric-owned, append-only enrollment authorization, request, decision,
+  fleet membership, revocation, and authenticated session-presence records;
+- enforce bounded one-time authorization tokens, atomic consumption, explicit
+  replay/expiry/conflict failures, exact key binding, and deterministic duplicate
+  session handling without making TrustStore a certificate authority;
+- expose lifecycle state through `FabricClient`, controller-side CLI commands,
+  versioned JSON schemas, and a platform-neutral foreground controller runtime;
+- keep lifecycle state independent from consumer object lifetime while retaining
+  the embedded/in-process API for tests and compatibility; and
+- retain worker-initiated rendezvous, certificate provisioning, discovery, and
+  OS installation as planned work.
+
 ## 0.2.0a13 - persistent operator worker registry
 
 - add the local `mncs-fabric.worker-registry.v0.1` catalog and consumer API;

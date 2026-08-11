@@ -54,6 +54,7 @@ from .worker import LocalWorker
 from .models import validate_job_plan
 from .scheduler import WorkerSlot, schedule
 from .registry import WorkerRegistry
+from .lifecycle import LifecycleStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -196,12 +197,17 @@ def _consumer_result(response: Mapping[str, Any], context: ConsumerContext | Non
 class FabricClient:
     """The documented entrypoint for local and authenticated remote consumers."""
 
-    def __init__(self, controller_id: str, state_path: Path) -> None:
+    def __init__(self, controller_id: str, state_path: Path, *, lifecycle_state_path: Path | None = None) -> None:
         if not controller_id:
             raise ValidationError("controller_id is required")
         self.controller_id = controller_id
         self.state_path = Path(state_path)
         self.service = FabricService()
+        # The default preserves embedded compatibility.  A persistent
+        # controller can supply its Fabric-owned lifecycle path explicitly;
+        # closing this client never writes a worker-disconnected event.
+        lifecycle_path = lifecycle_state_path or self.state_path.with_name(self.state_path.stem + "-lifecycle" + self.state_path.suffix)
+        self.lifecycle = LifecycleStore(lifecycle_path)
         self.local = LocalController(controller_id, self.state_path)
         self.network = NetworkController(controller_id, self.state_path.with_name(self.state_path.stem + "-network" + self.state_path.suffix))
         self.remote_configs: dict[str, RemoteWorkerConfig] = {}
@@ -660,6 +666,51 @@ class FabricClient:
 
     def bind_placement_observation(self, result: Mapping[str, Any], observation: Mapping[str, Any]) -> dict[str, Any]:
         return build_placement_binding(result=result, observation=observation)
+
+    # Lifecycle methods are intentionally thin public delegates.  Consumers
+    # receive redacted records and status boundaries, never token material or
+    # transport/private-key internals.
+    def create_enrollment_authorization(self, **kwargs: Any) -> dict[str, Any]:
+        return self.lifecycle.create_authorization(**kwargs)
+
+    def submit_enrollment_request(self, request: Mapping[str, Any], token: str, *, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.submit_request(request, token, now=now)
+
+    def enrollment_authorizations(self, *, now: str | None = None) -> list[dict[str, Any]]:
+        return self.lifecycle.list_authorizations(now=now)
+
+    def enrollment_pending(self, *, now: str | None = None) -> list[dict[str, Any]]:
+        return self.lifecycle.pending_requests(now=now)
+
+    def enrollment_request(self, request_id: str, *, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.request(request_id, now=now)
+
+    def approve_enrollment(self, request_id: str, *, worker_id: str | None = None, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.approve_request(request_id, worker_id=worker_id, now=now)
+
+    def deny_enrollment(self, request_id: str, *, reason: str = "operator denied enrollment", now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.deny_request(request_id, reason=reason, now=now)
+
+    def expire_enrollment(self, request_id: str, *, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.expire_request(request_id, now=now)
+
+    def fleet(self, *, now: str | None = None) -> list[dict[str, Any]]:
+        return self.lifecycle.memberships(now=now)
+
+    def fleet_status(self, worker_id: str, *, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.membership(worker_id, now=now)
+
+    def fleet_doctor(self, *, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.doctor(now=now)
+
+    def revoke_worker(self, worker_id: str, *, reason: str, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.revoke_worker(worker_id, reason=reason, now=now)
+
+    def authenticate_worker_session(self, worker_id: str, *, public_key_identity: str, session_id: str, generation: int, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.authenticate_session(worker_id, public_key_identity_value=public_key_identity, session_id=session_id, generation=generation, now=now)
+
+    def disconnect_worker_session(self, worker_id: str, *, session_id: str, generation: int, now: str | None = None) -> dict[str, Any]:
+        return self.lifecycle.disconnect_session(worker_id, session_id=session_id, generation=generation, now=now)
 
 
 __all__ = [

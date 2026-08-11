@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.session-presence.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_id", "presence", "availability", "authenticated", "session_fresh", "capability_freshness", "resource_freshness"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.session-presence.v0.1"},
+    "worker_id": {"type": "string", "maxLength": 128},
+    "membership_status": {"enum": ["ENROLLED", "REVOKED", "DECOMMISSIONED"]},
+    "presence": {"enum": ["ABSENT", "PRESENT", "STALE", "DUPLICATE_IDENTITY", "REVOKED"]},
+    "availability": {"enum": ["AVAILABLE", "UNAVAILABLE", "UNKNOWN"]},
+    "authenticated": {"type": "boolean"},
+    "session_fresh": {"type": "boolean"},
+    "capability_freshness": {"type": "string"},
+    "resource_freshness": {"type": "string"}
+  }
+}

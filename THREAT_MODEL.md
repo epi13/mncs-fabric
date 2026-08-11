@@ -180,12 +180,24 @@ experimental bounded persistent mode, but this is not production supervision
 or unlimited daemon operation. The physical run does not remove these
 residual limitations.
 
-The proposed automated lifecycle is not implemented yet. Until its acceptance criteria
-are met, Fabric also does not claim resistance to discovery spoofing,
-enrollment-token theft/replay, unauthorized auto-enrollment, bootstrap-service denial
-of service, duplicate authenticated presence, credential cloning, identity takeover
-after reinstall, rendezvous reconnect storms, or stale-session confusion. Those risks
-must be tested explicitly rather than inferred away by using TLS elsewhere in Fabric.
+Phase A of the automated lifecycle is implemented as controller-local append-only
+state. No automated commissioning claim is made: the current implementation does
+not discover controllers, issue certificates, or establish worker-initiated
+rendezvous. The foreground controller runtime owns lifecycle state independently
+of consumers; the embedded `FabricClient` path remains a compatibility mode.
+
+Phase A mitigations include hashed one-time enrollment tokens with atomic
+consumption, bounded exact-field requests, immutable decision records, exact
+public-key binding, durable active-identity rebind rejection, explicit fleet
+revocation, session generation checks, and deterministic duplicate-session
+`DUPLICATE_IDENTITY` state. Lifecycle diagnostics omit raw tokens and private key
+material. Controller status/doctor does not expose a LAN administrative listener.
+
+Remaining service threats include controller daemon compromise, unauthorized local
+clients, restart/reconnect storms, and state corruption/recovery. They remain
+bounded by local filesystem permissions and ledger corruption diagnostics but are
+not solved by this phase. Worker presence is never inferred from controller health
+or consumer connection state.
 
 These gaps must remain explicit `UNKNOWN` or limitations. They must not be rewritten as PASS.
 

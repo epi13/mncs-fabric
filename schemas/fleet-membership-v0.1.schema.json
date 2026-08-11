@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.fleet-membership.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "membership_id", "worker_id", "public_key_identity", "membership_status", "current_lifecycle"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.fleet-membership.v0.1"},
+    "membership_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "worker_id": {"type": "string", "maxLength": 128},
+    "public_key_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "membership_status": {"enum": ["ENROLLED", "REVOKED", "DECOMMISSIONED"]},
+    "current_lifecycle": {"enum": ["ENROLLED", "REVOKED", "DECOMMISSIONED"]}
+  }
+}

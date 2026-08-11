@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.controller-config.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "controller_id", "lifecycle_state", "heartbeat_seconds", "administrative_transport", "worker_rendezvous"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.controller-config.v0.1"},
+    "controller_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "lifecycle_state": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "heartbeat_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 60},
+    "administrative_transport": {"const": "none; foreground/local supervisor only"},
+    "worker_rendezvous": {"const": "planned"}
+  }
+}

@@ -1,6 +1,23 @@
 # Worker bootstrap, discovery, and lifecycle
 
-Status: **proposed design; not implemented**
+Status: **Phase A foundation implemented; later discovery/rendezvous phases planned**
+
+Implemented in `0.2.0a14`:
+
+- versioned, append-only enrollment authorization, request, decision, fleet
+  membership, revocation, and session-presence records;
+- hashed short-lived single-use token material with atomic consumption and
+  explicit replay/expiry handling;
+- strict bounded request validation and exact public-key approval binding;
+- durable separation of membership, authenticated presence, liveness,
+  capability freshness, and resource freshness; and
+- controller `status`, `doctor`, and foreground `service run` foundations.
+
+The controller runtime owns this state independently of Local Harness or any
+other consumer process. `FabricClient` remains the ordinary consumer boundary
+and retains embedded/in-process compatibility. No worker-initiated rendezvous,
+mDNS/DNS-SD discovery, certificate issuance, installer, or production OS service
+is implemented by this phase.
 
 This document describes a path from Fabric's current explicitly commissioned
 multi-host alpha to an operator-controlled fleet that can be installed, enrolled,
@@ -20,6 +37,11 @@ The design preserves the existing authority boundaries:
 - Fabric does not grant remote shell or ambient workspace authority; and
 - Local Harness or another consumer remains responsible for model choice, agent
   policy, tool meaning, task decomposition, and semantic routing.
+
+MNCS Fabric is intended to become persistent authenticated compute
+infrastructure. A configured controller owns fleet lifecycle and worker
+presence; Local Harness, Forge, MNCS Control, and other consumers connect through
+`FabricClient` and do not own the controller or worker process lifetime.
 
 ## Motivation
 

@@ -1,16 +1,25 @@
 # MNCS Fabric
 
-Fabric 0.2.0a13 includes a versioned controller-local registry for explicitly
+Fabric 0.2.0a14 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
+
+The worker lifecycle foundation is now implemented as Fabric-owned append-only
+state: short-lived enrollment authorization, bounded enrollment requests,
+immutable approval/denial/expiry decisions, fleet membership/revocation, and
+authenticated session presence. `FabricClient` can open a controller-owned
+lifecycle ledger explicitly; closing a consumer does not record worker loss.
+The foreground controller service foundation is available through
+`mncs-fabric controller status|doctor|service run`, but worker rendezvous,
+certificate provisioning, discovery, and OS service installation remain planned.
 
 Loaded-model attributes are factual generic capability observations. Fabric does
 not choose resident models or semantic routes; Local Harness owns those policies.
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a13` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations, a local operator registry, and bounded execution-specific transport waits are implemented; production lifecycle, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a14` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations, a local operator registry, bounded execution-specific transport waits, and the Phase A worker lifecycle foundation are implemented; rendezvous, production service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -121,6 +130,13 @@ mncs-fabric worker serve --worker-id ID --controller-id ID --bundle-root ROOT \
   --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
   --certificate worker.pem --key worker.key --port PORT \
   [--max-requests N --idle-timeout SECONDS]
+mncs-fabric enrollment create --ttl 10m [--worker-id ID]
+mncs-fabric enrollment list|pending|inspect REQUEST_ID
+mncs-fabric enrollment approve|deny REQUEST_ID
+mncs-fabric fleet list|status WORKER_ID|doctor
+mncs-fabric worker revoke WORKER_ID --reason REASON
+mncs-fabric controller status|doctor
+mncs-fabric controller service run
 ```
 
 `worker serve` is explicit and serves one bounded TLS request by default. An
@@ -192,6 +208,13 @@ plan validation, local execution, verification, collection, and reconciliation.
 For external distributed consumers, the documented entrypoint is
 `mncs_fabric.api.FabricClient`; both boundaries are public and neither requires
 consumers to assemble private transport, trust, or receipt internals.
+
+Fabric is intended to become persistent authenticated compute infrastructure.
+The current controller runtime foundation owns durable lifecycle state and can
+be supervised independently of consumers, while `FabricClient` remains the
+ordinary consumer boundary. Local Harness, Forge, and MNCS Control retain
+semantic model, residency, task, tool, workspace, verification, and escalation
+policy; they do not own worker presence or Fabric process lifetime.
 
 ## Repository map
 
