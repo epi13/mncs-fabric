@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.0a13 - persistent operator worker registry
+
+- add the local `mncs-fabric.worker-registry.v0.1` catalog and consumer API;
+- retain known unavailable/misconfigured workers in status without weakening
+  mTLS identity or TrustStore authorization;
+- reject duplicate identities, conflicting endpoints, malformed versions, and
+  missing or revoked trust references; and
+- advertise factual loaded-model attributes through the existing generic worker
+  capability observation contract without adding semantic scheduling authority.
+
 ## 0.2.0a12 - bounded long-running distributed execution
 
 - separate connection and control-plane timeouts from execution-response waits;

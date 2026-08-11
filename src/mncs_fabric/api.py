@@ -53,6 +53,7 @@ from .transport import InProcessTransport, TLSNetworkTransport
 from .worker import LocalWorker
 from .models import validate_job_plan
 from .scheduler import WorkerSlot, schedule
+from .registry import WorkerRegistry
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +208,8 @@ class FabricClient:
         self.bundle_links: dict[str, dict[str, str]] = {}
         self.runtime_observations: dict[str, dict[str, Any]] = {}
         self.runtime_capability_observations: dict[str, dict[str, Any]] = {}
+        self.registry_entries: dict[str, dict[str, Any]] = {}
+        self.registry_errors: dict[str, str] = {}
 
     @staticmethod
     def contract() -> dict[str, Any]:
@@ -224,6 +227,15 @@ class FabricClient:
             raise ProtocolError(f"worker identity is already registered locally: {config.worker_id}")
         if config.worker_id in self.remote_configs:
             raise ProtocolError(f"worker is already registered: {config.worker_id}")
+        for worker_id, existing in self.remote_configs.items():
+            if (
+                existing.host.casefold() == config.host.casefold()
+                and existing.port == config.port
+                and worker_id != config.worker_id
+            ):
+                raise ProtocolError(
+                    "remote endpoint is already registered to another worker identity"
+                )
         transport = TLSNetworkTransport(
             config.host,
             config.port,
@@ -240,6 +252,52 @@ class FabricClient:
         self.network.register_remote(config.worker_id, frozenset(config.capabilities), transport, concurrency_limit=config.concurrency_limit, resource_snapshot=config.resource_snapshot)
         self.remote_configs[config.worker_id] = config
         return {"outcome": "PASS", **config.public_dict()}
+
+    def load_registry(self, path: Path, *, strict: bool = False) -> dict[str, Any]:
+        """Load known endpoints from local operator state without weakening trust.
+
+        Structurally valid entries remain visible even when their referenced
+        trust material is missing or revoked.  Only entries that produce a
+        validated ``RemoteWorkerConfig`` are registered for transport.
+        """
+
+        registry = WorkerRegistry(Path(path), controller_id=self.controller_id)
+        workers = registry.load()
+        self.registry_entries = {
+            worker.worker_id: worker.public_dict() for worker in workers
+        }
+        self.registry_errors = {}
+        registered: list[str] = []
+        for worker in workers:
+            try:
+                existing = self.remote_configs.get(worker.worker_id)
+                if existing is not None:
+                    if (
+                        existing.host.casefold() != worker.host.casefold()
+                        or existing.port != worker.port
+                    ):
+                        raise ProtocolError(
+                            "explicit worker and registry entry disagree on endpoint identity"
+                        )
+                    registered.append(worker.worker_id)
+                    continue
+                self.register_remote_worker(worker.to_remote_config())
+                registered.append(worker.worker_id)
+            except Exception as exc:
+                self.registry_errors[worker.worker_id] = str(exc)
+        if strict and self.registry_errors:
+            detail = "; ".join(
+                f"{worker_id}: {error}"
+                for worker_id, error in sorted(self.registry_errors.items())
+            )
+            raise ProtocolError(f"worker registry could not be loaded: {detail}")
+        return {
+            "outcome": "PASS" if not self.registry_errors else "UNKNOWN",
+            "registry_path": str(Path(path).expanduser()),
+            "known_workers": sorted(self.registry_entries),
+            "registered_workers": sorted(registered),
+            "errors": dict(sorted(self.registry_errors.items())),
+        }
 
     def refresh_worker(self, worker_id: str) -> dict[str, Any]:
         """Refresh one remote worker through authenticated Fabric protocol."""
@@ -422,8 +480,26 @@ class FabricClient:
     ) -> list[dict[str, Any]]:
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
         remote = [{**self.network.worker_state(worker_id), "source": "remote"} for worker_id in sorted(self.remote_configs)]
-        workers = local + remote
+        known_unregistered = [
+            {
+                **entry,
+                "source": "registry",
+                "availability": "UNKNOWN",
+                "available": False,
+                "capabilities": list(entry.get("capabilities", [])),
+                "diagnostic": self.registry_errors.get(worker_id),
+                "registry_status": "INVALID_REFERENCE",
+                "capability_inventory_status": "UNKNOWN",
+                "capability_observation_fresh": False,
+                "capability_observation": None,
+            }
+            for worker_id, entry in sorted(self.registry_entries.items())
+            if worker_id not in self.remote_configs
+        ]
+        workers = local + remote + known_unregistered
         for worker in workers:
+            if worker.get("source") == "registry":
+                continue
             inventory = self.capability_inventory(
                 str(worker["worker_id"]),
                 max_age_seconds=capability_max_age_seconds,
@@ -586,4 +662,7 @@ class FabricClient:
         return build_placement_binding(result=result, observation=observation)
 
 
-__all__ = ["ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig", "PlacementRequest"]
+__all__ = [
+    "ConsumerContext", "FabricClient", "LocalWorkerConfig", "RemoteWorkerConfig",
+    "PlacementRequest", "WorkerRegistry",
+]

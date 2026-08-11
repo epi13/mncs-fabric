@@ -41,6 +41,7 @@ PUBLIC_FEATURES = {
     "worker_capability_observation": True,
     "windows_worker_launcher": True,
     "cuda_execution_probe": True,
+    "operator_worker_registry": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {

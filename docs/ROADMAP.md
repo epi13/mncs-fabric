@@ -1,5 +1,15 @@
 # Roadmap
 
+## Completed in 0.2.0a13
+
+- Versioned operator-owned persistent worker registry with reference validation,
+  migration-friendly consumer loading, and visibility for unavailable members.
+- Generic factual loaded-model attributes carried without semantic model choice.
+
+Resident-model selection, tool policy, Commons meaning, and model-role routing
+remain Harness responsibilities. Distributed DAG scheduling and arbitrary remote
+MCP invocation remain future work.
+
 ## Phase 0 — foundation (complete)
 
 - canonical identities;

@@ -64,3 +64,6 @@ backward-compatible short bound. Consumers may set `connect_timeout`,
 uses the already validated job timeout plus that bounded overhead; descriptions,
 refreshes, handshakes, and other control operations never inherit the long job bound.
 Local Harness 0.5.0 requires `mncs-fabric>=0.2.0a12,<0.3` for this behavior.
+Local Harness 0.6.0 requires `mncs-fabric>=0.2.0a13,<0.3` for the additional
+operator registry API. The registry is local configuration and does not bump the
+Fabric wire protocol.
