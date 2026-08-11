@@ -16,6 +16,34 @@ provenance, but it must not choose resident models, evictions, session affinity,
 speculative warming. See
 [Provider-neutral residency and session observations](PROVIDER_RESIDENCY_OBSERVATIONS.md).
 
+## Proposed worker bootstrap, discovery, and lifecycle
+
+Fabric's current explicit endpoint registry and physical multi-host evidence prove the
+execution substrate, but commissioning remains too manual for normal fleet operation.
+The next lifecycle milestone is an installable worker that can find or be told about a
+controller, request explicit enrollment, establish authenticated worker-initiated
+presence, refresh capabilities, and return after reboot without manual certificate,
+endpoint, registry, and process reconstruction.
+
+See [Worker bootstrap, discovery, and lifecycle](WORKER_BOOTSTRAP_DISCOVERY.md) for the
+full design, state machine, trust boundaries, compatibility requirements, threat model,
+and phased acceptance criteria.
+
+Key roadmap constraints:
+
+- discovery remains advisory and never grants trust;
+- TrustStore remains authorization state rather than certificate-issuance authority;
+- worker private keys are generated and retained locally;
+- direct controller-to-worker endpoint mode remains supported;
+- worker-initiated rendezvous is additive and requires a new/additive versioned
+  transport or fleet representation where current schemas cannot express it;
+- authenticated presence, liveness, resource freshness, and capability freshness stay
+  distinct;
+- Fabric owns installation/connectivity/identity facts while Local Harness retains
+  model, residency, task, tool, and semantic-routing policy; and
+- SSH/WinRM may later assist explicit bootstrap but never become an ambient Fabric job
+  execution fallback.
+
 ## Phase 0 — foundation (complete)
 
 - canonical identities;
@@ -44,6 +72,14 @@ speculative warming. See
 - [x] Fabric-owned receipts and generic consumer provenance bindings;
 - [x] bounded native EA-NEXT-002 bundle transfer with worker-side verification
   and immutable cache, including direct physical execution evidence;
+- [ ] versioned enrollment authorization/request/decision records with bounded,
+  single-use replay state;
+- [ ] production-shaped installed worker service lifecycle for Linux and Windows;
+- [ ] authenticated worker-initiated rendezvous with bounded reconnect/session state;
+- [ ] durable fleet membership/presence representation that preserves
+  `worker-registry.v0.1` endpoint semantics;
+- [ ] automatic TrustStore/fleet registration only after explicit approved enrollment;
+- [ ] optional local controller discovery with cryptographic controller verification;
 
 - [~] bounded worker lifecycle is experimental; production multi-host operation
   and certificate provisioning remain operator responsibilities;
@@ -52,6 +88,11 @@ The experimental two-host acceptance run, bounded persistent-worker run, and
 native-transfer run are complete. Fabric does not claim production Phase 1
 lifecycle completion: certificate provisioning is operator-managed and worker
 supervision remains bounded/operator-controlled.
+
+Phase 1 lifecycle completion should eventually mean that a previously enrolled worker
+survives reboot, reconnects to its configured controller, and returns to authenticated
+presence without an operator manually rebuilding its endpoint, certificate, registry,
+or launch command. Fresh-machine enrollment remains explicit and operator-controlled.
 
 EA-NEXT-005 challenge/replay compatibility has bounded physical deployment
 evidence. Its replay authority remains an operator-controlled local store and
@@ -139,6 +180,10 @@ speculative warming, tool choice, verification, reduction, and escalation.
 - [~] timeout and stale-resource profiles are physically recorded; a bounded
   Pi loss/recovery profile is now recorded, while slow-node/resource-pressure
   breadth remains incomplete;
+- [ ] end-to-end installer/enrollment/rendezvous commissioning evidence on Fedora,
+  Windows, and Linux ARM without manual registry JSON editing;
+- [ ] DHCP/address-change recovery evidence proving logical identity is independent of
+  a transient worker endpoint in rendezvous mode;
 - [ ] heterogeneous capability-graph evidence spanning models, worker-local
   tools, controller-proxied capabilities, and execution targets without
   weakening worker identity or admission semantics;
@@ -157,6 +202,8 @@ speculative warming, tool choice, verification, reduction, and escalation.
 - capability disappearance;
 - bounded bandwidth and latency profiles;
 - harness self-tests with expected dispositions;
+- enrollment-token replay/expiry, spoofed discovery, duplicate worker identity,
+  credential replacement, rendezvous reconnect storms, and stale-session faults;
 - target-routing faults where inference worker, workspace authority, and
   execution target disagree, disappear, or become stale;
 - provider-residency faults where loaded state disappears, a session reference becomes
