@@ -55,6 +55,10 @@ placement modes, not implementations of model-layer movement.
 
 `worker_state.py` owns bounded worker-description and worker-liveness profiles.
 Descriptions are authenticated worker reports, not attestation.
+`capabilities.py` owns the additive provider-neutral worker-capability observation.
+`FabricClient` binds normalized observations to registered worker identities, retains
+their history in the appropriate controller ledger, and evaluates freshness plus
+worker liveness without converting a stale claim into current availability.
 `collections.py` owns generic work-item and collection completeness; consumer
 projects retain partition meaning and semantic aggregation.
 
@@ -79,8 +83,7 @@ Any tool request must return to the consuming harness or other control plane, wh
 applies its own policy and then submits a separate bounded execution request if the
 tool truly belongs on a remote worker.
 
-Future authenticated worker descriptions may advertise provider-neutral capability
-facts such as:
+The capability-observation API can advertise provider-neutral facts such as:
 
 - installed model/runtime identities and declared runtime features;
 - worker-local executable/tool capabilities;

@@ -67,13 +67,14 @@ does not establish independent freshness or custody.
   was ingested and bound to resource-aware full-accelerator admission;
 - [x] physical Windows sequential-offload runtime evidence is bound to an
   identity-addressed runtime environment and used for explicit/AUTO admission;
-- [ ] provider-neutral worker model/runtime inventory in authenticated worker
-  descriptions, including installed model identity and runtime capabilities;
+- [x] provider-neutral, identity-bound worker capability observations with bounded
+  model/runtime entries, durable history, public API exposure, and explicit
+  freshness/availability (additive to authenticated worker descriptions);
 - [ ] explicit capability references for worker-local tools and MCP endpoints
   without making Fabric the semantic tool router;
-- [ ] typed target metadata that lets consumers distinguish inference placement,
-  workspace authority, and tool-execution location without granting arbitrary
-  remote shell access;
+- [~] a first consumer now carries typed inference/workspace/tool target metadata;
+  Fabric retains independent execution placement and grants no implicit remote
+  authority, while a shared Fabric target-reference contract remains future work;
 - [ ] bounded target-aware execution requests for consumer-authorized remote
   tools, preserving argv-only execution and Fabric evidence boundaries;
 - [ ] physical evidence that a model placed on one host can participate in a
