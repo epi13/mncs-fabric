@@ -8,6 +8,8 @@ from .contracts import build_public_contract
 from .errors import FabricError
 from .enrollment import TrustStore
 from .io import load_json, write_json
+from .lifecycle import LifecycleStore, default_lifecycle_path
+from .controller_service import ControllerConfig, ControllerService
 from .registry import RegistryWorker, WorkerRegistry
 from .service import FabricService
 from .transport import TLSWorkerServer
@@ -19,6 +21,30 @@ _SERVICE = FabricService()
 
 def _path(value: str) -> Path:
     return Path(value).expanduser()
+
+
+def _duration(value: str) -> float:
+    value = value.strip().lower()
+    units = {"s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0}
+    if len(value) < 2 or value[-1] not in units:
+        raise ValueError("duration must use a number followed by s, m, h, or d")
+    try:
+        amount = float(value[:-1])
+    except ValueError as exc:
+        raise ValueError("duration amount is invalid") from exc
+    if amount <= 0:
+        raise ValueError("duration must be positive")
+    return amount * units[value[-1]]
+
+
+def _metadata(values: list[str]) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError("metadata must use KEY=VALUE")
+        key, item = value.split("=", 1)
+        result[key] = item
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,6 +153,85 @@ def build_parser() -> argparse.ArgumentParser:
     registry_remove = registry_sub.add_parser("remove", help="remove one known endpoint")
     registry_remove.add_argument("path", type=_path)
     registry_remove.add_argument("worker_id")
+
+    enrollment = sub.add_parser("enrollment", help="manage explicit worker enrollment lifecycle")
+    enrollment_sub = enrollment.add_subparsers(dest="enrollment_command", required=True)
+    enrollment_create = enrollment_sub.add_parser("create", help="create a one-time enrollment authorization")
+    enrollment_create.add_argument("--ttl", default="10m")
+    enrollment_create.add_argument("--worker-id")
+    enrollment_create.add_argument("--metadata", action="append", default=[])
+    enrollment_create.add_argument("--json", action="store_true")
+    enrollment_list = enrollment_sub.add_parser("list", help="list redacted authorizations")
+    enrollment_list.add_argument("--json", action="store_true")
+    enrollment_pending = enrollment_sub.add_parser("pending", help="list pending enrollment requests")
+    enrollment_pending.add_argument("--json", action="store_true")
+    enrollment_inspect = enrollment_sub.add_parser("inspect", help="inspect one enrollment request")
+    enrollment_inspect.add_argument("request_id")
+    enrollment_inspect.add_argument("--json", action="store_true")
+    enrollment_request = enrollment_sub.add_parser("request", help="submit a bounded local enrollment request")
+    enrollment_request.add_argument("--token", required=True)
+    enrollment_request.add_argument("--worker-id", required=True)
+    enrollment_request.add_argument("--public-key", type=_path, required=True)
+    enrollment_request.add_argument("--hostname", required=True)
+    enrollment_request.add_argument("--os", dest="operating_system", required=True)
+    enrollment_request.add_argument("--architecture", required=True)
+    enrollment_request.add_argument("--authorization-id", required=True)
+    enrollment_request.add_argument("--metadata", action="append", default=[])
+    enrollment_request.add_argument("--json", action="store_true")
+    enrollment_approve = enrollment_sub.add_parser("approve", help="approve one exact enrollment request")
+    enrollment_approve.add_argument("request_id")
+    enrollment_approve.add_argument("--worker-id")
+    enrollment_approve.add_argument("--json", action="store_true")
+    enrollment_deny = enrollment_sub.add_parser("deny", help="deny one enrollment request")
+    enrollment_deny.add_argument("request_id")
+    enrollment_deny.add_argument("--reason", default="operator denied enrollment")
+    enrollment_deny.add_argument("--json", action="store_true")
+    enrollment_expire = enrollment_sub.add_parser("expire", help="record an expired enrollment request")
+    enrollment_expire.add_argument("request_id")
+    enrollment_expire.add_argument("--json", action="store_true")
+    for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire):
+        enrollment_command.add_argument("--state", type=_path, default=default_lifecycle_path())
+
+    fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
+    fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
+    fleet_list = fleet_sub.add_parser("list", help="list fleet members")
+    fleet_list.add_argument("--json", action="store_true")
+    fleet_status = fleet_sub.add_parser("status", help="show one member and current presence")
+    fleet_status.add_argument("worker_id")
+    fleet_status.add_argument("--json", action="store_true")
+    fleet_doctor = fleet_sub.add_parser("doctor", help="verify lifecycle durability and status")
+    fleet_doctor.add_argument("--json", action="store_true")
+    for fleet_command in (fleet_list, fleet_status, fleet_doctor):
+        fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
+
+    worker_revoke = worker_sub.add_parser("revoke", help="revoke durable fleet membership")
+    worker_revoke.add_argument("worker_id")
+    worker_revoke.add_argument("--state", type=_path, default=default_lifecycle_path())
+    worker_revoke.add_argument("--reason", required=True)
+    worker_revoke.add_argument("--json", action="store_true")
+    worker_status = worker_sub.add_parser("status", help="show durable worker lifecycle status")
+    worker_status.add_argument("worker_id")
+    worker_status.add_argument("--state", type=_path, default=default_lifecycle_path())
+    worker_status.add_argument("--json", action="store_true")
+    worker_doctor = worker_sub.add_parser("doctor", help="verify worker lifecycle state")
+    worker_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
+    worker_doctor.add_argument("--json", action="store_true")
+
+    controller = sub.add_parser("controller", help="inspect or run the persistent Fabric controller foundation")
+    controller.add_argument("--controller-id", default="local")
+    controller_sub = controller.add_subparsers(dest="controller_command", required=True)
+    controller_status = controller_sub.add_parser("status", help="inspect controller and lifecycle health")
+    controller_status.add_argument("--json", action="store_true")
+    controller_doctor = controller_sub.add_parser("doctor", help="run controller durability checks")
+    controller_doctor.add_argument("--json", action="store_true")
+    controller_service = controller_sub.add_parser("service", help="run the foreground controller service")
+    controller_service_sub = controller_service.add_subparsers(dest="service_command", required=True)
+    controller_run = controller_service_sub.add_parser("run", help="run until SIGTERM/SIGINT or a bounded test deadline")
+    controller_run.add_argument("--max-seconds", type=float)
+    controller_run.add_argument("--json", action="store_true")
+    controller_status.add_argument("--state", type=_path, default=default_lifecycle_path())
+    controller_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
+    controller_run.add_argument("--state", type=_path, default=default_lifecycle_path())
     return parser
 
 
@@ -193,6 +298,71 @@ def main(argv: list[str] | None = None) -> int:
                 result = WorkerRegistry(args.path).remove(args.worker_id)
                 write_json(None, result)
                 return 0
+        if args.command == "enrollment":
+            lifecycle = LifecycleStore(args.state)
+            if args.enrollment_command == "create":
+                result = lifecycle.create_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
+            elif args.enrollment_command == "list":
+                result = {"outcome": "PASS", "authorizations": lifecycle.list_authorizations()}
+            elif args.enrollment_command == "pending":
+                result = {"outcome": "PASS", "requests": lifecycle.pending_requests()}
+            elif args.enrollment_command == "inspect":
+                result = lifecycle.request(args.request_id)
+            elif args.enrollment_command == "request":
+                request = lifecycle.build_request(
+                    worker_identity=args.worker_id,
+                    public_key_pem=args.public_key.read_text(encoding="ascii"),
+                    hostname_hint=args.hostname,
+                    operating_system=args.operating_system,
+                    architecture=args.architecture,
+                    authorization_id=args.authorization_id,
+                    metadata=_metadata(args.metadata),
+                )
+                result = lifecycle.submit_request(request, args.token)
+            elif args.enrollment_command == "approve":
+                result = lifecycle.approve_request(args.request_id, worker_id=args.worker_id)
+            elif args.enrollment_command == "deny":
+                result = lifecycle.deny_request(args.request_id, reason=args.reason)
+            elif args.enrollment_command == "expire":
+                result = lifecycle.expire_request(args.request_id)
+            else:
+                raise AssertionError("unreachable enrollment command")
+            write_json(None, result)
+            return 0
+        if args.command == "fleet":
+            lifecycle = LifecycleStore(args.state)
+            if args.fleet_command == "list":
+                result = {"outcome": "PASS", "workers": lifecycle.memberships()}
+            elif args.fleet_command == "status":
+                result = lifecycle.membership(args.worker_id)
+            elif args.fleet_command == "doctor":
+                result = lifecycle.doctor()
+            else:
+                raise AssertionError("unreachable fleet command")
+            write_json(None, result)
+            return _status_code(result.get("outcome", "PASS"))
+        if args.command == "worker" and args.worker_command in {"revoke", "status", "doctor"}:
+            lifecycle = LifecycleStore(args.state)
+            if args.worker_command == "revoke":
+                result = lifecycle.revoke_worker(args.worker_id, reason=args.reason)
+            elif args.worker_command == "status":
+                result = lifecycle.membership(args.worker_id)
+            else:
+                result = lifecycle.doctor()
+            write_json(None, result)
+            return _status_code(result.get("outcome", "PASS"))
+        if args.command == "controller":
+            service = ControllerService(ControllerConfig(args.controller_id, args.state))
+            if args.controller_command == "status":
+                result = service.status()
+            elif args.controller_command == "doctor":
+                result = service.doctor()
+            elif args.controller_command == "service" and args.service_command == "run":
+                result = service.run(max_seconds=args.max_seconds)
+            else:
+                raise AssertionError("unreachable controller command")
+            write_json(None, result)
+            return _status_code(result.get("outcome", "PASS"))
         if args.command == "artifacts" and args.artifacts_command == "create":
             write_json(args.output, build_manifest(args.root))
             return 0

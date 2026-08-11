@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.enrollment-request.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "request_id", "worker_identity", "public_key_pem", "public_key_identity", "hostname_hint", "operating_system", "architecture", "requested_at", "authorization_id", "metadata", "status"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.enrollment-request.v0.1"},
+    "request_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "worker_identity": {"type": "string", "maxLength": 128},
+    "public_key_pem": {"type": "string", "maxLength": 8192},
+    "public_key_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "hostname_hint": {"type": "string", "maxLength": 255},
+    "operating_system": {"type": "string", "maxLength": 64},
+    "architecture": {"type": "string", "maxLength": 64},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "authorization_id": {"type": "string", "maxLength": 80},
+    "metadata": {"type": "object", "maxProperties": 16, "additionalProperties": {"type": "string", "maxLength": 256}},
+    "status": {"enum": ["PENDING", "APPROVED", "DENIED", "EXPIRED"]}
+  }
+}

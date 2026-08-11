@@ -12,6 +12,7 @@ from .executor import execute_local
 from .models import COHORT_SCHEMA, EXECUTION_SCHEMA, validate_job_plan
 from .node import capability_names, collect_node_capabilities
 from .reconcile import reconcile_records
+from .lifecycle import LifecycleStore
 
 
 class FabricService:
@@ -53,3 +54,8 @@ class FabricService:
     def bind_receipt_to_execution_bundle(self, receipt: object, archive: Path) -> dict[str, Any]:
         bundle = verify_bundle_archive(archive)
         return bind_receipt_to_bundle(receipt, bundle).as_dict()
+
+    def lifecycle(self, state_path: Path) -> LifecycleStore:
+        """Open controller-owned lifecycle state without exposing ledger internals."""
+
+        return LifecycleStore(Path(state_path))

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.enrollment-decision.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "decision_id", "request_id", "worker_id", "decision", "public_key_identity", "decided_at", "reason"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.enrollment-decision.v0.1"},
+    "decision_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "worker_id": {"type": "string", "maxLength": 128},
+    "decision": {"enum": ["APPROVED", "DENIED", "EXPIRED"]},
+    "public_key_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "reason": {"type": ["string", "null"], "maxLength": 512}
+  }
+}

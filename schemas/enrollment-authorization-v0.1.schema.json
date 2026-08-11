@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.enrollment-authorization.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "authorization_id", "issued_at", "expires_at", "expected_worker_identity", "metadata", "status"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.enrollment-authorization.v0.1"},
+    "authorization_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "issued_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "expected_worker_identity": {"type": ["string", "null"], "maxLength": 128},
+    "metadata": {"type": "object", "maxProperties": 16, "additionalProperties": {"type": "string", "maxLength": 256}},
+    "status": {"enum": ["ACTIVE", "CONSUMED", "EXPIRED", "REVOKED"]}
+  }
+}
