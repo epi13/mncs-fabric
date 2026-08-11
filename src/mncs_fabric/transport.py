@@ -18,7 +18,7 @@ from typing import Protocol
 
 from .canonical import canonical_json_bytes
 from .enrollment import TrustStore, certificate_fingerprint
-from .errors import ProtocolError
+from .errors import ProtocolError, TransportTimeoutError
 from .protocol import validate_envelope
 
 MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -29,9 +29,14 @@ class EnvelopeTransport(Protocol):
     def request(self, envelope: dict[str, object]) -> dict[str, object]: ...
 
 
-def _read_exact(stream: socket.socket, size: int) -> bytes:
+def _read_exact(stream: socket.socket, size: int, *, deadline: float | None = None) -> bytes:
     result = bytearray()
     while len(result) < size:
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise socket.timeout("protocol frame deadline exceeded")
+            stream.settimeout(remaining)
         chunk = stream.recv(size - len(result))
         if not chunk:
             raise ProtocolError("connection closed before a complete frame was received")
@@ -46,12 +51,17 @@ def send_frame(stream: socket.socket, envelope: dict[str, object], *, max_frame_
     stream.sendall(struct.pack(">I", len(payload)) + payload)
 
 
-def receive_frame(stream: socket.socket, *, max_frame_bytes: int = MAX_FRAME_BYTES) -> dict[str, object]:
-    prefix = _read_exact(stream, FRAME_PREFIX_BYTES)
+def receive_frame(
+    stream: socket.socket,
+    *,
+    max_frame_bytes: int = MAX_FRAME_BYTES,
+    deadline: float | None = None,
+) -> dict[str, object]:
+    prefix = _read_exact(stream, FRAME_PREFIX_BYTES, deadline=deadline)
     length = struct.unpack(">I", prefix)[0]
     if length == 0 or length > max_frame_bytes:
         raise ProtocolError("protocol frame length is outside the bounded range")
-    payload = _read_exact(stream, length)
+    payload = _read_exact(stream, length, deadline=deadline)
     try:
         value = json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -76,14 +86,43 @@ class InProcessTransport:
 class TLSNetworkTransport:
     """One-request-per-TLS-connection transport with certificate pinning."""
 
-    def __init__(self, host: str, port: int, *, ca_file: Path, client_cert: Path, client_key: Path, expected_worker_id: str, trust_store: TrustStore, timeout: float = 5.0, max_frame_bytes: int = MAX_FRAME_BYTES) -> None:
-        if not 1 <= port <= 65535 or timeout <= 0:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        ca_file: Path,
+        client_cert: Path,
+        client_key: Path,
+        expected_worker_id: str,
+        trust_store: TrustStore,
+        timeout: float = 5.0,
+        connect_timeout: float | None = None,
+        control_timeout: float | None = None,
+        execution_timeout_overhead: float = 5.0,
+        max_frame_bytes: int = MAX_FRAME_BYTES,
+    ) -> None:
+        connect_bound = timeout if connect_timeout is None else connect_timeout
+        control_bound = timeout if control_timeout is None else control_timeout
+        if (
+            not 1 <= port <= 65535
+            or timeout <= 0
+            or connect_bound <= 0
+            or control_bound <= 0
+            or not 0 < execution_timeout_overhead <= 300
+        ):
             raise ValueError("invalid TLS transport endpoint")
         self.host = host
         self.port = port
         self.expected_worker_id = expected_worker_id
         self.trust_store = trust_store
-        self.timeout = timeout
+        # ``timeout`` remains the compatibility spelling for the short control
+        # bound. Dispatch responses derive a separate bound from the validated
+        # job plan and never widen connect, handshake, refresh, or idle waits.
+        self.timeout = control_bound
+        self.connect_timeout = connect_bound
+        self.control_timeout = control_bound
+        self.execution_timeout_overhead = execution_timeout_overhead
         self.max_frame_bytes = max_frame_bytes
         self.last_error: str | None = None
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=str(ca_file))
@@ -96,23 +135,57 @@ class TLSNetworkTransport:
         message = validate_envelope(envelope)
         if message["worker_id"] != self.expected_worker_id:
             raise ProtocolError("transport request is bound to a different worker")
-        with socket.create_connection((self.host, self.port), timeout=self.timeout) as raw:
-            raw.settimeout(self.timeout)
-            with self.context.wrap_socket(raw, server_hostname=self.host) as stream:
-                peer = stream.getpeercert(binary_form=True)
-                if not peer:
-                    raise ProtocolError("TLS peer did not present a certificate")
-                self.trust_store.authorize("worker", self.expected_worker_id, certificate_fingerprint(peer))
-                send_frame(stream, message, max_frame_bytes=self.max_frame_bytes)
-                response = validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes))
-                stream.settimeout(min(self.timeout, 0.2))
-                try:
-                    extra = stream.recv(1)
-                except socket.timeout:
-                    extra = b""
-                if extra:
-                    raise ProtocolError("TLS peer sent trailing frame data")
-                return response
+        response_timeout = self.control_timeout
+        if message["message_type"] == "dispatch.request":
+            plan = message["payload"]["job_plan"]
+            response_timeout = max(
+                self.control_timeout,
+                float(plan["timeout_seconds"]) + self.execution_timeout_overhead,
+            )
+        phase = "connect"
+        phase_timeout = self.connect_timeout
+        try:
+            with socket.create_connection(
+                (self.host, self.port), timeout=self.connect_timeout
+            ) as raw:
+                phase = "TLS handshake"
+                phase_timeout = self.control_timeout
+                raw.settimeout(self.control_timeout)
+                with self.context.wrap_socket(raw, server_hostname=self.host) as stream:
+                    peer = stream.getpeercert(binary_form=True)
+                    if not peer:
+                        raise ProtocolError("TLS peer did not present a certificate")
+                    self.trust_store.authorize(
+                        "worker", self.expected_worker_id, certificate_fingerprint(peer)
+                    )
+                    phase = "request send"
+                    phase_timeout = self.control_timeout
+                    send_frame(stream, message, max_frame_bytes=self.max_frame_bytes)
+                    phase = (
+                        "execution response"
+                        if message["message_type"] == "dispatch.request"
+                        else "control response"
+                    )
+                    phase_timeout = response_timeout
+                    response = validate_envelope(
+                        receive_frame(
+                            stream,
+                            max_frame_bytes=self.max_frame_bytes,
+                            deadline=time.monotonic() + response_timeout,
+                        )
+                    )
+                    stream.settimeout(min(self.control_timeout, 0.2))
+                    try:
+                        extra = stream.recv(1)
+                    except socket.timeout:
+                        extra = b""
+                    if extra:
+                        raise ProtocolError("TLS peer sent trailing frame data")
+                    return response
+        except (socket.timeout, TimeoutError) as exc:
+            raise TransportTimeoutError(
+                f"Fabric {phase} timed out after {phase_timeout:.3f}s"
+            ) from exc
 
 
 class TLSWorkerServer:
@@ -281,7 +354,13 @@ class TLSWorkerServer:
                     peer = stream.getpeercert(binary_form=True)
                     if not peer:
                         raise ProtocolError("TLS controller did not present a certificate")
-                    message = validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes))
+                    message = validate_envelope(
+                        receive_frame(
+                            stream,
+                            max_frame_bytes=self.max_frame_bytes,
+                            deadline=time.monotonic() + self.timeout,
+                        )
+                    )
                     if message["controller_id"] != self.controller_id or message["worker_id"] != self.worker_id:
                         raise ProtocolError("message logical identity does not match TLS endpoint")
                     # Reloads the append-only trust ledger on every request.

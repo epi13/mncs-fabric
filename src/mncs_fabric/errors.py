@@ -14,5 +14,9 @@ class ProtocolError(FabricError):
     """Raised when a versioned controller/worker message is unsafe or unsupported."""
 
 
+class TransportTimeoutError(ProtocolError):
+    """Raised when one bounded Fabric transport phase exceeds its declared limit."""
+
+
 class StorageError(FabricError):
     """Raised when durable Fabric state cannot be verified or published."""

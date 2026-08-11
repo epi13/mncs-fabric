@@ -57,3 +57,10 @@ truth through `capability_inventory()` or the additive fields on `workers()`; do
 route from retained observations whose status is `STALE`, `UNKNOWN`, or `UNAVAILABLE`.
 Older consumers remain compatible because the public contract and worker records are
 extended additively. Consumers that require this API should pin `mncs-fabric>=0.2.0a11`.
+
+Timeout migration (added in `0.2.0a12`): `RemoteWorkerConfig.timeout` remains the
+backward-compatible short bound. Consumers may set `connect_timeout`,
+`control_timeout`, and `execution_timeout_overhead` separately. A dispatch response
+uses the already validated job timeout plus that bounded overhead; descriptions,
+refreshes, handshakes, and other control operations never inherit the long job bound.
+Local Harness 0.5.0 requires `mncs-fabric>=0.2.0a12,<0.3` for this behavior.

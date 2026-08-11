@@ -9,7 +9,7 @@ from typing import Any
 
 from .canonical import sha256_identity, verify_identity
 from .challenges import bind_challenge_to_receipt
-from .errors import ProtocolError
+from .errors import ProtocolError, TransportTimeoutError
 from .models import validate_job_plan
 from .node import utc_now
 from .protocol import dispatch_request_identity, make_envelope, validate_envelope
@@ -311,7 +311,12 @@ class NetworkController(LocalController):
                     outputs.append(self.dispatch_via(transport, checked, manifest, worker_id=worker_id, request_id=request, challenge=challenge, consumer_context=consumer_context, execution_bundle=execution_bundle, placement_request=placement_request, runtime_observation=runtime_observation or self.runtime_observations.get(worker_id), runtime_capability_observation=runtime_capability_observation or self.runtime_capability_observations.get(worker_id)))
                 except (ProtocolError, OSError, TimeoutError) as exc:
                     self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
-                    outputs.append({"disposition": "UNKNOWN", "reason": "WORKER_UNAVAILABLE", "worker_id": worker_id, "diagnostic": str(exc)})
+                    reason = (
+                        "TRANSPORT_TIMEOUT"
+                        if isinstance(exc, TransportTimeoutError)
+                        else "WORKER_UNAVAILABLE"
+                    )
+                    outputs.append({"disposition": "UNKNOWN", "reason": reason, "worker_id": worker_id, "diagnostic": str(exc)})
         finally:
             with self._remote_lock:
                 for worker_id in decision.worker_ids:

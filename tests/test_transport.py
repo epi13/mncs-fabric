@@ -7,6 +7,7 @@ import struct
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -38,6 +39,179 @@ def _certificates(root: Path) -> dict[str, Path]:
 
 @unittest.skipUnless(OPENSSL, "openssl is required for ephemeral TLS integration certificates")
 class TLSTransportTests(unittest.TestCase):
+    def test_execution_response_uses_validated_job_bound_not_control_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert = _certificates(root)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "task.py").write_text(
+                "import time\ntime.sleep(0.6)\nprint('slow-network-ok')\n", encoding="utf-8"
+            )
+            manifest = build_manifest(bundle)
+            plan = validate_job_plan(
+                {
+                    "schema_version": "mncs-fabric.job-plan.v0.1",
+                    "job_id": "network:slow-bounded",
+                    "candidate_identity": "sha256:" + "a" * 64,
+                    "evaluator_identity": None,
+                    "artifact_manifest_identity": manifest["manifest_identity"],
+                    "argv": ["@python", "task.py"],
+                    "working_directory": ".",
+                    "timeout_seconds": 2,
+                    "output_limit_bytes": 4096,
+                    "environment": {},
+                    "required_capabilities": ["python"],
+                    "result_paths": [],
+                    "network_policy": "DECLARED_OFFLINE",
+                }
+            )
+            controller_trust = TrustStore(root / "controller-trust.jsonl")
+            worker_trust = TrustStore(root / "worker-trust.jsonl")
+            controller_trust.enroll(
+                "worker",
+                "worker-slow",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["server"].read_text(encoding="ascii"))
+                ),
+            )
+            worker_trust.enroll(
+                "controller",
+                "controller-slow",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["client"].read_text(encoding="ascii"))
+                ),
+            )
+            worker = LocalWorker("worker-slow", bundle, root / "worker-ledger.jsonl")
+            server = TLSWorkerServer(
+                worker,
+                "127.0.0.1",
+                0,
+                ca_file=cert["ca"],
+                server_cert=cert["server"],
+                server_key=cert["server_key"],
+                controller_id="controller-slow",
+                worker_id="worker-slow",
+                trust_store=worker_trust,
+                timeout=0.2,
+            )
+            port = server.bind()
+            thread = threading.Thread(target=server.serve_once, daemon=True)
+            thread.start()
+            transport = TLSNetworkTransport(
+                "127.0.0.1",
+                port,
+                ca_file=cert["ca"],
+                client_cert=cert["client"],
+                client_key=cert["client_key"],
+                expected_worker_id="worker-slow",
+                trust_store=controller_trust,
+                timeout=0.2,
+                execution_timeout_overhead=0.5,
+            )
+            response = NetworkController(
+                "controller-slow", root / "controller-ledger.jsonl"
+            ).dispatch_via(
+                transport,
+                plan,
+                manifest,
+                worker_id="worker-slow",
+                request_id="network-slow-1",
+            )
+            thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(response["payload"]["record"]["outcome"], "PASS")
+
+    def test_job_timeout_remains_explicit_and_bounded_over_tls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert = _certificates(root)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            (bundle / "task.py").write_text(
+                "import time\ntime.sleep(2)\n", encoding="utf-8"
+            )
+            manifest = build_manifest(bundle)
+            plan = validate_job_plan(
+                {
+                    "schema_version": "mncs-fabric.job-plan.v0.1",
+                    "job_id": "network:job-timeout",
+                    "candidate_identity": "sha256:" + "b" * 64,
+                    "evaluator_identity": None,
+                    "artifact_manifest_identity": manifest["manifest_identity"],
+                    "argv": ["@python", "task.py"],
+                    "working_directory": ".",
+                    "timeout_seconds": 0.2,
+                    "output_limit_bytes": 4096,
+                    "environment": {},
+                    "required_capabilities": ["python"],
+                    "result_paths": [],
+                    "network_policy": "DECLARED_OFFLINE",
+                }
+            )
+            controller_trust = TrustStore(root / "controller-trust.jsonl")
+            worker_trust = TrustStore(root / "worker-trust.jsonl")
+            controller_trust.enroll(
+                "worker",
+                "worker-job-timeout",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["server"].read_text(encoding="ascii"))
+                ),
+            )
+            worker_trust.enroll(
+                "controller",
+                "controller-job-timeout",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["client"].read_text(encoding="ascii"))
+                ),
+            )
+            worker = LocalWorker(
+                "worker-job-timeout", bundle, root / "worker-ledger.jsonl"
+            )
+            server = TLSWorkerServer(
+                worker,
+                "127.0.0.1",
+                0,
+                ca_file=cert["ca"],
+                server_cert=cert["server"],
+                server_key=cert["server_key"],
+                controller_id="controller-job-timeout",
+                worker_id="worker-job-timeout",
+                trust_store=worker_trust,
+                timeout=0.2,
+            )
+            port = server.bind()
+            thread = threading.Thread(target=server.serve_once, daemon=True)
+            thread.start()
+            transport = TLSNetworkTransport(
+                "127.0.0.1",
+                port,
+                ca_file=cert["ca"],
+                client_cert=cert["client"],
+                client_key=cert["client_key"],
+                expected_worker_id="worker-job-timeout",
+                trust_store=controller_trust,
+                timeout=0.2,
+                execution_timeout_overhead=1,
+            )
+            started = time.monotonic()
+            response = NetworkController(
+                "controller-job-timeout", root / "controller-ledger.jsonl"
+            ).dispatch_via(
+                transport,
+                plan,
+                manifest,
+                worker_id="worker-job-timeout",
+                request_id="network-job-timeout-1",
+            )
+            elapsed = time.monotonic() - started
+            thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+            record = response["payload"]["record"]
+            self.assertEqual(record["outcome"], "UNKNOWN")
+            self.assertEqual(record["termination_reason"], "TIMEOUT")
+            self.assertLess(elapsed, 1.5)
+
     def test_mutually_authenticated_loopback_dispatch_and_revocation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

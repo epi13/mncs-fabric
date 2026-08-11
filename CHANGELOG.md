@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0a12 - bounded long-running distributed execution
+
+- separate connection and control-plane timeouts from execution-response waits;
+- derive each dispatch response deadline from the validated job timeout plus a
+  small bounded protocol overhead while keeping refresh and handshake waits short;
+- apply a total frame deadline so a malformed peer cannot extend a response by
+  dribbling bytes indefinitely;
+- report execution-response expiry as `TRANSPORT_TIMEOUT`, distinct from a worker
+  execution record whose job terminates with `TIMEOUT`; and
+- add real mTLS regression coverage for inference longer than the old control bound
+  and for explicitly over-bound jobs.
+
 ## 0.2.0a11 - provider-neutral worker capability observations
 
 - add `mncs-fabric.worker-capability-observation.v0.1` with strict bounded
