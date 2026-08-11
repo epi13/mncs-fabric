@@ -4,11 +4,11 @@ import argparse
 from pathlib import Path
 
 from .artifacts import build_manifest, verify_manifest
-from .canonical import verify_identity
 from .contracts import build_public_contract
 from .errors import FabricError
 from .enrollment import TrustStore
 from .io import load_json, write_json
+from .registry import RegistryWorker, WorkerRegistry
 from .service import FabricService
 from .transport import TLSWorkerServer
 from .worker import LocalWorker
@@ -100,7 +100,59 @@ def build_parser() -> argparse.ArgumentParser:
     contract_show = contract_sub.add_parser("show", help="emit the versioned public contract")
     contract_show.add_argument("--json", action="store_true", help="retain machine-readable JSON output")
     contract_show.add_argument("--output", type=_path)
+
+    registry = sub.add_parser("registry", help="manage the operator-owned worker catalog")
+    registry_sub = registry.add_subparsers(dest="registry_command", required=True)
+    registry_list = registry_sub.add_parser("list", help="list known workers without trust paths")
+    registry_list.add_argument("path", type=_path)
+    registry_validate = registry_sub.add_parser("validate", help="validate structure and trust references")
+    registry_validate.add_argument("path", type=_path)
+    registry_register = registry_sub.add_parser("register", help="register one explicit enrolled endpoint")
+    registry_register.add_argument("path", type=_path)
+    registry_register.add_argument("--controller-id", required=True)
+    registry_register.add_argument("--worker-id", required=True)
+    registry_register.add_argument("--host", required=True)
+    registry_register.add_argument("--port", type=int, required=True)
+    registry_register.add_argument("--capability", action="append", default=["python"])
+    registry_register.add_argument("--ca", type=_path, required=True)
+    registry_register.add_argument("--certificate", type=_path, required=True)
+    registry_register.add_argument("--key", type=_path, required=True)
+    registry_register.add_argument("--trust-state", type=_path, required=True)
+    registry_register.add_argument("--concurrency-limit", type=int, default=1)
+    registry_register.add_argument("--timeout", type=float, default=5.0)
+    registry_register.add_argument("--connect-timeout", type=float)
+    registry_register.add_argument("--control-timeout", type=float)
+    registry_register.add_argument("--execution-timeout-overhead", type=float, default=5.0)
+    registry_register.add_argument("--label", action="append", default=[])
+    registry_remove = registry_sub.add_parser("remove", help="remove one known endpoint")
+    registry_remove.add_argument("path", type=_path)
+    registry_remove.add_argument("worker_id")
     return parser
+
+
+def _registry_worker(args: argparse.Namespace) -> RegistryWorker:
+    labels: list[tuple[str, str]] = []
+    for item in args.label:
+        if "=" not in item:
+            raise ValueError("registry labels must use KEY=VALUE")
+        key, value = item.split("=", 1)
+        labels.append((key, value))
+    return RegistryWorker(
+        worker_id=args.worker_id,
+        host=args.host,
+        port=args.port,
+        capabilities=tuple(dict.fromkeys(args.capability)),
+        ca_file=str(args.ca),
+        client_certificate=str(args.certificate),
+        client_key=str(args.key),
+        trust_state=str(args.trust_state),
+        concurrency_limit=args.concurrency_limit,
+        timeout=args.timeout,
+        connect_timeout=args.connect_timeout,
+        control_timeout=args.control_timeout,
+        execution_timeout_overhead=args.execution_timeout_overhead,
+        labels=tuple(sorted(labels)),
+    )
 
 
 def _status_code(outcome: str) -> int:
@@ -116,6 +168,31 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "contract" and args.contract_command == "show":
             write_json(args.output, build_public_contract(__version__))
             return 0
+        if args.command == "registry":
+            if args.registry_command == "list":
+                registry = WorkerRegistry(args.path)
+                write_json(
+                    None,
+                    {
+                        "outcome": "PASS",
+                        "workers": [worker.public_dict() for worker in registry.load()],
+                    },
+                )
+                return 0
+            if args.registry_command == "validate":
+                result = WorkerRegistry(args.path).validate()
+                write_json(None, result)
+                return _status_code(result["outcome"])
+            if args.registry_command == "register":
+                result = WorkerRegistry(args.path, args.controller_id).register(
+                    _registry_worker(args)
+                )
+                write_json(None, result)
+                return 0
+            if args.registry_command == "remove":
+                result = WorkerRegistry(args.path).remove(args.worker_id)
+                write_json(None, result)
+                return 0
         if args.command == "artifacts" and args.artifacts_command == "create":
             write_json(args.output, build_manifest(args.root))
             return 0
