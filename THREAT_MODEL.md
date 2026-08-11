@@ -61,6 +61,35 @@ Linux/ARM harness uses SSH only for source, certificate, trust, and worker
 lifecycle bootstrap; candidate execution material remains on the Fabric
 bundle-transfer path.
 
+### Proposed automated worker bootstrap and rendezvous boundary
+
+The proposed [worker bootstrap, discovery, and lifecycle](docs/WORKER_BOOTSTRAP_DISCOVERY.md)
+adds an installation/enrollment plane around the existing execution plane. It does not
+make LAN presence, mDNS, a hostname, an IP address, an installer, or an enrollment
+request authoritative. Discovery is advisory; durable worker trust still requires an
+operator-approved cryptographic binding between logical worker identity and key
+material.
+
+The preferred installed-worker topology adds worker-initiated persistent rendezvous to
+the controller while retaining current explicit controller-to-worker endpoint mode.
+Rendezvous must use mutual TLS after enrollment, bind the worker certificate to active
+TrustStore state, preserve replay and bounded framing semantics, distinguish session
+presence from durable membership, and expose loss/reconnect as operational evidence
+rather than silently carrying old liveness or capability observations forward.
+
+Pre-enrollment bootstrap cannot rely on an already enrolled worker certificate, so it
+requires a separate narrow protocol and threat surface. Short-lived single-use
+bootstrap authorization, controller identity pinning/verification, explicit operator
+approval, bounded request shapes, replay state, rate/time/size limits, and local worker
+private-key generation are required before this can be treated as a supported
+commissioning path. The bootstrap service must never accept Fabric jobs, arbitrary
+commands, or remote shell requests from an unenrolled peer.
+
+TrustStore remains an authorization ledger rather than a certificate authority.
+Certificate issuance may use an external operator-managed CA or a separate bounded
+provisioning helper, but CA private keys must never be embedded in worker installers,
+registry records, enrollment tokens, diagnostics, or remote state.
+
 ## Protected assets
 
 - candidate and evaluator identities;
@@ -151,6 +180,13 @@ experimental bounded persistent mode, but this is not production supervision
 or unlimited daemon operation. The physical run does not remove these
 residual limitations.
 
+The proposed automated lifecycle is not implemented yet. Until its acceptance criteria
+are met, Fabric also does not claim resistance to discovery spoofing,
+enrollment-token theft/replay, unauthorized auto-enrollment, bootstrap-service denial
+of service, duplicate authenticated presence, credential cloning, identity takeover
+after reinstall, rendezvous reconnect storms, or stale-session confusion. Those risks
+must be tested explicitly rather than inferred away by using TLS elsewhere in Fabric.
+
 These gaps must remain explicit `UNKNOWN` or limitations. They must not be rewritten as PASS.
 
 ## Remote transport requirements
@@ -166,6 +202,22 @@ A network worker must retain:
 - durable append-only local execution records;
 - revocation and key rotation; and
 - tests for stale, duplicate, reordered, truncated, and substituted messages.
+
+A future bootstrap/rendezvous implementation must additionally retain:
+
+- discovery that is advisory only and cannot create TrustStore authority;
+- cryptographic verification of the selected controller before durable worker trust;
+- short-lived, single-use enrollment authorization with durable replay handling;
+- explicit approval or equivalently explicit pre-bound operator authorization;
+- local-only private-key generation and secret-redacted diagnostics;
+- rejection of silent active-identity rebinding after reinstall or key replacement;
+- deterministic handling of duplicate sessions claiming one logical worker identity;
+- distinct durable membership, current session presence, liveness, capability freshness,
+  and resource freshness;
+- bounded rendezvous connection counts, handshakes, idle periods, reconnect behavior,
+  and backpressure; and
+- no fallback from failed Fabric connectivity to SSH, WinRM, shell, or anonymous
+  execution.
 
 The following explicit threats are modeled but not fully solved by this
 iteration:
@@ -213,11 +265,32 @@ iteration:
   identity variables needed by the provider runtime; broad environment
   inheritance would weaken the execution boundary.
 
+For the proposed lifecycle specifically, additional modeled threats include:
+
+- spoofed mDNS/DNS-SD advertisements selecting an attacker-controlled bootstrap
+  endpoint before controller fingerprint verification;
+- stolen, guessed, logged, or replayed enrollment authorization;
+- an enrollment request racing the intended worker and consuming a one-time token;
+- an operator approving misleading hostname/platform hints that are not attested facts;
+- a cloned worker credential creating simultaneous authenticated presence;
+- a reinstalled worker attempting to take over an existing logical identity with a new
+  key;
+- reconnect storms exhausting controller handshake/session capacity;
+- a disconnected session leaving stale observations incorrectly visible as current;
+- bootstrap/provisioning code accidentally gaining execution-plane command authority;
+  and
+- an installer or support bundle leaking worker, controller, token, or CA private
+  material.
+
+The design requires explicit mitigations and adversarial tests for these cases before
+automated commissioning can be treated as more than experimental convenience.
+
 The boundaries are intentionally separate: TLS protects transport; HMAC
 authenticates a message; bundle verification protects package integrity;
 receipts record execution observations; and reconciliation compares evidence.
-None establishes independent custody, hardware attestation, root-resistant
-evidence, MNCS/MNCDS conformance, or certification.
+Discovery locates candidates; enrollment authorizes an identity binding; neither makes
+a worker honest or independent. None establishes independent custody, hardware
+attestation, root-resistant evidence, MNCS/MNCDS conformance, or certification.
 
 ## Reporting
 
