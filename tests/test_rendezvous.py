@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import ssl
+import os
 import shutil
 import socket
+import ssl
 import subprocess
 import tempfile
 import threading
@@ -39,6 +40,7 @@ def _certificates(root: Path) -> dict[str, Path]:
 
 
 class RendezvousTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "persistent consumer transport is POSIX-only")
     def test_controller_service_exposes_live_rendezvous_fleet_to_consumer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
