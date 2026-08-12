@@ -391,6 +391,13 @@ class ControllerService:
                     pass
             try:
                 server.start()
+            except ProtocolError:
+                if os.name == "posix":
+                    raise
+                # The platform-neutral runtime remains useful under a Windows
+                # supervisor while named-pipe transport is still planned.
+                server = ControllerServiceServer(self)
+            try:
                 if self._rendezvous is not None and self.config.rendezvous_configured:
                     rendezvous_server = TLSRendezvousServer(
                         self.config.rendezvous_host or "127.0.0.1",
@@ -411,9 +418,10 @@ class ControllerService:
             except ProtocolError:
                 if os.name == "posix":
                     raise
-                # The platform-neutral runtime remains useful under a Windows
-                # supervisor while named-pipe transport is still planned.
-                server = ControllerServiceServer(self)
+                # Worker-initiated TLS rendezvous is independent of the local
+                # consumer socket, so a Windows consumer fallback must not
+                # suppress a configured rendezvous listener.
+                rendezvous_server = None
             while not self._stop.is_set():
                 if max_seconds is not None and time.monotonic() - started >= max_seconds:
                     break
