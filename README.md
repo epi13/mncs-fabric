@@ -1,6 +1,6 @@
 # MNCS Fabric
 
-Fabric 0.2.0a15 includes a versioned controller-local registry for explicitly
+Fabric 0.2.0a16 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
@@ -22,7 +22,7 @@ not choose resident models or semantic routes; Local Harness owns those policies
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a15` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Production worker service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a16` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Production worker service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -175,10 +175,28 @@ For a user-supervised Fedora deployment, install
 `deploy/systemd/mncs-fabric-controller.service` under
 `~/.config/systemd/user/`, then enable it. The unit owns only the persistent
 controller lifecycle/socket state; it does not imply that a worker is present.
+The unit optionally reads `~/.config/mncs-fabric/controller.env`; copy
+`deploy/systemd/mncs-fabric-controller.env.example` there and replace the TLS
+paths to activate the worker-initiated listener without embedding operator trust
+paths in the unit. A complete rendezvous environment supplies
+`MNCS_FABRIC_RENDEZVOUS_HOST`, `MNCS_FABRIC_RENDEZVOUS_PORT`,
+`MNCS_FABRIC_RENDEZVOUS_CA`, `MNCS_FABRIC_RENDEZVOUS_CERTIFICATE`,
+`MNCS_FABRIC_RENDEZVOUS_KEY`, and `MNCS_FABRIC_RENDEZVOUS_TRUST_STATE`.
+Bind only to an operator-selected interface and restrict the listener with the
+host firewall even though peer authentication remains mandatory.
+
+For a Fedora worker that should survive login/session restarts, install
+`deploy/systemd/mncs-fabric-worker-rendezvous@.service` and create a protected
+`~/.config/mncs-fabric/workers/WORKER_ID.env` from the supplied example. Enable
+it as `mncs-fabric-worker-rendezvous@WORKER_ID.service`. The worker dials the
+controller; no inbound worker port is required for rendezvous mode.
+
 Worker-initiated rendezvous is opt-in and requires the controller listener TLS
 paths plus a worker process using `worker rendezvous`; otherwise the direct
 registry endpoint remains the compatibility path. Worker presence is never
-inferred from registry JSON alone.
+inferred from registry JSON alone. After changing Fabric code or controller
+configuration, restart the controller and verify the running service feature
+projection before attempting dispatch.
 
 `FabricClient.connect(socket_path)` is the ordinary consumer mode for the
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
