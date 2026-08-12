@@ -16,6 +16,14 @@ CONSUMER_RESULT_SCHEMA = "mncs-fabric.consumer-result.v0.1"
 PROVENANCE_BINDING_SCHEMA = "mncs-fabric.consumer-provenance.v0.1"
 
 PUBLIC_FEATURES = {
+    # The persistent local service currently exposes controller/fleet reads.
+    # Keep the service-boundary capabilities separate from embedded execution
+    # features so consumers do not infer dispatch support from the latter.
+    "persistent_fleet_read": True,
+    "persistent_service_execution": False,
+    "persistent_service_capability_ingestion": False,
+    "persistent_worker_observations": False,
+    "worker_rendezvous": False,
     "local_execution": True,
     "local_replication": True,
     "network_execution": True,
