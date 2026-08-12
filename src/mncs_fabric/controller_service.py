@@ -1,9 +1,9 @@
-"""Platform-neutral foreground controller service foundation.
+"""Platform-neutral foreground controller service.
 
 The runtime owns durable lifecycle state independently of any consumer
-process.  It intentionally has no LAN administrative listener and no worker
-rendezvous transport yet; systemd or another supervisor can invoke the same
-bounded foreground command later.
+process.  Worker endpoint configuration is controller-owned; consumers never
+load the registry or worker credentials. Worker-initiated rendezvous remains
+a separate, unadvertised capability.
 """
 
 from __future__ import annotations
@@ -35,6 +35,9 @@ class ControllerConfig:
     service_log: Path | None = None
     socket_path: Path | None = None
     admin_socket_path: Path | None = None
+    worker_registry_path: Path | None = None
+    worker_state_path: Path | None = None
+    execution_bundle_root: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.controller_id or len(self.controller_id) > 128 or "\x00" in self.controller_id:
@@ -51,6 +54,8 @@ class ControllerConfig:
             "service_log": str(self.service_log_path),
             "socket_path": str(self.socket_path_value),
             "admin_socket_path": str(self.admin_socket_path_value),
+            "worker_registry_path": str(self.worker_registry_path_value) if self.worker_registry_path is not None else None,
+            "execution_bundle_root": str(self.execution_bundle_root_value),
             "administrative_transport": "separate local operator socket",
             "worker_rendezvous": "planned",
         }
@@ -66,6 +71,18 @@ class ControllerConfig:
     @property
     def admin_socket_path_value(self) -> Path:
         return Path(self.admin_socket_path) if self.admin_socket_path is not None else self.lifecycle_state.with_name("controller-admin.sock")
+
+    @property
+    def worker_registry_path_value(self) -> Path | None:
+        return Path(self.worker_registry_path).expanduser() if self.worker_registry_path is not None else None
+
+    @property
+    def worker_state_path_value(self) -> Path:
+        return Path(self.worker_state_path).expanduser() if self.worker_state_path is not None else self.lifecycle_state.with_name("controller-workers.jsonl")
+
+    @property
+    def execution_bundle_root_value(self) -> Path:
+        return Path(self.execution_bundle_root).expanduser() if self.execution_bundle_root is not None else self.lifecycle_state.parent / "execution-bundles"
 
 
 def default_controller_config() -> ControllerConfig:
@@ -85,6 +102,35 @@ class ControllerService:
         self.lifecycle = LifecycleStore(self.config.lifecycle_state)
         self.service_ledger = FabricLedger(self.config.service_log_path)
         self._stop = Event()
+        self._worker_client: Any | None = None
+        self._worker_registry_report: dict[str, Any] | None = None
+        if self.config.worker_registry_path_value is not None:
+            from .api import FabricClient
+
+            self._worker_client = FabricClient(
+                self.config.controller_id,
+                self.config.worker_state_path_value,
+                lifecycle_state_path=self.config.lifecycle_state,
+            )
+            self._worker_registry_report = self._worker_client.load_registry(
+                self.config.worker_registry_path_value
+            )
+
+    @property
+    def worker_backend_enabled(self) -> bool:
+        return self._worker_client is not None
+
+    def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        if self._worker_client is None:
+            return [], self._worker_registry_report
+        try:
+            self._worker_client.refresh_workers()
+        except Exception as exc:
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "refresh_error": str(exc),
+            }
+        return [dict(worker) for worker in self._worker_client.workers()], self._worker_registry_report
 
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
@@ -98,6 +144,10 @@ class ControllerService:
         latest_event = service_events[-1]["record"].get("event") if service_events else None
         runtime = "RUNNING" if latest_event == "started" else "STOPPED" if latest_event == "stopped" else "NOT_STARTED"
         public_contract = build_public_contract(__version__)
+        workers, registry = self._worker_backend_status()
+        from .contracts import service_feature_projection
+
+        service_features = service_feature_projection(worker_backend=self.worker_backend_enabled)
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
@@ -118,6 +168,8 @@ class ControllerService:
             "worker_rendezvous": "PLANNED",
             "consumer_transport": "LOCAL_UNIX_SOCKET" if os.name == "posix" else "PLANNED_WINDOWS_LOCAL_TRANSPORT",
             "claim_boundary": "controller health is independent from worker availability and consumer connection",
+            "fleet": {"workers": workers, "registry": registry},
+            "service_features": service_features,
         }
 
     def doctor(self, *, now: str | None = None) -> dict[str, Any]:
@@ -128,6 +180,7 @@ class ControllerService:
             "service_ledger": result["service_ledger"]["outcome"],
             "administrative_listener": "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED",
             "worker_rendezvous": "NOT_IMPLEMENTED",
+            "persistent_service_execution": "CONTROLLER_MANAGED_ENDPOINTS" if self.worker_backend_enabled else "NOT_CONFIGURED",
         }
         return result
 
@@ -173,9 +226,15 @@ class ControllerService:
             elif operation == "controller.doctor":
                 payload = self.doctor()
             elif operation == "fleet.list":
-                payload = {"workers": self.lifecycle.memberships()}
+                payload = {"workers": self._worker_backend_status()[0] if self._worker_client is not None else self.lifecycle.memberships()}
             elif operation in {"fleet.status", "worker.status", "worker.observations"}:
-                payload = self.lifecycle.membership(str(args.get("worker_id")))
+                worker_id = str(args.get("worker_id"))
+                if self._worker_client is not None:
+                    payload = next((worker for worker in self._worker_backend_status()[0] if worker.get("worker_id") == worker_id), None)
+                    if payload is None:
+                        raise ProtocolError("worker is not known to the controller")
+                else:
+                    payload = self.lifecycle.membership(worker_id)
             elif operation == "fleet.doctor":
                 payload = self.lifecycle.doctor()
             elif operation == "enrollment.create":
@@ -198,6 +257,62 @@ class ControllerService:
                 payload = self.lifecycle.expire_request(str(args.get("request_id")))
             elif operation == "worker.revoke":
                 payload = self.lifecycle.revoke_worker(str(args.get("worker_id")), reason=str(args.get("reason", "operator revoked worker")))
+            elif operation == "execution.dispatch":
+                if self._worker_client is None:
+                    raise ProtocolError("persistent execution backend is not configured")
+                archive = Path(str(args.get("execution_bundle_archive", ""))).expanduser().resolve(strict=True)
+                try:
+                    archive.relative_to(self.config.execution_bundle_root_value.resolve())
+                except ValueError as exc:
+                    raise ProtocolError("execution bundle is outside the controller bundle root") from exc
+                payload = {
+                    "results": self._worker_client.execute(
+                        args["plan"],
+                        args["manifest"],
+                        worker_id=args.get("worker_id"),
+                        replicas=int(args.get("replicas", 1)),
+                        request_id=args.get("request_id"),
+                        challenge=args.get("challenge"),
+                        consumer_context=args.get("consumer_context"),
+                        execution_bundle_archive=archive,
+                        placement=args.get("placement"),
+                        runtime_observation=args.get("runtime_observation"),
+                        runtime_capability_observation=args.get("runtime_capability_observation"),
+                    ),
+                    "execution_transport": "controller-managed-authenticated-worker-endpoint",
+                    "fleet_authority": "persistent-controller",
+                }
+            elif operation == "worker.capability.ingest":
+                if self._worker_client is None:
+                    raise ProtocolError("persistent capability backend is not configured")
+                worker_id = str(args.get("worker_id", ""))
+                capabilities = args.get("capabilities")
+                if not isinstance(capabilities, list):
+                    raise ValidationError("capabilities must be an array")
+                payload = {
+                    "observation": self._worker_client.ingest_capability_observation(
+                        worker_id,
+                        capabilities,
+                        availability=str(args.get("availability", "AVAILABLE")),
+                        captured_at=args.get("captured_at"),
+                        observation_source=str(
+                            args.get("observation_source", "consumer-bounded-worker-probe")
+                        ),
+                        status_reason=args.get("status_reason"),
+                    ),
+                    "fleet_authority": "persistent-controller",
+                }
+            elif operation == "worker.capability.observations":
+                if self._worker_client is None:
+                    raise ProtocolError("persistent capability backend is not configured")
+                worker_id = str(args.get("worker_id", ""))
+                payload = {
+                    "observations": self._worker_client.capability_observations(
+                        worker_id,
+                        limit=int(args.get("limit", 1000)),
+                    ),
+                    "fleet_authority": "persistent-controller",
+                }
             else:
                 return _response(request, self.config.controller_id, "FAIL", error={"code": "UNKNOWN_OPERATION", "message": "service operation is unsupported"})
         except (FabricError, ValueError) as exc:
@@ -250,6 +365,8 @@ class ControllerService:
                     break
                 time.sleep(min(self.config.heartbeat_seconds, 0.25))
         finally:
+            if self._worker_client is not None:
+                self._worker_client.close()
             try:
                 server.close()
             finally:

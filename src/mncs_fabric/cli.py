@@ -241,6 +241,9 @@ def build_parser() -> argparse.ArgumentParser:
     controller_status.add_argument("--state", type=_path, default=default_lifecycle_path())
     controller_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
     controller_run.add_argument("--state", type=_path, default=default_lifecycle_path())
+    controller_run.add_argument("--registry", type=_path, help="controller-owned enrolled worker endpoint registry")
+    controller_run.add_argument("--worker-state", type=_path, help="controller-owned worker transport ledger")
+    controller_run.add_argument("--execution-bundle-root", type=_path, help="allowed root for verified consumer bundles")
     return parser
 
 
@@ -419,7 +422,7 @@ def main(argv: list[str] | None = None) -> int:
                 client.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
-            service = ControllerService(ControllerConfig(args.controller_id, args.state))
+            service = ControllerService(ControllerConfig(args.controller_id, args.state, worker_registry_path=getattr(args, "registry", None), worker_state_path=getattr(args, "worker_state", None), execution_bundle_root=getattr(args, "execution_bundle_root", None)))
             if args.controller_command == "status":
                 result = service.status()
             elif args.controller_command == "doctor":

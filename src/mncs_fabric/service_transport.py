@@ -39,6 +39,8 @@ _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _OPERATIONS = {
     "controller.status", "controller.doctor", "fleet.list", "fleet.status",
     "worker.status", "worker.observations", "fleet.doctor",
+    "execution.dispatch",
+    "worker.capability.ingest", "worker.capability.observations",
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
     "enrollment.expire", "worker.revoke",
