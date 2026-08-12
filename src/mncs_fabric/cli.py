@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from .artifacts import build_manifest, verify_manifest
@@ -46,6 +47,63 @@ def _metadata(values: list[str]) -> dict[str, str]:
         key, item = value.split("=", 1)
         result[key] = item
     return result
+
+
+def _optional_env_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return _path(value) if value else None
+
+
+def _optional_env_int(name: str) -> int | None:
+    value = os.environ.get(name)
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer") from exc
+
+
+def _controller_config(args: argparse.Namespace) -> ControllerConfig:
+    """Resolve controller runtime configuration without exposing TLS material.
+
+    Explicit CLI values take precedence. The environment fallback is intended
+    for OS supervisors so certificate/trust paths can live in a protected
+    operator-owned EnvironmentFile rather than in the shipped unit definition.
+    """
+
+    return ControllerConfig(
+        args.controller_id,
+        args.state,
+        worker_registry_path=getattr(args, "registry", None),
+        worker_state_path=getattr(args, "worker_state", None),
+        execution_bundle_root=getattr(args, "execution_bundle_root", None),
+        rendezvous_host=(
+            getattr(args, "rendezvous_host", None)
+            or os.environ.get("MNCS_FABRIC_RENDEZVOUS_HOST")
+        ),
+        rendezvous_port=(
+            getattr(args, "rendezvous_port", None)
+            if getattr(args, "rendezvous_port", None) is not None
+            else _optional_env_int("MNCS_FABRIC_RENDEZVOUS_PORT")
+        ),
+        rendezvous_ca=(
+            getattr(args, "rendezvous_ca", None)
+            or _optional_env_path("MNCS_FABRIC_RENDEZVOUS_CA")
+        ),
+        rendezvous_certificate=(
+            getattr(args, "rendezvous_certificate", None)
+            or _optional_env_path("MNCS_FABRIC_RENDEZVOUS_CERTIFICATE")
+        ),
+        rendezvous_key=(
+            getattr(args, "rendezvous_key", None)
+            or _optional_env_path("MNCS_FABRIC_RENDEZVOUS_KEY")
+        ),
+        rendezvous_trust_state=(
+            getattr(args, "rendezvous_trust_state", None)
+            or _optional_env_path("MNCS_FABRIC_RENDEZVOUS_TRUST_STATE")
+        ),
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -443,7 +501,7 @@ def main(argv: list[str] | None = None) -> int:
                 client.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
-            service = ControllerService(ControllerConfig(args.controller_id, args.state, worker_registry_path=getattr(args, "registry", None), worker_state_path=getattr(args, "worker_state", None), execution_bundle_root=getattr(args, "execution_bundle_root", None), rendezvous_host=getattr(args, "rendezvous_host", None), rendezvous_port=getattr(args, "rendezvous_port", None), rendezvous_ca=getattr(args, "rendezvous_ca", None), rendezvous_certificate=getattr(args, "rendezvous_certificate", None), rendezvous_key=getattr(args, "rendezvous_key", None), rendezvous_trust_state=getattr(args, "rendezvous_trust_state", None)))
+            service = ControllerService(_controller_config(args))
             if args.controller_command == "status":
                 result = service.status()
             elif args.controller_command == "doctor":

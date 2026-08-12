@@ -56,9 +56,20 @@ class ControllerConfig:
             raise ValidationError("controller heartbeat is outside the bounded range")
         if self.rendezvous_port is not None and not 0 <= self.rendezvous_port <= 65535:
             raise ValidationError("rendezvous port is outside the bounded range")
-        paths = (self.rendezvous_ca, self.rendezvous_certificate, self.rendezvous_key, self.rendezvous_trust_state)
-        if any(value is not None for value in paths) and not all(value is not None for value in paths):
-            raise ValidationError("rendezvous TLS configuration must be complete")
+        rendezvous = (
+            self.rendezvous_host,
+            self.rendezvous_port,
+            self.rendezvous_ca,
+            self.rendezvous_certificate,
+            self.rendezvous_key,
+            self.rendezvous_trust_state,
+        )
+        if any(value is not None for value in rendezvous) and not all(
+            value is not None for value in rendezvous
+        ):
+            raise ValidationError(
+                "rendezvous host, port, CA, certificate, key, and trust state must be configured together"
+            )
 
     def public_dict(self) -> dict[str, Any]:
         return {

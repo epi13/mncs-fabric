@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.0a16 - persistent worker rendezvous and service execution
+
+- route bounded execution requests through the persistent controller-owned worker
+  backend instead of requiring consumers to own worker registry/trust material;
+- add authenticated worker-initiated mTLS rendezvous sessions with controller-owned
+  heartbeat/liveness projection, duplicate-session rejection, scheduling, and
+  execution over the live worker session;
+- expose running-service feature projection for persistent execution, capability
+  ingestion, worker observations, and rendezvous without overstating unconfigured
+  runtime features;
+- allow the supervised controller to load rendezvous listener/TLS paths from a
+  protected environment file so deployment does not hard-code operator trust paths
+  into the shipped unit; and
+- keep the registered direct-worker endpoint as an explicit compatibility path
+  when worker-initiated rendezvous is not configured.
+
 ## 0.2.0a15 - persistent controller transport foundation
 
 - separate controller service start/stop/request evidence from the lifecycle
