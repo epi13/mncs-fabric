@@ -35,6 +35,10 @@ MESSAGE_TYPES = {
     "bundle.response",
     "worker.describe.request",
     "worker.describe.result",
+    "worker.session.open",
+    "worker.session.accept",
+    "worker.heartbeat",
+    "worker.heartbeat.ack",
 }
 _ID_FIELDS = ("controller_id", "worker_id", "request_id", "job_id", "nonce")
 
@@ -204,6 +208,32 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
     elif message_type == "worker.capabilities":
         if not isinstance(value.get("capabilities"), list) or not all(isinstance(item, str) for item in value["capabilities"]):
             raise ProtocolError("capability report must contain a string array")
+    elif message_type in {"worker.session.open", "worker.heartbeat"}:
+        required = {"protocol_version", "service_contract", "description"}
+        if set(value) != required or value.get("protocol_version") != PROTOCOL_VERSION:
+            raise ProtocolError("worker session request version or fields are invalid")
+        if not isinstance(value.get("service_contract"), str) or not value["service_contract"]:
+            raise ProtocolError("worker session service contract is invalid")
+        from .worker_state import validate_worker_description
+        validate_worker_description(value.get("description"))
+    elif message_type == "worker.session.accept":
+        required = {"session_id", "generation", "heartbeat_seconds", "controller_contract_identity"}
+        if set(value) != required or not isinstance(value.get("session_id"), str) or not value["session_id"]:
+            raise ProtocolError("worker session acceptance is invalid")
+        if not isinstance(value.get("generation"), int) or value["generation"] < 1:
+            raise ProtocolError("worker session generation is invalid")
+        if not isinstance(value.get("heartbeat_seconds"), (int, float)) or not 0 < value["heartbeat_seconds"] <= 60:
+            raise ProtocolError("worker heartbeat interval is invalid")
+        if not is_sha256_identity(value.get("controller_contract_identity")):
+            raise ProtocolError("worker controller contract identity is invalid")
+    elif message_type == "worker.heartbeat.ack":
+        required = {"session_id", "generation", "command"}
+        if set(value) != required or not isinstance(value.get("session_id"), str) or not isinstance(value.get("generation"), int) or value["generation"] < 1:
+            raise ProtocolError("worker heartbeat acknowledgement is invalid")
+        if value.get("command") is not None:
+            if not isinstance(value["command"], dict):
+                raise ProtocolError("worker heartbeat command is invalid")
+            validate_envelope(value["command"])
     elif message_type == "worker.describe.request":
         required = {"description_request_identity"}
         if set(value) != required or not is_sha256_identity(value.get("description_request_identity")):

@@ -1,9 +1,10 @@
 """Platform-neutral foreground controller service.
 
 The runtime owns durable lifecycle state independently of any consumer
-process.  Worker endpoint configuration is controller-owned; consumers never
-load the registry or worker credentials. Worker-initiated rendezvous remains
-a separate, unadvertised capability.
+process. Worker endpoint configuration remains controller-owned for direct
+compatibility mode; consumers never load the registry or worker credentials.
+When explicitly configured, workers may instead establish an authenticated
+worker-initiated rendezvous session owned by this runtime.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from typing import Any, Mapping
 
 from .canonical import attach_identity
@@ -22,6 +23,9 @@ from .errors import FabricError, ProtocolError, ValidationError
 from .lifecycle import LifecycleStore, default_lifecycle_path, default_state_dir
 from .node import utc_now
 from .store import FabricLedger
+from .enrollment import TrustStore
+from .rendezvous import RendezvousCoordinator
+from .transport import TLSRendezvousServer
 
 CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.2"
 CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
@@ -38,12 +42,23 @@ class ControllerConfig:
     worker_registry_path: Path | None = None
     worker_state_path: Path | None = None
     execution_bundle_root: Path | None = None
+    rendezvous_host: str | None = None
+    rendezvous_port: int | None = None
+    rendezvous_ca: Path | None = None
+    rendezvous_certificate: Path | None = None
+    rendezvous_key: Path | None = None
+    rendezvous_trust_state: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.controller_id or len(self.controller_id) > 128 or "\x00" in self.controller_id:
             raise ValidationError("controller_id is invalid")
         if not 0.5 <= self.heartbeat_seconds <= 60:
             raise ValidationError("controller heartbeat is outside the bounded range")
+        if self.rendezvous_port is not None and not 0 <= self.rendezvous_port <= 65535:
+            raise ValidationError("rendezvous port is outside the bounded range")
+        paths = (self.rendezvous_ca, self.rendezvous_certificate, self.rendezvous_key, self.rendezvous_trust_state)
+        if any(value is not None for value in paths) and not all(value is not None for value in paths):
+            raise ValidationError("rendezvous TLS configuration must be complete")
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -56,8 +71,10 @@ class ControllerConfig:
             "admin_socket_path": str(self.admin_socket_path_value),
             "worker_registry_path": str(self.worker_registry_path_value) if self.worker_registry_path is not None else None,
             "execution_bundle_root": str(self.execution_bundle_root_value),
+            "rendezvous_host": self.rendezvous_host,
+            "rendezvous_port": self.rendezvous_port,
             "administrative_transport": "separate local operator socket",
-            "worker_rendezvous": "planned",
+            "worker_rendezvous": "configured" if self.rendezvous_configured else "planned",
         }
 
     @property
@@ -84,6 +101,10 @@ class ControllerConfig:
     def execution_bundle_root_value(self) -> Path:
         return Path(self.execution_bundle_root).expanduser() if self.execution_bundle_root is not None else self.lifecycle_state.parent / "execution-bundles"
 
+    @property
+    def rendezvous_configured(self) -> bool:
+        return self.rendezvous_host is not None and self.rendezvous_port is not None and all(value is not None for value in (self.rendezvous_ca, self.rendezvous_certificate, self.rendezvous_key, self.rendezvous_trust_state))
+
 
 def default_controller_config() -> ControllerConfig:
     return ControllerConfig("local", default_lifecycle_path())
@@ -104,6 +125,8 @@ class ControllerService:
         self._stop = Event()
         self._worker_client: Any | None = None
         self._worker_registry_report: dict[str, Any] | None = None
+        self._rendezvous: RendezvousCoordinator | None = None
+        self._rendezvous_server: TLSRendezvousServer | None = None
         if self.config.worker_registry_path_value is not None:
             from .api import FabricClient
 
@@ -115,14 +138,32 @@ class ControllerService:
             self._worker_registry_report = self._worker_client.load_registry(
                 self.config.worker_registry_path_value
             )
+            if self.config.rendezvous_configured:
+                known = {
+                    str(worker["worker_id"]): dict(worker)
+                    for worker in (self._worker_registry_report or {}).get("workers", [])
+                    if isinstance(worker, dict) and isinstance(worker.get("worker_id"), str)
+                }
+                self._rendezvous = RendezvousCoordinator(
+                    self.config.controller_id,
+                    self.config.worker_state_path_value.with_name("rendezvous.jsonl"),
+                    known_workers=known,
+                    heartbeat_seconds=self.config.heartbeat_seconds,
+                )
 
     @property
     def worker_backend_enabled(self) -> bool:
         return self._worker_client is not None
 
+    @property
+    def rendezvous_ready(self) -> bool:
+        return self._rendezvous is not None and self._rendezvous_server is not None
+
     def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
         if self._worker_client is None:
             return [], self._worker_registry_report
+        if self.rendezvous_ready and self._rendezvous is not None:
+            return self._rendezvous.states(), self._worker_registry_report
         try:
             self._worker_client.refresh_workers()
         except Exception as exc:
@@ -147,7 +188,7 @@ class ControllerService:
         workers, registry = self._worker_backend_status()
         from .contracts import service_feature_projection
 
-        service_features = service_feature_projection(worker_backend=self.worker_backend_enabled)
+        service_features = service_feature_projection(worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready)
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
@@ -164,8 +205,9 @@ class ControllerService:
             "service_runtime": runtime,
             "consumer_socket": str(self.config.socket_path_value),
             "admin_socket": str(self.config.admin_socket_path_value),
+            "rendezvous_endpoint": f"{self.config.rendezvous_host}:{self.config.rendezvous_port}" if self.config.rendezvous_configured else None,
             "lifecycle": health,
-            "worker_rendezvous": "PLANNED",
+            "worker_rendezvous": "RUNNING" if self.rendezvous_ready else "CONFIGURED" if self._rendezvous is not None else "PLANNED",
             "consumer_transport": "LOCAL_UNIX_SOCKET" if os.name == "posix" else "PLANNED_WINDOWS_LOCAL_TRANSPORT",
             "claim_boundary": "controller health is independent from worker availability and consumer connection",
             "fleet": {"workers": workers, "registry": registry},
@@ -179,7 +221,7 @@ class ControllerService:
             "lifecycle_ledger": result["lifecycle"]["outcome"],
             "service_ledger": result["service_ledger"]["outcome"],
             "administrative_listener": "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED",
-            "worker_rendezvous": "NOT_IMPLEMENTED",
+            "worker_rendezvous": "PASS" if self.rendezvous_ready else "CONFIGURED_NOT_STARTED" if self._rendezvous is not None else "NOT_CONFIGURED",
             "persistent_service_execution": "CONTROLLER_MANAGED_ENDPOINTS" if self.worker_backend_enabled else "NOT_CONFIGURED",
         }
         return result
@@ -265,23 +307,17 @@ class ControllerService:
                     archive.relative_to(self.config.execution_bundle_root_value.resolve())
                 except ValueError as exc:
                     raise ProtocolError("execution bundle is outside the controller bundle root") from exc
-                payload = {
-                    "results": self._worker_client.execute(
-                        args["plan"],
-                        args["manifest"],
-                        worker_id=args.get("worker_id"),
-                        replicas=int(args.get("replicas", 1)),
-                        request_id=args.get("request_id"),
-                        challenge=args.get("challenge"),
-                        consumer_context=args.get("consumer_context"),
-                        execution_bundle_archive=archive,
-                        placement=args.get("placement"),
-                        runtime_observation=args.get("runtime_observation"),
-                        runtime_capability_observation=args.get("runtime_capability_observation"),
-                    ),
-                    "execution_transport": "controller-managed-authenticated-worker-endpoint",
-                    "fleet_authority": "persistent-controller",
-                }
+                if self.rendezvous_ready and self._rendezvous is not None:
+                    results = self._rendezvous.dispatch(
+                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
+                    )
+                    execution_transport = "worker-initiated-persistent-rendezvous"
+                else:
+                    results = self._worker_client.execute(
+                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
+                    )
+                    execution_transport = "controller-managed-authenticated-worker-endpoint"
+                payload = {"results": results, "execution_transport": execution_transport, "fleet_authority": "persistent-controller"}
             elif operation == "worker.capability.ingest":
                 if self._worker_client is None:
                     raise ProtocolError("persistent capability backend is not configured")
@@ -333,6 +369,7 @@ class ControllerService:
         ownership = ControllerServiceOwnership(self.config.lifecycle_state.with_name("controller.owner.lock"))
         ownership.acquire()
         server = ControllerServiceServer(self)
+        rendezvous_server: TLSRendezvousServer | None = None
         previous_handlers: dict[int, Any] = {}
 
         def stop_handler(signum: int, _frame: Any) -> None:
@@ -354,6 +391,23 @@ class ControllerService:
                     pass
             try:
                 server.start()
+                if self._rendezvous is not None and self.config.rendezvous_configured:
+                    rendezvous_server = TLSRendezvousServer(
+                        self.config.rendezvous_host or "127.0.0.1",
+                        int(self.config.rendezvous_port or 0),
+                        ca_file=Path(self.config.rendezvous_ca),
+                        server_cert=Path(self.config.rendezvous_certificate),
+                        server_key=Path(self.config.rendezvous_key),
+                        controller_id=self.config.controller_id,
+                        trust_store=TrustStore(Path(self.config.rendezvous_trust_state)),
+                        on_open=self._rendezvous.open,
+                        on_message=self._rendezvous.message,
+                        on_close=self._rendezvous.close,
+                        timeout=self.config.heartbeat_seconds,
+                    )
+                    rendezvous_server.bind()
+                    self._rendezvous_server = rendezvous_server
+                    Thread(target=rendezvous_server.serve_forever, daemon=True, name="mncs-fabric-rendezvous").start()
             except ProtocolError:
                 if os.name == "posix":
                     raise
@@ -365,6 +419,9 @@ class ControllerService:
                     break
                 time.sleep(min(self.config.heartbeat_seconds, 0.25))
         finally:
+            if rendezvous_server is not None:
+                rendezvous_server.close()
+                self._rendezvous_server = None
             if self._worker_client is not None:
                 self._worker_client.close()
             try:

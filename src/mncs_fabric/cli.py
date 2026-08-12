@@ -121,6 +121,21 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--max-concurrent-connections", type=int, default=1)
     serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
     serve.add_argument("--bundle-cache", type=_path, help="immutable EA-NEXT-002 bundle cache for native transfer")
+    rendezvous = worker_sub.add_parser("rendezvous", help="dial a persistent controller and maintain a worker session")
+    rendezvous.add_argument("--worker-id", required=True)
+    rendezvous.add_argument("--controller-id", required=True)
+    rendezvous.add_argument("--controller-host", required=True)
+    rendezvous.add_argument("--controller-port", type=int, required=True)
+    rendezvous.add_argument("--bundle-root", type=_path, required=True)
+    rendezvous.add_argument("--state", type=_path, required=True)
+    rendezvous.add_argument("--trust-state", type=_path, required=True)
+    rendezvous.add_argument("--ca", type=_path, required=True)
+    rendezvous.add_argument("--certificate", type=_path, required=True)
+    rendezvous.add_argument("--key", type=_path, required=True)
+    rendezvous.add_argument("--bundle-cache", type=_path)
+    rendezvous.add_argument("--heartbeat-seconds", type=float, default=5.0)
+    rendezvous.add_argument("--timeout", type=float, default=5.0)
+    rendezvous.add_argument("--max-seconds", type=float)
 
     contract = sub.add_parser("contract", help="inspect the installed public consumer contract")
     contract_sub = contract.add_subparsers(dest="contract_command", required=True)
@@ -244,6 +259,12 @@ def build_parser() -> argparse.ArgumentParser:
     controller_run.add_argument("--registry", type=_path, help="controller-owned enrolled worker endpoint registry")
     controller_run.add_argument("--worker-state", type=_path, help="controller-owned worker transport ledger")
     controller_run.add_argument("--execution-bundle-root", type=_path, help="allowed root for verified consumer bundles")
+    controller_run.add_argument("--rendezvous-host", help="worker-initiated rendezvous listener address")
+    controller_run.add_argument("--rendezvous-port", type=int, help="worker-initiated rendezvous listener port")
+    controller_run.add_argument("--rendezvous-ca", type=_path)
+    controller_run.add_argument("--rendezvous-certificate", type=_path)
+    controller_run.add_argument("--rendezvous-key", type=_path)
+    controller_run.add_argument("--rendezvous-trust-state", type=_path)
     return parser
 
 
@@ -422,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
                 client.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
-            service = ControllerService(ControllerConfig(args.controller_id, args.state, worker_registry_path=getattr(args, "registry", None), worker_state_path=getattr(args, "worker_state", None), execution_bundle_root=getattr(args, "execution_bundle_root", None)))
+            service = ControllerService(ControllerConfig(args.controller_id, args.state, worker_registry_path=getattr(args, "registry", None), worker_state_path=getattr(args, "worker_state", None), execution_bundle_root=getattr(args, "execution_bundle_root", None), rendezvous_host=getattr(args, "rendezvous_host", None), rendezvous_port=getattr(args, "rendezvous_port", None), rendezvous_ca=getattr(args, "rendezvous_ca", None), rendezvous_certificate=getattr(args, "rendezvous_certificate", None), rendezvous_key=getattr(args, "rendezvous_key", None), rendezvous_trust_state=getattr(args, "rendezvous_trust_state", None)))
             if args.controller_command == "status":
                 result = service.status()
             elif args.controller_command == "doctor":
@@ -471,6 +492,13 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 endpoint.serve_forever(max_requests=args.max_requests, idle_timeout=args.idle_timeout, max_concurrent_connections=args.max_concurrent_connections, graceful_shutdown_timeout=args.graceful_shutdown_timeout)
             result = {"outcome": "PASS" if endpoint.last_error is None else "UNKNOWN", "worker_id": args.worker_id, "host": args.host, "port": args.port, "requests": endpoint.handled_requests, "max_requests": args.max_requests, "diagnostic": endpoint.last_error}
+            write_json(None, result)
+            return _status_code(result["outcome"])
+        if args.command == "worker" and args.worker_command == "rendezvous":
+            from .transport import TLSRendezvousWorker
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
+            endpoint = TLSRendezvousWorker(worker_service, args.controller_host, args.controller_port, ca_file=args.ca, client_cert=args.certificate, client_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), heartbeat_seconds=args.heartbeat_seconds, timeout=args.timeout)
+            result = endpoint.run(max_seconds=args.max_seconds)
             write_json(None, result)
             return _status_code(result["outcome"])
         raise AssertionError("unreachable command")

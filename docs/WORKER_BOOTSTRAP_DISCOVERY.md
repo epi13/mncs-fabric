@@ -521,6 +521,27 @@ reinstalled itself.
 
 ## Persistent worker rendezvous
 
+The first authenticated worker-initiated rendezvous transport is now
+implemented by `TLSRendezvousServer` and `TLSRendezvousWorker`. A controller
+must be configured with the rendezvous listener address and its controller
+certificate, key, CA, and worker TrustStore. An installed worker runs:
+
+```text
+mncs-fabric worker rendezvous \
+  --worker-id <worker-id> --controller-id <controller-id> \
+  --controller-host <controller-host> --controller-port <port> \
+  --bundle-root <worker-state>/bundles --state <worker-state>/worker.jsonl \
+  --trust-state <worker-state>/trust.jsonl \
+  --ca <ca.pem> --certificate <worker.pem> --key <worker.key>
+```
+
+The session is mutually authenticated, rejects unknown or duplicate logical
+identities, persists connect/heartbeat/disconnect observations, and makes the
+worker eligible for controller scheduling only while its bounded heartbeat
+lease is fresh. Dispatch and bundle transfer use the existing validated Fabric
+envelope protocol over the established session. The direct controller-to-
+worker registry transport remains available as an explicit compatibility mode.
+
 After enrollment, the installed service should normally dial the controller.
 
 A conceptual session startup is:
