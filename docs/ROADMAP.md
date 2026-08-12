@@ -45,11 +45,13 @@ speculative warming. See
 - [x] deterministic CLI inspection and machine-readable lifecycle output.
 
 The controller now has a usable local foreground service transport and persistent
-state ownership. It is not a completed network daemon: no worker rendezvous,
-mDNS/DNS-SD, certificate issuance, Windows transport, or OS installation is
-claimed. Consumers do not own worker presence or disconnect state. The local
-transport and controller service have deterministic automated tests but are not
-physically verified under systemd or across hosts.
+state ownership. Authenticated worker-initiated rendezvous, leases, live
+observations, and bounded dispatch over the session are implemented as an
+explicitly configured network path. mDNS/DNS-SD, certificate issuance, Windows
+transport packaging, and OS installation are not claimed. Consumers do not own
+worker presence or disconnect state. The rendezvous path has deterministic
+automated service-level tests but is not physically verified under systemd or
+across hosts.
 
 ### Planned after Phase A
 

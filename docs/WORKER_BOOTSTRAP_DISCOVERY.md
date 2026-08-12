@@ -1,7 +1,7 @@
 # Worker bootstrap, discovery, and lifecycle
 
-Status: **Phase A and local persistent-controller transport implemented; worker
-rendezvous and discovery remain planned**
+Status: **Phase A and authenticated worker-initiated rendezvous implemented;
+discovery and installed service supervision remain planned**
 
 Implemented in `0.2.0a15`:
 
@@ -16,16 +16,18 @@ Implemented in `0.2.0a15`:
 - separate lifecycle and controller-service ledgers;
 - atomic session admission, stale-session replacement, generation checks, and
   duplicate-identity evidence; and
+- authenticated worker-initiated TLS sessions with bounded heartbeat leases,
+  live descriptions, capability/resource observations, and session dispatch;
 - a bounded local AF_UNIX consumer/operator service transport with
   `FabricClient.connect()` and explicit `FabricAdminClient` authority.
 
 The controller runtime owns this state independently of Local Harness or any
 other consumer process. `FabricClient` remains the ordinary consumer boundary
-and retains embedded/in-process compatibility. No worker-initiated rendezvous,
-Windows service transport, mDNS/DNS-SD discovery, certificate issuance,
-installer, or production OS service is implemented by this phase. The local
-transport is deterministic-test verified but not physically verified under
-systemd, Windows services, or cross-host deployment.
+and retains embedded/in-process compatibility. No Windows service transport,
+mDNS/DNS-SD discovery, certificate issuance, installer, or production OS
+service is implemented by this phase. The rendezvous and local transports are
+deterministic-test verified but not physically verified under systemd, Windows
+services, or cross-host deployment.
 
 This document describes a path from Fabric's current explicitly commissioned
 multi-host alpha to an operator-controlled fleet that can be installed, enrolled,
@@ -520,6 +522,27 @@ identity must not silently rebind to a new key merely because a machine
 reinstalled itself.
 
 ## Persistent worker rendezvous
+
+The first authenticated worker-initiated rendezvous transport is now
+implemented by `TLSRendezvousServer` and `TLSRendezvousWorker`. A controller
+must be configured with the rendezvous listener address and its controller
+certificate, key, CA, and worker TrustStore. An installed worker runs:
+
+```text
+mncs-fabric worker rendezvous \
+  --worker-id <worker-id> --controller-id <controller-id> \
+  --controller-host <controller-host> --controller-port <port> \
+  --bundle-root <worker-state>/bundles --state <worker-state>/worker.jsonl \
+  --trust-state <worker-state>/trust.jsonl \
+  --ca <ca.pem> --certificate <worker.pem> --key <worker.key>
+```
+
+The session is mutually authenticated, rejects unknown or duplicate logical
+identities, persists connect/heartbeat/disconnect observations, and makes the
+worker eligible for controller scheduling only while its bounded heartbeat
+lease is fresh. Dispatch and bundle transfer use the existing validated Fabric
+envelope protocol over the established session. The direct controller-to-
+worker registry transport remains available as an explicit compatibility mode.
 
 After enrollment, the installed service should normally dial the controller.
 
