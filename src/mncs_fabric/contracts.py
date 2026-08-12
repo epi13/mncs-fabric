@@ -195,6 +195,18 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
     return value
 
 
+def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool = False) -> dict[str, bool]:
+    """Describe capabilities provided by the running controller instance."""
+
+    return {
+        "persistent_fleet_read": True,
+        "persistent_service_execution": bool(worker_backend),
+        "persistent_service_capability_ingestion": bool(worker_backend),
+        "persistent_worker_observations": bool(worker_backend),
+        "worker_rendezvous": bool(worker_rendezvous),
+    }
+
+
 def validate_public_contract(value: object) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schema_version") != PUBLIC_CONTRACT_SCHEMA:
         raise ValidationError("unsupported public contract schema")

@@ -144,21 +144,33 @@ mncs-fabric controller status|doctor
 mncs-fabric controller service run
 ```
 
-The controller service is a foreground, local-development transport foundation:
+The controller service is a foreground persistent transport runtime.
+When started with `--registry`, the registry is controller-owned runtime
+configuration: consumers never load it or receive its trust references. The
+controller performs authenticated worker description refreshes and accepts
+validated execution requests over the consumer socket.
 
 ```bash
 mncs-fabric controller service run --state STATE/lifecycle.jsonl
 mncs-fabric controller status --socket STATE/controller.sock
 mncs-fabric fleet list --socket STATE/controller.sock
 mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock --ttl 10m
+
+mncs-fabric controller service run \
+  --state STATE/lifecycle.jsonl \
+  --registry STATE/workers.json \
+  --worker-state STATE/controller-workers.jsonl \
+  --execution-bundle-root STATE/execution-bundles
 ```
 
 For a user-supervised Fedora deployment, install
 `deploy/systemd/mncs-fabric-controller.service` under
 `~/.config/systemd/user/`, then enable it. The unit owns only the persistent
 controller lifecycle/socket state; it does not imply that a worker is present.
-Worker rendezvous and installed worker supervision remain separate planned
-features in this release.
+Worker-initiated rendezvous and installed worker supervision remain separate
+planned features in this release. The current service execution backend is a
+controller-managed authenticated endpoint compatibility path; its status is
+not reported as worker-initiated rendezvous.
 
 `FabricClient.connect(socket_path)` is the ordinary consumer mode for the
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
@@ -217,8 +229,10 @@ workload, evaluation, promotion, and learning authority.
 description. `FabricClient.workers()` exposes observation source, availability,
 last contact, description/resource identities, and current/stale/unknown capability
 inventory. Consumers publish normalized facts with
-`ingest_capability_observation()`; Fabric never calls a provider or treats inventory
-as authorization. See [docs/CAPABILITY_OBSERVATIONS.md](docs/CAPABILITY_OBSERVATIONS.md).
+`ingest_capability_observation()` over the ordinary consumer service when the
+controller advertises capability ingestion; Fabric never calls a provider or
+treats inventory as authorization. See
+[docs/CAPABILITY_OBSERVATIONS.md](docs/CAPABILITY_OBSERVATIONS.md).
 Use
 `collect_work_items()` for generic partitioned collection; Fabric does not
 interpret MNEL or RAVEL partition semantics. See

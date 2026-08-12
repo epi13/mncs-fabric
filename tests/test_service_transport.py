@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import json
 import socket
+import ssl
 import struct
 import subprocess
 import sys
@@ -12,11 +13,19 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.api import FabricAdminClient, FabricClient
+from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
+from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
 from mncs_fabric.errors import ProtocolError
+from mncs_fabric.models import validate_job_plan
+from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.service_transport import SERVICE_MAX_FRAME_BYTES, SERVICE_REQUEST_SCHEMA, ServiceClientTransport
+from mncs_fabric.transport import TLSWorkerServer
+from mncs_fabric.worker import LocalWorker
 from mncs_fabric.canonical import attach_identity
+from tests.test_transport import _certificates
 
 
 @unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
@@ -156,6 +165,170 @@ class ServiceTransportTests(unittest.TestCase):
         self.assertEqual(status.returncode, 0, status.stderr)
         self.assertEqual(json.loads(status.stdout)["service_ledger"]["outcome"], "PASS")
         self.assertEqual(json.loads(status.stdout)["service_runtime"], "STOPPED")
+
+    def test_consumer_dispatches_through_controller_managed_worker_backend(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert_root = root / "certificates"
+            cert_root.mkdir()
+            cert = _certificates(cert_root)
+            source = root / "source"
+            source.mkdir()
+            (source / "task.py").write_text("print('persistent-service-ok')\n", encoding="utf-8")
+            manifest = build_manifest(source)
+            plan = validate_job_plan(
+                {
+                    "schema_version": "mncs-fabric.job-plan.v0.1",
+                    "job_id": "persistent-service:job",
+                    "candidate_identity": manifest["manifest_identity"],
+                    "evaluator_identity": None,
+                    "artifact_manifest_identity": manifest["manifest_identity"],
+                    "argv": ["@python", "task.py"],
+                    "working_directory": ".",
+                    "timeout_seconds": 5,
+                    "output_limit_bytes": 4096,
+                    "environment": {},
+                    "required_capabilities": ["python"],
+                    "result_paths": [],
+                    "network_policy": "DECLARED_OFFLINE",
+                }
+            )
+
+            controller_trust_path = root / "controller-trust.jsonl"
+            worker_trust_path = root / "worker-trust.jsonl"
+            controller_trust = TrustStore(controller_trust_path)
+            worker_trust = TrustStore(worker_trust_path)
+            controller_trust.enroll(
+                "worker",
+                "worker-service",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["server"].read_text(encoding="ascii"))
+                ),
+            )
+            worker_trust.enroll(
+                "controller",
+                "controller-service",
+                certificate_fingerprint(
+                    ssl.PEM_cert_to_DER_cert(cert["client"].read_text(encoding="ascii"))
+                ),
+            )
+            worker = LocalWorker(
+                "worker-service",
+                source,
+                root / "worker-ledger.jsonl",
+                bundle_cache_root=root / "worker-bundles",
+            )
+            worker_server = TLSWorkerServer(
+                worker,
+                "127.0.0.1",
+                0,
+                ca_file=cert["ca"],
+                server_cert=cert["server"],
+                server_key=cert["server_key"],
+                controller_id="controller-service",
+                worker_id="worker-service",
+                trust_store=worker_trust,
+                timeout=2,
+            )
+            port = worker_server.bind()
+            worker_thread = threading.Thread(
+                target=worker_server.serve_forever,
+                kwargs={"max_requests": 20, "idle_timeout": 10},
+                daemon=True,
+            )
+            worker_thread.start()
+
+            registry = WorkerRegistry(root / "workers.json", controller_id="controller-service")
+            registry.register(
+                RegistryWorker(
+                    worker_id="worker-service",
+                    host="127.0.0.1",
+                    port=port,
+                    capabilities=tuple(sorted(worker.capabilities())),
+                    ca_file=str(cert["ca"]),
+                    client_certificate=str(cert["client"]),
+                    client_key=str(cert["client_key"]),
+                    trust_state=str(controller_trust_path),
+                )
+            )
+            config = ControllerConfig(
+                "controller-service",
+                root / "lifecycle.jsonl",
+                heartbeat_seconds=0.5,
+                service_log=root / "controller-service.jsonl",
+                socket_path=root / "controller.sock",
+                admin_socket_path=root / "controller-admin.sock",
+                worker_registry_path=root / "workers.json",
+                worker_state_path=root / "controller-workers.jsonl",
+                execution_bundle_root=root / "execution-bundles",
+            )
+            archive = config.execution_bundle_root_value / "job.zip"
+            bundle_report = build_bundle_archive(source, archive)
+            service = ControllerService(config)
+            service_thread = threading.Thread(
+                target=service.run,
+                kwargs={"max_seconds": 10.0},
+                daemon=True,
+            )
+            service_thread.start()
+            deadline = time.monotonic() + 3
+            while not config.socket_path_value.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            self.assertTrue(config.socket_path_value.exists())
+
+            client = FabricClient.connect(config.socket_path_value, client_identity="integration-test")
+            try:
+                status = client.controller_status()
+                self.assertTrue(status["service_features"]["persistent_service_execution"])
+                self.assertTrue(status["service_features"]["persistent_worker_observations"])
+                workers = client.workers()
+                self.assertEqual(workers[0]["worker_id"], "worker-service")
+                self.assertEqual(workers[0]["availability"], "AVAILABLE")
+                observation = client.ingest_capability_observation(
+                    "worker-service",
+                    [
+                        {
+                            "kind": "tool",
+                            "namespace": "test",
+                            "name": "persistent-service-probe",
+                            "attributes": {"status": "ready"},
+                        }
+                    ],
+                )
+                self.assertEqual(observation["availability"], "AVAILABLE")
+                self.assertEqual(
+                    client.capability_inventory("worker-service")["status"], "CURRENT"
+                )
+                results = client.execute(
+                    plan,
+                    manifest,
+                    worker_id="worker-service",
+                    execution_bundle_archive=archive,
+                )
+                scheduled_plan = validate_job_plan(
+                    {
+                        **{key: value for key, value in plan.items() if key != "job_identity"},
+                        "job_id": "persistent-service:scheduler-job",
+                    }
+                )
+                scheduled_results = client.execute(
+                    scheduled_plan,
+                    manifest,
+                    execution_bundle_archive=archive,
+                )
+            finally:
+                client.close()
+                service.request_stop()
+                worker_server.request_stop()
+                service_thread.join(timeout=5)
+                worker_thread.join(timeout=5)
+            self.assertFalse(service_thread.is_alive())
+            self.assertFalse(worker_thread.is_alive())
+            self.assertEqual(bundle_report.category, "PASS")
+            self.assertEqual(results[0]["record"]["outcome"], "PASS")
+            self.assertEqual(results[0]["worker_identity"], "worker-service")
+            self.assertEqual(scheduled_results[0]["record"]["outcome"], "PASS")
+            self.assertEqual(scheduled_results[0]["worker_identity"], "worker-service")
 
 
 if __name__ == "__main__":

@@ -455,6 +455,21 @@ class FabricClient:
     ) -> dict[str, Any]:
         """Validate and durably retain one worker-bound capability observation."""
 
+        if self._service_transport is not None:
+            return dict(
+                self._service_payload(
+                    "worker.capability.ingest",
+                    {
+                        "worker_id": worker_id,
+                        "capabilities": [dict(item) for item in capabilities],
+                        "availability": availability,
+                        "captured_at": captured_at,
+                        "observation_source": observation_source,
+                        "status_reason": status_reason,
+                    },
+                ).get("observation", {})
+            )
+
         ledger = self._capability_ledger(worker_id)
         observation = build_capability_observation(
             worker_identity=worker_id,
@@ -475,6 +490,15 @@ class FabricClient:
         limit: int = 1000,
     ) -> list[dict[str, Any]]:
         """Return retained observations in append order for one registered worker."""
+
+        if self._service_transport is not None:
+            return [
+                dict(item)
+                for item in self._service_payload(
+                    "worker.capability.observations",
+                    {"worker_id": worker_id, "limit": limit},
+                ).get("observations", [])
+            ]
 
         ledger = self._capability_ledger(worker_id)
         observations: list[dict[str, Any]] = []
@@ -500,9 +524,12 @@ class FabricClient:
     ) -> dict[str, Any]:
         """Return current/stale/unknown status without discarding retained evidence."""
 
-        self._require_embedded("capability inventory access")
         observation = self.latest_capability_observation(worker_id)
-        if worker_id in self.local.workers:
+        if self._service_transport is not None:
+            worker_availability = str(
+                self.fleet_status(worker_id).get("availability", "UNKNOWN")
+            )
+        elif worker_id in self.local.workers:
             worker_availability = "AVAILABLE"
         else:
             worker_availability = str(
@@ -588,6 +615,26 @@ class FabricClient:
         runtime_observation: Mapping[str, Any] | None = None,
         runtime_capability_observation: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        if self._service_transport is not None:
+            context, context_value = _context_payload(consumer_context)
+            placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
+            payload = self._service_payload(
+                "execution.dispatch",
+                {
+                    "plan": dict(plan),
+                    "manifest": dict(manifest),
+                    "worker_id": worker_id,
+                    "replicas": replicas,
+                    "request_id": request_id,
+                    "challenge": challenge,
+                    "consumer_context": context_value,
+                    "placement": placement_value,
+                    "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
+                    "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
+                    "execution_bundle_archive": str(execution_bundle_archive) if execution_bundle_archive is not None else None,
+                },
+            )
+            return [dict(item) for item in payload.get("results", [])]
         self._require_embedded("execution")
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
