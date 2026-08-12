@@ -153,6 +153,13 @@ mncs-fabric fleet list --socket STATE/controller.sock
 mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock --ttl 10m
 ```
 
+For a user-supervised Fedora deployment, install
+`deploy/systemd/mncs-fabric-controller.service` under
+`~/.config/systemd/user/`, then enable it. The unit owns only the persistent
+controller lifecycle/socket state; it does not imply that a worker is present.
+Worker rendezvous and installed worker supervision remain separate planned
+features in this release.
+
 `FabricClient.connect(socket_path)` is the ordinary consumer mode for the
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
 operator mode; consumer sockets cannot approve enrollment or revoke workers.

@@ -1,0 +1,15 @@
+[Unit]
+Description=MNCS Fabric persistent controller
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/mncs-fabric controller --controller-id epi13-local-harness service run --state %h/.local/state/mncs-fabric/lifecycle.jsonl
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target
