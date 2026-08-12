@@ -12,15 +12,17 @@ authenticated session presence. `FabricClient` can open a controller-owned
 lifecycle ledger explicitly; closing a consumer does not record worker loss.
 The foreground controller service and local AF_UNIX consumer/operator transport
 are available through `mncs-fabric controller status|doctor|service run` and
-`FabricClient.connect()`/`FabricAdminClient.connect()`. Worker rendezvous,
-certificate provisioning, discovery, and OS service installation remain planned.
+`FabricClient.connect()`/`FabricAdminClient.connect()`. An explicitly
+configured controller can also accept authenticated worker-initiated TLS
+rendezvous sessions; certificate provisioning, discovery, and OS service
+installation remain operator/deployment work.
 
 Loaded-model attributes are factual generic capability observations. Fabric does
 not choose resident models or semantic routes; Local Harness owns those policies.
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a15` experimental execution substrate. The commissioned Windows NVIDIA worker has produced identity-bound synchronized CUDA and sequential CPU-offload runtime evidence, and Fedora local, Fedora remote, Windows, and Raspberry Pi/Linux ARM workers have completed a portable four-node cross-architecture collection. Provider-neutral worker capability observations, a local operator registry, bounded execution-specific transport waits, the Phase A worker lifecycle foundation, and a deterministic local persistent-controller transport are implemented; rendezvous, production service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a15` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Production worker service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -135,6 +137,10 @@ mncs-fabric worker serve --worker-id ID --controller-id ID --bundle-root ROOT \
   --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
   --certificate worker.pem --key worker.key --port PORT \
   [--max-requests N --idle-timeout SECONDS]
+mncs-fabric worker rendezvous --worker-id ID --controller-id ID \
+  --controller-host HOST --controller-port PORT --bundle-root ROOT \
+  --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
+  --certificate worker.pem --key worker.key
 mncs-fabric enrollment create --ttl 10m [--worker-id ID]
 mncs-fabric enrollment list|pending|inspect REQUEST_ID
 mncs-fabric enrollment approve|deny REQUEST_ID
@@ -161,24 +167,26 @@ mncs-fabric controller service run \
   --registry STATE/workers.json \
   --worker-state STATE/controller-workers.jsonl \
   --execution-bundle-root STATE/execution-bundles
+# Add --rendezvous-host/--rendezvous-port and the four rendezvous TLS paths
+# to enable worker-initiated sessions.
 ```
 
 For a user-supervised Fedora deployment, install
 `deploy/systemd/mncs-fabric-controller.service` under
 `~/.config/systemd/user/`, then enable it. The unit owns only the persistent
 controller lifecycle/socket state; it does not imply that a worker is present.
-Worker-initiated rendezvous and installed worker supervision remain separate
-planned features in this release. The current service execution backend is a
-controller-managed authenticated endpoint compatibility path; its status is
-not reported as worker-initiated rendezvous.
+Worker-initiated rendezvous is opt-in and requires the controller listener TLS
+paths plus a worker process using `worker rendezvous`; otherwise the direct
+registry endpoint remains the compatibility path. Worker presence is never
+inferred from registry JSON alone.
 
 `FabricClient.connect(socket_path)` is the ordinary consumer mode for the
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
 operator mode; consumer sockets cannot approve enrollment or revoke workers.
 The local service is implemented on POSIX with restrictive Unix-socket checks.
-Windows local transport, worker-initiated rendezvous, and OS service
-installation are planned and not physically verified here. Closing a consumer
-does not publish worker disconnect state.
+Windows local transport and OS service installation are planned and not
+physically verified here. Closing a consumer does not publish worker disconnect
+state.
 
 `worker serve` is explicit and serves one bounded TLS request by default. An
 operator can opt into a bounded persistent service with `--max-requests` and

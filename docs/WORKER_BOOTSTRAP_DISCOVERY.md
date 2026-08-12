@@ -1,7 +1,7 @@
 # Worker bootstrap, discovery, and lifecycle
 
-Status: **Phase A and local persistent-controller transport implemented; worker
-rendezvous and discovery remain planned**
+Status: **Phase A and authenticated worker-initiated rendezvous implemented;
+discovery and installed service supervision remain planned**
 
 Implemented in `0.2.0a15`:
 
@@ -16,16 +16,18 @@ Implemented in `0.2.0a15`:
 - separate lifecycle and controller-service ledgers;
 - atomic session admission, stale-session replacement, generation checks, and
   duplicate-identity evidence; and
+- authenticated worker-initiated TLS sessions with bounded heartbeat leases,
+  live descriptions, capability/resource observations, and session dispatch;
 - a bounded local AF_UNIX consumer/operator service transport with
   `FabricClient.connect()` and explicit `FabricAdminClient` authority.
 
 The controller runtime owns this state independently of Local Harness or any
 other consumer process. `FabricClient` remains the ordinary consumer boundary
-and retains embedded/in-process compatibility. No worker-initiated rendezvous,
-Windows service transport, mDNS/DNS-SD discovery, certificate issuance,
-installer, or production OS service is implemented by this phase. The local
-transport is deterministic-test verified but not physically verified under
-systemd, Windows services, or cross-host deployment.
+and retains embedded/in-process compatibility. No Windows service transport,
+mDNS/DNS-SD discovery, certificate issuance, installer, or production OS
+service is implemented by this phase. The rendezvous and local transports are
+deterministic-test verified but not physically verified under systemd, Windows
+services, or cross-host deployment.
 
 This document describes a path from Fabric's current explicitly commissioned
 multi-host alpha to an operator-controlled fleet that can be installed, enrolled,
