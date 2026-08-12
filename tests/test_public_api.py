@@ -43,6 +43,10 @@ class PublicContractTests(unittest.TestCase):
         self.assertTrue(verify_identity(first, "contract_identity"))
         self.assertTrue(first["features"]["native_bundle_transfer"])
         self.assertTrue(first["features"]["worker_capability_observation"])
+        self.assertTrue(first["features"]["persistent_fleet_read"])
+        self.assertFalse(first["features"]["persistent_service_execution"])
+        self.assertFalse(first["features"]["persistent_service_capability_ingestion"])
+        self.assertFalse(first["features"]["worker_rendezvous"])
         self.assertEqual(
             first["worker_capability_observation_schema"],
             "mncs-fabric.worker-capability-observation.v0.1",

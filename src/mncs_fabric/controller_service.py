@@ -87,13 +87,23 @@ class ControllerService:
         self._stop = Event()
 
     def status(self, *, now: str | None = None) -> dict[str, Any]:
+        # Import lazily to keep the controller-service module importable while
+        # the package surface is being initialized.
+        from . import __version__
+        from .contracts import build_public_contract
+
         health = self.lifecycle.doctor(now=now)
         service_health = self.service_ledger.verify()
         service_events = self.service_ledger.records(record_type="controller.service")
         latest_event = service_events[-1]["record"].get("event") if service_events else None
         runtime = "RUNNING" if latest_event == "started" else "STOPPED" if latest_event == "stopped" else "NOT_STARTED"
+        public_contract = build_public_contract(__version__)
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
+            "fabric_version": __version__,
+            "service_contract": CONTROLLER_SERVICE_SCHEMA,
+            "public_api_version": public_contract["public_api_version"],
+            "public_contract_identity": public_contract["contract_identity"],
             "outcome": "PASS" if health["outcome"] == "PASS" and service_health["outcome"] == "PASS" else "UNKNOWN",
             "controller_id": self.config.controller_id,
             "service_owner": "mncs-fabric-controller",

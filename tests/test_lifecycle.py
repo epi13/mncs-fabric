@@ -228,7 +228,11 @@ class LifecycleTests(unittest.TestCase):
     def test_controller_runtime_owns_state_without_consumer_lifetime_claims(self) -> None:
         config = ControllerConfig("controller-a", self.store.path)
         service = ControllerService(config)
-        self.assertEqual(service.status(now="2026-01-01T00:00:00Z")["outcome"], "PASS")
+        initial_status = service.status(now="2026-01-01T00:00:00Z")
+        self.assertEqual(initial_status["outcome"], "PASS")
+        self.assertEqual(initial_status["fabric_version"], __import__("mncs_fabric").__version__)
+        self.assertEqual(initial_status["service_contract"], "mncs-fabric.controller-service.v0.1")
+        self.assertTrue(initial_status["public_contract_identity"].startswith("sha256:"))
         result = service.run(max_seconds=0.01)
         self.assertEqual(result["outcome"], "PASS")
         doctor = service.doctor(now="2026-01-01T00:00:01Z")
