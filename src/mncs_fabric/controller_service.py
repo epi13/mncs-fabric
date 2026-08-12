@@ -140,9 +140,9 @@ class ControllerService:
             )
             if self.config.rendezvous_configured:
                 known = {
-                    str(worker["worker_id"]): dict(worker)
-                    for worker in (self._worker_registry_report or {}).get("workers", [])
-                    if isinstance(worker, dict) and isinstance(worker.get("worker_id"), str)
+                    str(worker_id): dict(worker)
+                    for worker_id, worker in getattr(self._worker_client, "registry_entries", {}).items()
+                    if isinstance(worker, dict)
                 }
                 self._rendezvous = RendezvousCoordinator(
                     self.config.controller_id,
