@@ -269,6 +269,24 @@ inferred from registry JSON alone. After changing Fabric code or controller
 configuration, restart the controller and verify the running service feature
 projection before attempting dispatch.
 
+### Upgrade/restart compatibility check
+
+Upgrade the controller first, then restart each long-running consumer so its
+imported client and the service report the same version. The Control status
+surface exposes `client_fabric_version`, `controller_version`, and a
+`compatibility` object; dispatch fails closed with `FABRIC_VERSION_MISMATCH`
+when the two known versions differ. A minimal operator sequence is:
+
+```bash
+deploy/systemd/install-or-update-controller.sh "$PWD"
+systemctl --user restart mncs-control-tunnel.service
+python -m mncs_fabric.cli controller doctor --socket ~/.local/state/mncs-fabric/controller.sock
+```
+
+Then verify Control/Fabric status before submitting work. A source checkout,
+installed controller, and already-running consumer are separate runtimes; a
+successful package install does not refresh an existing consumer process.
+
 `FabricClient.connect(socket_path)` is the ordinary consumer mode for the
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
 operator mode; consumer sockets cannot approve enrollment or revoke workers.
