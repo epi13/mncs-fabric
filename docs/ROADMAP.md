@@ -61,6 +61,13 @@ across hosts.
 - [x] protected credential activation and idempotent Fedora user-service helper;
 - [x] approved enrollment automatically authorizes rendezvous membership without
   controller registry editing; and
+- [x] lifecycle revocation tombstones override legacy registry membership,
+  terminate live rendezvous sessions, revoke configured transport trust, and
+  prevent direct compatibility scheduling;
+- [x] explicit online admin versus offline operator lifecycle ownership,
+  including controller-admin enrollment submission; and
+- [x] CA/key, controller-chain, worker-chain, subject, pin, and approved-key
+  validation before credential issuance or activation;
 - [x] the installed rendezvous worker reuses its identity and reconnects under
   systemd supervision.
 

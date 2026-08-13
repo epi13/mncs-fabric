@@ -44,12 +44,12 @@ _OPERATIONS = {
     "worker.capability.ingest", "worker.capability.observations",
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
-    "enrollment.expire", "worker.revoke",
+    "enrollment.expire", "enrollment.submit", "worker.revoke",
 }
 _ADMIN_OPERATIONS = {
     "fleet.doctor", "enrollment.create", "enrollment.list",
     "enrollment.pending", "enrollment.inspect", "enrollment.approve",
-    "enrollment.deny", "enrollment.expire", "worker.revoke",
+    "enrollment.deny", "enrollment.expire", "enrollment.submit", "worker.revoke",
 }
 
 

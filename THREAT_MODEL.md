@@ -107,6 +107,12 @@ Certificate issuance may use an external operator-managed CA or a separate bound
 provisioning helper, but CA private keys must never be embedded in worker installers,
 registry records, enrollment tokens, diagnostics, or remote state.
 
+Lifecycle revocation is the logical-identity tombstone in mixed rendezvous and
+legacy-registry deployments. It masks the registry entry, closes live sessions,
+blocks direct scheduling, and is enforced independently of transport trust
+state. The controller also appends revocations to every configured controller
+trust ledger for that identity; historical records are retained.
+
 ## Protected assets
 
 - candidate and evaluator identities;

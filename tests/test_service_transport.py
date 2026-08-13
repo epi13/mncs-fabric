@@ -20,6 +20,7 @@ from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
 from mncs_fabric.errors import ProtocolError
+from mncs_fabric.lifecycle import LifecycleStore
 from mncs_fabric.models import validate_job_plan
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.service_transport import SERVICE_MAX_FRAME_BYTES, SERVICE_REQUEST_SCHEMA, ServiceClientTransport
@@ -72,6 +73,26 @@ class ServiceTransportTests(unittest.TestCase):
         self.assertIn("token", authorization)
         self.assertNotIn("token", admin.enrollment_authorizations()[0])
         consumer.close()
+        admin.close()
+
+    def test_enrollment_submission_mutates_only_through_admin_surface(self) -> None:
+        admin = FabricAdminClient.connect(self.config.admin_socket_path_value)
+        authorization = admin.create_enrollment_authorization(
+            ttl_seconds=60, expected_worker_identity="worker-admin-submit"
+        )
+        request = LifecycleStore.build_request(
+            worker_identity="worker-admin-submit",
+            public_key_pem="-----BEGIN PUBLIC KEY-----\nMDEyMzQ1Njc4OWFiY2RlZg==\n-----END PUBLIC KEY-----\n",
+            hostname_hint="worker.example.test",
+            operating_system="linux",
+            architecture="x86_64",
+            authorization_id=str(authorization["authorization_id"]),
+        )
+        submitted = admin.submit_enrollment(request, str(authorization["token"]))
+        self.assertEqual(submitted["status"], "PENDING")
+        self.assertEqual(admin.enrollment_pending()[0]["request_id"], request["request_id"])
+        with self.assertRaises(ProtocolError):
+            admin.submit_enrollment(request, str(authorization["token"]))
         admin.close()
 
     def test_client_disconnect_does_not_change_fleet_state_and_restart_reuses_it(self) -> None:

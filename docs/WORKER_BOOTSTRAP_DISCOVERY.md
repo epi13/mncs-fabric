@@ -430,7 +430,7 @@ A practical first enrollment UX is a short-lived single-use token created on the
 controller:
 
 ```bash
-mncs-fabric enrollment create --ttl 10m
+mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock --ttl 10m
 ```
 
 Conceptually the controller returns:
@@ -470,8 +470,9 @@ The worker then:
 On the controller:
 
 ```bash
-mncs-fabric enrollment pending
-mncs-fabric enrollment approve <request-id> --worker-id <worker-id>
+mncs-fabric enrollment pending --admin-socket STATE/controller-admin.sock
+mncs-fabric enrollment approve <request-id> --worker-id <worker-id> \
+  --admin-socket STATE/controller-admin.sock
 ```
 
 The approval view should show enough bounded facts to make accidental approval
@@ -523,6 +524,14 @@ certificate issuance != TrustStore authorization
 
 TrustStore still records whether the resulting logical identity/fingerprint is
 currently active or revoked.
+
+The implemented helper keeps CA signing offline and requires
+`--offline-state`. Online lifecycle creation, submission, inspection, approval,
+denial, expiry, and worker revocation use the controller admin socket. Supplying
+an admin socket to offline issuance is rejected rather than ignored. Issuance
+and activation verify the CA/controller chain, controller fingerprint pin,
+worker subject, approved public-key identity, and local worker private key before
+reporting enrollment or installing certificate files.
 
 Key rotation should be a separate explicit lifecycle operation. An active
 identity must not silently rebind to a new key merely because a machine
@@ -703,10 +712,10 @@ Controller examples:
 ```bash
 mncs-fabric fleet list
 mncs-fabric fleet status <worker-id>
-mncs-fabric enrollment create --ttl 10m
-mncs-fabric enrollment pending
-mncs-fabric enrollment approve <request-id> --worker-id <worker-id>
-mncs-fabric enrollment deny <request-id>
+mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock --ttl 10m
+mncs-fabric enrollment pending --admin-socket STATE/controller-admin.sock
+mncs-fabric enrollment approve <request-id> --worker-id <worker-id> --admin-socket STATE/controller-admin.sock
+mncs-fabric enrollment deny <request-id> --admin-socket STATE/controller-admin.sock
 mncs-fabric worker revoke <worker-id> --reason "..."
 mncs-fabric fleet doctor
 ```
