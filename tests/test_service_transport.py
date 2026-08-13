@@ -534,6 +534,14 @@ class ServiceTransportTests(unittest.TestCase):
                 self.assertEqual(
                     client.capability_inventory("worker-service")["status"], "CURRENT"
                 )
+                projected = client.workers()[0]
+                self.assertEqual(projected["capability_inventory_status"], "CURRENT")
+                self.assertTrue(projected["capability_observation_fresh"])
+                self.assertEqual(projected["installed_model_count"], 0)
+                self.assertEqual(
+                    projected["capability_observation"]["observation_source"],
+                    "consumer-bounded-worker-probe",
+                )
                 context = ConsumerContext(
                     source_project="integration-harness",
                     consumer_workload_identity="sha256:" + "a" * 64,

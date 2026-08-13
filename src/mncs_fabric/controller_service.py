@@ -20,7 +20,12 @@ from threading import Event, Lock, Thread
 from typing import Any, Mapping
 
 from .canonical import attach_identity, is_sha256_identity, sha256_identity
-from .capabilities import build_capability_observation, validate_capability_observation
+from .capabilities import (
+    MAX_CAPABILITY_AGE_SECONDS,
+    build_capability_observation,
+    capability_observation_is_fresh,
+    validate_capability_observation,
+)
 from .contracts import CONSUMER_RESULT_SCHEMA
 from .bundle_transfer import BundleCache
 from .errors import FabricError, ProtocolError, ValidationError
@@ -158,6 +163,8 @@ class ControllerService:
         # direct-worker capability history while rendezvous-only deployments can
         # use the same controller-owned record stream.
         self.capability_ledger = FabricLedger(self.config.worker_state_path_value)
+        self._latest_capability_cache: dict[str, dict[str, Any]] = {}
+        self._capability_cache_loaded = False
         self.target_ledger = FabricLedger(
             self.config.worker_state_path_value.with_name("target-execution.jsonl")
         )
@@ -525,20 +532,68 @@ class ControllerService:
         if self._worker_client is not None:
             self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
-            return self._apply_membership_precedence(self._rendezvous.states()), self._worker_registry_report
-        if self._worker_client is None:
-            return (
-                self._apply_membership_precedence(self._rendezvous.states() if self._rendezvous is not None else []),
-                self._worker_registry_report,
+            workers = self._rendezvous.states()
+        elif self._worker_client is None:
+            workers = self._rendezvous.states() if self._rendezvous is not None else []
+        else:
+            try:
+                self._worker_client.refresh_workers()
+            except Exception as exc:
+                self._worker_registry_report = {
+                    **(self._worker_registry_report or {}),
+                    "refresh_error": str(exc),
+                }
+            workers = [dict(worker) for worker in self._worker_client.workers()]
+        return self._apply_capability_inventory(
+            self._apply_membership_precedence([dict(worker) for worker in workers])
+        ), self._worker_registry_report
+
+    def _apply_capability_inventory(self, workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Project durable capability evidence onto every public worker view.
+
+        Rendezvous state is the liveness authority, while the capability ledger
+        is the observation authority.  Keeping these projections separate is
+        important, but consumers need both in one fleet response.
+        """
+        for worker in workers:
+            worker_id = str(worker.get("worker_id") or "")
+            observation = self._latest_capability_observation(worker_id) if worker_id else None
+            availability = str(worker.get("availability") or "UNKNOWN")
+            fresh = bool(
+                observation
+                and capability_observation_is_fresh(
+                    observation, max_age_seconds=MAX_CAPABILITY_AGE_SECONDS
+                )
             )
-        try:
-            self._worker_client.refresh_workers()
-        except Exception as exc:
-            self._worker_registry_report = {
-                **(self._worker_registry_report or {}),
-                "refresh_error": str(exc),
-            }
-        return self._apply_membership_precedence([dict(worker) for worker in self._worker_client.workers()]), self._worker_registry_report
+            if availability != "AVAILABLE":
+                inventory_status = "UNAVAILABLE" if availability == "UNAVAILABLE" else "UNKNOWN"
+            elif observation is None:
+                inventory_status = "UNKNOWN"
+            elif not fresh:
+                inventory_status = "STALE"
+            elif observation.get("availability") == "AVAILABLE":
+                inventory_status = "CURRENT"
+            else:
+                inventory_status = "UNAVAILABLE"
+            worker["capability_inventory_status"] = inventory_status
+            worker["capability_observation_fresh"] = fresh
+            worker["capability_observation"] = observation
+            capabilities = observation.get("capabilities", []) if observation else []
+            models = [
+                dict(entry)
+                for entry in capabilities
+                if isinstance(entry, dict) and entry.get("kind") == "model"
+            ]
+            worker["model_inventory"] = models
+            worker["installed_model_count"] = len(models)
+            worker["loaded_model_names"] = [
+                str(entry.get("name"))
+                for entry in models
+                if isinstance(entry.get("attributes"), dict)
+                and entry["attributes"].get("loaded") is True
+                and entry.get("name")
+            ]
+        return workers
 
     def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1000:
@@ -552,9 +607,19 @@ class ControllerService:
                 values.append(validate_capability_observation(record, expected_worker_id=worker_id))
         return values
 
+    def _load_latest_capability_cache(self) -> None:
+        if self._capability_cache_loaded:
+            return
+        for entry in self.capability_ledger.records(record_type="worker.capability-observation"):
+            record = validate_capability_observation(
+                entry["record"], expected_worker_id=entry["record"].get("worker_identity")
+            )
+            self._latest_capability_cache[str(record["worker_identity"])] = record
+        self._capability_cache_loaded = True
+
     def _latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
-        values = self._capability_observations(worker_id)
-        return values[-1] if values else None
+        self._load_latest_capability_cache()
+        return self._latest_capability_cache.get(worker_id)
 
     def _ingest_capability_observation(self, worker_id: str, args: Mapping[str, Any]) -> dict[str, Any]:
         worker = next(
@@ -577,6 +642,8 @@ class ControllerService:
             status_reason=args.get("status_reason"),
         )
         self.capability_ledger.append("worker.capability-observation", observation)
+        self._latest_capability_cache[worker_id] = observation
+        self._capability_cache_loaded = True
         return observation
 
     @staticmethod
