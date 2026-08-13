@@ -86,7 +86,8 @@ class ControllerEnvironmentTests(unittest.TestCase):
                 _controller_config(self._args(root))
 
     def test_controller_identity_has_fabric_owned_default(self) -> None:
-        with patch.dict(os.environ, {}, clear=True):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MNCS_FABRIC_CONTROLLER_ID", None)
             args = build_parser().parse_args(["controller", "status"])
         self.assertEqual(args.controller_id, "mncs-fabric-controller")
 
