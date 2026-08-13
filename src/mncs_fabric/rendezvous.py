@@ -124,6 +124,8 @@ class RendezvousCoordinator:
             known = self._known_workers()
             if self.membership_authority and worker_id not in known:
                 raise ProtocolError("worker is not a known Fabric member")
+            if not self._member_allowed(known.get(worker_id)):
+                raise ProtocolError("worker Fabric membership is not active")
             if any(session.worker_id == worker_id and not session.closed for session in self.sessions.values()):
                 raise ProtocolError("worker identity already has an active rendezvous session")
             generation = 1 + max((self._generation(worker_id),), default=0)
@@ -142,8 +144,15 @@ class RendezvousCoordinator:
     def message(self, session_id: str, message: Mapping[str, Any]) -> dict[str, object]:
         with self._lock:
             session = self.sessions.get(session_id)
+            allowed = self._member_allowed(
+                self._known_workers().get(session.worker_id) if session is not None else None
+            )
         if session is None or session.closed:
             raise ProtocolError("worker rendezvous session is unknown")
+        if not allowed:
+            session.close()
+            self._record("revoked", session)
+            raise ProtocolError("worker Fabric membership is not active")
         if message.get("worker_id") != session.worker_id or message.get("controller_id") != self.controller_id:
             raise ProtocolError("worker rendezvous message identity is invalid")
         if message["message_type"] == "worker.heartbeat":
@@ -173,6 +182,20 @@ class RendezvousCoordinator:
         result: list[dict[str, Any]] = []
         for worker_id in sorted(set(known) | set(active)):
             session = active.get(worker_id)
+            membership = known.get(worker_id, {})
+            if not self._member_allowed(membership):
+                if session is not None:
+                    session.close()
+                result.append({
+                    **dict(membership),
+                    "worker_id": worker_id,
+                    "availability": "UNAVAILABLE",
+                    "available": False,
+                    "transport": "worker-initiated-tls-rendezvous",
+                    "observation_source": "controller-owned-membership",
+                    "liveness": "REVOKED",
+                })
+                continue
             if session is None:
                 base = dict(known.get(worker_id, {}))
                 result.append({**base, "worker_id": worker_id, "availability": "UNAVAILABLE", "available": False, "transport": "worker-initiated-tls-rendezvous", "observation_source": "controller-owned-rendezvous"})
@@ -180,7 +203,6 @@ class RendezvousCoordinator:
             fresh = now - session.last_seen <= self.heartbeat_seconds * 3
             description = session.description
             snapshot = description.get("resource_snapshot")
-            membership = known.get(worker_id, {})
             result.append({
                 "worker_id": worker_id, "availability": "AVAILABLE" if fresh else "UNKNOWN", "available": fresh,
                 "transport": "worker-initiated-tls-rendezvous", "observation_source": "worker-observed",
@@ -206,9 +228,16 @@ class RendezvousCoordinator:
             raise ProtocolError("controller dispatch requires a matching manifest")
         with self._lock:
             sessions = {session.worker_id: session for session in self.sessions.values() if not session.closed and time.monotonic() - session.last_seen <= self.heartbeat_seconds * 3}
+            known = self._known_workers()
+        sessions = {
+            identity: session
+            for identity, session in sessions.items()
+            if self._member_allowed(known.get(identity))
+        }
         if worker_id is not None:
+            if worker_id in known and not self._member_allowed(known.get(worker_id)):
+                raise ProtocolError("worker Fabric membership is not active")
             sessions = {worker_id: sessions[worker_id]} if worker_id in sessions else {}
-        known = self._known_workers()
         slots = [WorkerSlot(worker_id=key, capabilities=frozenset(capability_names(value.description["node"])), concurrency_limit=int(known.get(key, {}).get("concurrency_limit", 1)), resource_snapshot=value.description.get("resource_snapshot")) for key, value in sessions.items()]
         decision = schedule(checked, slots, replicas=replicas, placement=placement)
         if decision.disposition != "PASS":
@@ -238,6 +267,28 @@ class RendezvousCoordinator:
         if self.membership_provider is not None:
             values.update(self.membership_provider())
         return values
+
+    def _member_allowed(self, membership: Mapping[str, Any] | None) -> bool:
+        """Treat lifecycle tombstones as authoritative over registry presence."""
+
+        if membership is None:
+            return not self.membership_authority
+        status = membership.get("membership_status")
+        return status is None or status == "ENROLLED"
+
+    def revoke_worker(self, worker_id: str) -> list[str]:
+        """Immediately terminate every live session for a revoked identity."""
+
+        with self._lock:
+            revoked = [
+                session
+                for session in self.sessions.values()
+                if session.worker_id == worker_id and not session.closed
+            ]
+            for session in revoked:
+                session.close()
+                self._record("revoked", session)
+        return [session.session_id for session in revoked]
 
     def _record(self, event: str, session: RendezvousSession) -> None:
         record = {"schema_version": RENDEZVOUS_SCHEMA, "event": event, "worker_id": session.worker_id, "session_id": session.session_id, "generation": session.generation, "certificate_fingerprint": session.certificate_fingerprint, "observed_at": utc_now(), "description": dict(session.description)}

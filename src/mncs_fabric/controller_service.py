@@ -183,7 +183,68 @@ class ControllerService:
                 "source": "approved-enrollment",
             }
             for item in self.lifecycle.memberships()
-            if item.get("membership_status") == "ENROLLED"
+        }
+
+    def _revoked_worker_ids(self) -> set[str]:
+        return {
+            str(item["worker_id"])
+            for item in self.lifecycle.memberships()
+            if item.get("membership_status") != "ENROLLED"
+        }
+
+    def _apply_membership_precedence(self, workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        memberships = {
+            str(item["worker_id"]): dict(item) for item in self.lifecycle.memberships()
+        }
+        by_identity = {str(item.get("worker_id")): dict(item) for item in workers}
+        for worker_id, membership in memberships.items():
+            current = by_identity.get(worker_id, {"worker_id": worker_id})
+            current.update({
+                "membership_id": membership.get("membership_id"),
+                "membership_status": membership.get("membership_status"),
+            })
+            if membership.get("membership_status") != "ENROLLED":
+                current.update({
+                    "availability": "UNAVAILABLE",
+                    "available": False,
+                    "liveness": "REVOKED",
+                    "observation_source": "controller-owned-membership",
+                })
+            by_identity[worker_id] = current
+        return [by_identity[key] for key in sorted(by_identity)]
+
+    def _revoke_worker(self, worker_id: str, reason: str) -> dict[str, Any]:
+        membership = self.lifecycle.revoke_worker(worker_id, reason=reason)
+        closed_sessions = self._rendezvous.revoke_worker(worker_id) if self._rendezvous is not None else []
+        if self._worker_client is not None:
+            self._worker_client.blocked_worker_ids.add(worker_id)
+
+        trust_paths: set[Path] = set()
+        if self.config.rendezvous_trust_state is not None:
+            trust_paths.add(Path(self.config.rendezvous_trust_state).expanduser())
+        if self.config.worker_registry_path_value is not None:
+            from .registry import WorkerRegistry
+
+            for worker in WorkerRegistry(
+                self.config.worker_registry_path_value, self.config.controller_id
+            ).load():
+                if worker.worker_id == worker_id:
+                    trust_paths.add(Path(worker.trust_state).expanduser())
+        trust_revocations: list[dict[str, Any]] = []
+        for path in sorted(trust_paths, key=str):
+            store = TrustStore(path)
+            current = store.lookup("worker", worker_id)
+            if current is None:
+                trust_revocations.append({"trust_state": str(path), "status": "NOT_ENROLLED"})
+            elif not current.get("active"):
+                trust_revocations.append({"trust_state": str(path), "status": "ALREADY_REVOKED"})
+            else:
+                store.revoke("worker", worker_id, reason=reason)
+                trust_revocations.append({"trust_state": str(path), "status": "REVOKED"})
+        return {
+            **membership,
+            "closed_rendezvous_sessions": closed_sessions,
+            "trust_revocations": trust_revocations,
         }
 
     @property
@@ -191,11 +252,13 @@ class ControllerService:
         return self._rendezvous is not None and self._rendezvous_server is not None
 
     def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        if self._worker_client is not None:
+            self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
-            return self._rendezvous.states(), self._worker_registry_report
+            return self._apply_membership_precedence(self._rendezvous.states()), self._worker_registry_report
         if self._worker_client is None:
             return (
-                self._rendezvous.states() if self._rendezvous is not None else [],
+                self._apply_membership_precedence(self._rendezvous.states() if self._rendezvous is not None else []),
                 self._worker_registry_report,
             )
         try:
@@ -205,7 +268,7 @@ class ControllerService:
                 **(self._worker_registry_report or {}),
                 "refresh_error": str(exc),
             }
-        return [dict(worker) for worker in self._worker_client.workers()], self._worker_registry_report
+        return self._apply_membership_precedence([dict(worker) for worker in self._worker_client.workers()]), self._worker_registry_report
 
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
@@ -383,11 +446,23 @@ class ControllerService:
                 payload = self.lifecycle.deny_request(str(args.get("request_id")), reason=str(args.get("reason", "operator denied enrollment")))
             elif operation == "enrollment.expire":
                 payload = self.lifecycle.expire_request(str(args.get("request_id")))
+            elif operation == "enrollment.submit":
+                request_value = args.get("request")
+                token = args.get("token")
+                if not isinstance(request_value, dict) or not isinstance(token, str):
+                    raise ValidationError("enrollment submission requires a request and token")
+                payload = self.lifecycle.submit_request(request_value, token)
             elif operation == "worker.revoke":
-                payload = self.lifecycle.revoke_worker(str(args.get("worker_id")), reason=str(args.get("reason", "operator revoked worker")))
+                payload = self._revoke_worker(str(args.get("worker_id")), str(args.get("reason", "operator revoked worker")))
             elif operation == "execution.dispatch":
                 if self._worker_client is None and not self.rendezvous_ready:
                     raise ProtocolError("persistent execution backend is not configured")
+                revoked = self._revoked_worker_ids()
+                requested_worker = args.get("worker_id")
+                if requested_worker is not None and str(requested_worker) in revoked:
+                    raise ProtocolError("worker Fabric membership is not active")
+                if self._worker_client is not None:
+                    self._worker_client.blocked_worker_ids = revoked
                 reference = args.get("execution_bundle_reference")
                 if not isinstance(reference, dict) or set(reference) != {
                     "bundle_identity",

@@ -12,6 +12,7 @@ from .commissioning import (
     issue_worker_credentials,
     prepare_join_request,
     submit_join_request,
+    validate_join_request,
     write_protected_json,
 )
 from .errors import FabricError
@@ -307,9 +308,16 @@ def build_parser() -> argparse.ArgumentParser:
     enrollment_issue.add_argument("--output", type=_path, required=True)
     enrollment_issue.add_argument("--days", type=int, default=365)
     enrollment_issue.add_argument("--json", action="store_true")
-    for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire, enrollment_submit, enrollment_issue):
-        enrollment_command.add_argument("--state", type=_path, default=default_lifecycle_path())
-        enrollment_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
+    for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire, enrollment_submit):
+        ownership = enrollment_command.add_mutually_exclusive_group(required=True)
+        ownership.add_argument("--admin-socket", type=_path, help="mutate controller-owned state through the persistent operator socket")
+        ownership.add_argument("--offline-state", type=_path, help="explicitly mutate lifecycle state while the controller service is stopped")
+    enrollment_issue.add_argument(
+        "--offline-state",
+        type=_path,
+        required=True,
+        help="operator-only lifecycle state; the controller service must be stopped",
+    )
 
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
@@ -434,7 +442,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return 0
         if args.command == "enrollment":
-            if args.admin_socket and args.enrollment_command not in {"request", "submit", "issue"}:
+            if getattr(args, "admin_socket", None):
                 admin = FabricAdminClient.connect(args.admin_socket)
                 if args.enrollment_command == "create":
                     result = admin.create_enrollment_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
@@ -450,6 +458,22 @@ def main(argv: list[str] | None = None) -> int:
                     result = admin.deny_enrollment(args.request_id, reason=args.reason)
                 elif args.enrollment_command == "expire":
                     result = admin.expire_enrollment(args.request_id)
+                elif args.enrollment_command == "request":
+                    request = LifecycleStore.build_request(
+                        worker_identity=args.worker_id,
+                        public_key_pem=args.public_key.read_text(encoding="ascii"),
+                        hostname_hint=args.hostname,
+                        operating_system=args.operating_system,
+                        architecture=args.architecture,
+                        authorization_id=args.authorization_id,
+                        metadata=_metadata(args.metadata),
+                    )
+                    result = admin.submit_enrollment(request, args.token)
+                elif args.enrollment_command == "submit":
+                    join = validate_join_request(load_json(args.join_request))
+                    result = admin.submit_enrollment(
+                        join["request"], str(join["material"]["token"])
+                    )
                 else:
                     raise AssertionError("unreachable service enrollment command")
                 admin.close()
@@ -485,7 +509,7 @@ def main(argv: list[str] | None = None) -> int:
                     }
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
-            lifecycle = LifecycleStore(args.state)
+            lifecycle = LifecycleStore(args.offline_state)
             if args.enrollment_command == "create":
                 result = lifecycle.create_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
                 material_options = (

@@ -85,6 +85,39 @@ class ControllerEnvironmentTests(unittest.TestCase):
             ), self.assertRaises(ValidationError):
                 _controller_config(self._args(root))
 
+    def test_enrollment_state_ownership_is_explicit(self) -> None:
+        parser = build_parser()
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["enrollment", "list"])
+        online = parser.parse_args(
+            ["enrollment", "list", "--admin-socket", "/tmp/admin.sock"]
+        )
+        self.assertEqual(online.admin_socket, Path("/tmp/admin.sock"))
+        offline = parser.parse_args(
+            ["enrollment", "list", "--offline-state", "/tmp/lifecycle.jsonl"]
+        )
+        self.assertEqual(offline.offline_state, Path("/tmp/lifecycle.jsonl"))
+        with self.assertRaises(SystemExit):
+            parser.parse_args(
+                [
+                    "enrollment",
+                    "issue",
+                    "join.json",
+                    "--ca",
+                    "ca.pem",
+                    "--ca-key",
+                    "ca.key",
+                    "--controller-certificate",
+                    "controller.pem",
+                    "--trust-state",
+                    "trust.jsonl",
+                    "--output",
+                    "credentials.json",
+                    "--admin-socket",
+                    "/tmp/admin.sock",
+                ]
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

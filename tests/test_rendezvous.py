@@ -284,6 +284,111 @@ class RendezvousTests(unittest.TestCase):
             coordinator.close(reconnected["payload"]["session_id"])
             self.assertEqual(coordinator.states()[0]["availability"], "UNAVAILABLE")
 
+    def test_revoked_lifecycle_tombstone_overrides_registry_and_live_session(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "worker-root"
+            source.mkdir()
+            (source / "task.py").write_text("print('must-not-run')\n", encoding="utf-8")
+            manifest = build_manifest(source)
+            plan = validate_job_plan({
+                "schema_version": "mncs-fabric.job-plan.v0.1",
+                "job_id": "revoked:must-not-run",
+                "candidate_identity": manifest["manifest_identity"],
+                "evaluator_identity": None,
+                "artifact_manifest_identity": manifest["manifest_identity"],
+                "argv": ["@python", "task.py"],
+                "working_directory": ".",
+                "timeout_seconds": 5,
+                "output_limit_bytes": 4096,
+                "environment": {},
+                "required_capabilities": ["python"],
+                "result_paths": [],
+                "network_policy": "DECLARED_OFFLINE",
+            })
+            worker = LocalWorker("worker", source, root / "worker.jsonl")
+            membership = {
+                "worker": {
+                    "worker_id": "worker",
+                    "membership_status": "ENROLLED",
+                    "source": "approved-enrollment",
+                }
+            }
+            coordinator = RendezvousCoordinator(
+                "controller",
+                root / "rendezvous.jsonl",
+                known_workers={"worker": {"source": "registry"}},
+                membership_provider=lambda: membership,
+                heartbeat_seconds=1,
+            )
+            opening = {"request_id": "open", "payload": {"description": worker.description()}}
+            accepted = coordinator.open("worker", "sha256:" + "a" * 64, opening)
+            self.assertEqual(coordinator.states()[0]["availability"], "AVAILABLE")
+
+            membership["worker"] = {
+                **membership["worker"],
+                "membership_status": "REVOKED",
+            }
+            closed = coordinator.revoke_worker("worker")
+            self.assertEqual(closed, [accepted["payload"]["session_id"]])
+            state = coordinator.states()[0]
+            self.assertEqual(state["membership_status"], "REVOKED")
+            self.assertEqual(state["availability"], "UNAVAILABLE")
+            with self.assertRaisesRegex(ProtocolError, "membership is not active"):
+                coordinator.open("worker", "sha256:" + "a" * 64, opening)
+            with self.assertRaisesRegex(ProtocolError, "membership is not active"):
+                coordinator.dispatch(plan, manifest, worker_id="worker")
+            self.assertEqual(worker.ledger.records(record_type="execution.record"), [])
+            events = [
+                entry["record"]["event"]
+                for entry in coordinator.ledger.records(record_type="worker.rendezvous")
+            ]
+            self.assertIn("revoked", events)
+
+    def test_controller_revocation_closes_session_and_revokes_transport_trust(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lifecycle = LifecycleStore(root / "lifecycle.jsonl")
+            authorization = lifecycle.create_authorization(expected_worker_identity="worker")
+            request = lifecycle.build_request(
+                worker_identity="worker",
+                public_key_pem="-----BEGIN PUBLIC KEY-----\nMDEyMzQ1Njc4OWFiY2RlZg==\n-----END PUBLIC KEY-----\n",
+                hostname_hint="worker.local",
+                operating_system="linux",
+                architecture="x86_64",
+                authorization_id=str(authorization["authorization_id"]),
+            )
+            lifecycle.submit_request(request, str(authorization["token"]))
+            lifecycle.approve_request(str(request["request_id"]))
+            trust_path = root / "controller-trust.jsonl"
+            TrustStore(trust_path).enroll("worker", "worker", "sha256:" + "a" * 64)
+            config = ControllerConfig(
+                "controller",
+                lifecycle.path,
+                worker_state_path=root / "worker-state.jsonl",
+                rendezvous_host="127.0.0.1",
+                rendezvous_port=7444,
+                rendezvous_ca=root / "ca.pem",
+                rendezvous_certificate=root / "controller.pem",
+                rendezvous_key=root / "controller.key",
+                rendezvous_trust_state=trust_path,
+            )
+            service = ControllerService(config)
+            self.assertIsNotNone(service._rendezvous)
+            source = root / "worker-root"
+            source.mkdir()
+            worker = LocalWorker("worker", source, root / "worker.jsonl")
+            opening = {"request_id": "open", "payload": {"description": worker.description()}}
+            service._rendezvous.open("worker", "sha256:" + "a" * 64, opening)  # type: ignore[union-attr]
+
+            revoked = service._revoke_worker("worker", "operator test")
+            self.assertEqual(revoked["membership_status"], "REVOKED")
+            self.assertEqual(len(revoked["closed_rendezvous_sessions"]), 1)
+            self.assertFalse(TrustStore(trust_path).lookup("worker", "worker")["active"])
+            self.assertEqual(service._worker_backend_status()[0][0]["availability"], "UNAVAILABLE")
+            with self.assertRaisesRegex(ProtocolError, "membership is not active"):
+                service._rendezvous.open("worker", "sha256:" + "a" * 64, opening)  # type: ignore[union-attr]
+
 
 if __name__ == "__main__":
     unittest.main()

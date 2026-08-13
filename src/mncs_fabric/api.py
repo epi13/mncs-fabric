@@ -222,6 +222,7 @@ class FabricClient:
         self.runtime_capability_observations: dict[str, dict[str, Any]] = {}
         self.registry_entries: dict[str, dict[str, Any]] = {}
         self.registry_errors: dict[str, str] = {}
+        self.blocked_worker_ids: set[str] = set()
 
     @classmethod
     def connect(
@@ -251,6 +252,7 @@ class FabricClient:
         client.runtime_capability_observations = {}
         client.registry_entries = {}
         client.registry_errors = {}
+        client.blocked_worker_ids = set()
         client._service_transport = ServiceClientTransport(Path(socket_path), client_identity=client_identity, timeout=timeout)
         return client
 
@@ -592,6 +594,14 @@ class FabricClient:
         ]
         workers = local + remote + known_unregistered
         for worker in workers:
+            if worker.get("worker_id") in self.blocked_worker_ids:
+                worker.update({
+                    "membership_status": "REVOKED",
+                    "availability": "UNAVAILABLE",
+                    "available": False,
+                    "liveness": "REVOKED",
+                })
+                continue
             if worker.get("source") == "registry":
                 continue
             inventory = self.capability_inventory(
@@ -619,6 +629,8 @@ class FabricClient:
         runtime_observation: Mapping[str, Any] | None = None,
         runtime_capability_observation: Mapping[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        if worker_id is not None and worker_id in self.blocked_worker_ids:
+            raise ProtocolError("worker Fabric membership is not active")
         if self._service_transport is not None:
             context, context_value = _context_payload(consumer_context)
             placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
@@ -759,8 +771,8 @@ class FabricClient:
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id))) for worker_id, worker in self.local.workers.items()]
-        remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items()]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id))) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
+        remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items() if worker_id not in self.blocked_worker_ids]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
             return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]
@@ -980,6 +992,9 @@ class FabricAdminClient:
 
     def expire_enrollment(self, request_id: str) -> dict[str, Any]:
         return self._request("enrollment.expire", {"request_id": request_id})
+
+    def submit_enrollment(self, request: Mapping[str, Any], token: str) -> dict[str, Any]:
+        return self._request("enrollment.submit", {"request": dict(request), "token": token})
 
     def revoke_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
         return self._request("worker.revoke", {"worker_id": worker_id, "reason": reason})

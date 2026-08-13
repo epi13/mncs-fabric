@@ -150,15 +150,16 @@ mncs-fabric worker rendezvous --worker-id ID --controller-id ID \
 mncs-fabric worker join --material MATERIAL.json --worker-id ID \
   --state-root STATE --request-output JOIN.json
 mncs-fabric worker activate --credentials CREDENTIALS.json --state-root STATE
-mncs-fabric enrollment create --ttl 10m [--worker-id ID] \
+mncs-fabric enrollment create --admin-socket STATE/controller-admin.sock \
+  --ttl 10m [--worker-id ID] \
   [--material-output MATERIAL.json --controller-id ID --controller-host HOST \
    --controller-port PORT --controller-certificate controller.pem]
-mncs-fabric enrollment submit JOIN.json
-mncs-fabric enrollment list|pending|inspect REQUEST_ID
-mncs-fabric enrollment approve|deny REQUEST_ID
+mncs-fabric enrollment submit JOIN.json --admin-socket STATE/controller-admin.sock
+mncs-fabric enrollment list|pending|inspect --admin-socket STATE/controller-admin.sock
+mncs-fabric enrollment approve|deny REQUEST_ID --admin-socket STATE/controller-admin.sock
 mncs-fabric enrollment issue JOIN.json --ca ca.pem --ca-key ca.key \
   --controller-certificate controller.pem --trust-state trust.jsonl \
-  --output CREDENTIALS.json
+  --output CREDENTIALS.json --offline-state STATE/lifecycle.jsonl
 mncs-fabric fleet list|status WORKER_ID|doctor
 mncs-fabric worker revoke WORKER_ID --reason REASON
 mncs-fabric controller status|doctor
@@ -199,6 +200,13 @@ paths in the unit. A complete rendezvous environment supplies
 `MNCS_FABRIC_RENDEZVOUS_KEY`, and `MNCS_FABRIC_RENDEZVOUS_TRUST_STATE`.
 Bind only to an operator-selected interface and restrict the listener with the
 host firewall even though peer authentication remains mandatory.
+
+Enrollment mutations require an explicit owner. Use `--admin-socket` while the
+persistent controller owns lifecycle state. `--offline-state` is an operator
+maintenance path for a stopped controller; it is never selected implicitly.
+Certificate issuance is deliberately offline because it consumes an operator CA
+key. It validates the CA/key pair, both certificate chains, the controller pin,
+and the approved CSR worker identity before it mutates controller trust state.
 
 For a Fedora worker that should survive login/session restarts, follow
 [`deploy/systemd/WORKER_INSTALL.md`](deploy/systemd/WORKER_INSTALL.md). The

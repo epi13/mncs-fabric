@@ -123,6 +123,36 @@ def certificate_fingerprint_pem(certificate_pem: str) -> str:
         raise ValidationError("certificate PEM is invalid") from exc
 
 
+def _certificate_public_key(path: Path) -> str:
+    return _openssl(["x509", "-in", str(path), "-pubkey", "-noout"])
+
+
+def _certificate_subject(path: Path, *, request: bool = False) -> str:
+    kind = "req" if request else "x509"
+    output = _openssl(
+        [kind, "-in", str(path), "-noout", "-subject", "-nameopt", "RFC2253"]
+    ).strip()
+    if not output.startswith("subject="):
+        raise ProtocolError("certificate subject could not be validated")
+    return output.removeprefix("subject=")
+
+
+def _require_worker_subject(path: Path, worker_id: str, *, request: bool = False) -> None:
+    if _certificate_subject(path, request=request) != f"CN={worker_id}":
+        raise ProtocolError("certificate subject does not match approved worker identity")
+
+
+def _verify_certificate_chain(ca_certificate: Path, certificate: Path) -> None:
+    _openssl(["verify", "-CAfile", str(ca_certificate), str(certificate)])
+
+
+def _require_ca_key_pair(ca_certificate: Path, ca_key: Path) -> None:
+    certificate_key = _certificate_public_key(ca_certificate)
+    private_key = _openssl(["pkey", "-in", str(ca_key), "-pubout"])
+    if public_key_identity(certificate_key) != public_key_identity(private_key):
+        raise ProtocolError("CA certificate does not match the configured CA private key")
+
+
 def build_enrollment_material(
     authorization: Mapping[str, Any],
     *,
@@ -269,20 +299,31 @@ def issue_worker_credentials(
         raise ProtocolError("controller certificate does not match enrollment material")
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
+        ca = root / "ca.pem"
+        controller = root / "controller.pem"
         csr = root / "worker.csr"
         certificate = root / "worker.pem"
+        _write_private(ca, ca_pem)
+        _write_private(controller, controller_pem)
         _write_private(csr, str(join["certificate_request_pem"]))
+        _require_ca_key_pair(ca, Path(ca_key))
+        _verify_certificate_chain(ca, controller)
+        worker_id = str(request["worker_identity"])
+        _require_worker_subject(csr, worker_id, request=True)
         csr_public = _openssl(["req", "-in", str(csr), "-pubkey", "-noout"])
         if public_key_identity(csr_public) != request["public_key_identity"]:
             raise ProtocolError("certificate request does not match approved worker key")
         serial = "0x" + secrets.token_hex(16)
         _openssl([
-            "x509", "-req", "-in", str(csr), "-CA", str(ca_certificate),
+            "x509", "-req", "-in", str(csr), "-CA", str(ca),
             "-CAkey", str(ca_key), "-set_serial", serial, "-days", str(days),
             "-sha256", "-out", str(certificate),
         ])
+        _verify_certificate_chain(ca, certificate)
+        _require_worker_subject(certificate, worker_id)
+        if public_key_identity(_certificate_public_key(certificate)) != request["public_key_identity"]:
+            raise ProtocolError("issued certificate does not preserve the approved worker key")
         worker_pem = _pem(certificate.read_text(encoding="ascii"), "worker certificate")
-    worker_id = str(request["worker_identity"])
     fingerprint = certificate_fingerprint_pem(worker_pem)
     TrustStore(controller_trust_state).enroll(
         "worker", worker_id, fingerprint, metadata={"request_id": request["request_id"]}
@@ -326,17 +367,32 @@ def activate_worker_credentials(value: Mapping[str, Any], *, state_root: Path) -
     controller_pem = _pem(value.get("controller_certificate_pem"), "controller certificate")
     if certificate_fingerprint_pem(controller_pem) != value.get("controller_certificate_fingerprint"):
         raise ProtocolError("credential controller certificate pin is invalid")
+    ca_pem = _pem(value.get("ca_certificate_pem"), "CA certificate")
+    with tempfile.TemporaryDirectory() as directory:
+        validation = Path(directory)
+        staged_worker = validation / "worker.pem"
+        staged_ca = validation / "ca.pem"
+        staged_controller = validation / "controller.pem"
+        _write_private(staged_worker, worker_pem)
+        _write_private(staged_ca, ca_pem)
+        _write_private(staged_controller, controller_pem)
+        local_public = _openssl(["pkey", "-in", str(key), "-pubout"])
+        certificate_public = _certificate_public_key(staged_worker)
+        certificate_identity = public_key_identity(certificate_public)
+        if public_key_identity(local_public) != certificate_identity:
+            raise ProtocolError("issued certificate does not match the local worker private key")
+        if certificate_identity != value.get("public_key_identity"):
+            raise ProtocolError("issued certificate does not match the approved worker key identity")
+        _require_worker_subject(staged_worker, worker_id)
+        _verify_certificate_chain(staged_ca, staged_worker)
+        _verify_certificate_chain(staged_ca, staged_controller)
+
     worker_cert = tls / "worker.pem"
     ca_cert = tls / "ca.pem"
     controller_cert = tls / "controller.pem"
     _write_private(worker_cert, worker_pem)
-    _write_private(ca_cert, _pem(value.get("ca_certificate_pem"), "CA certificate"))
+    _write_private(ca_cert, ca_pem)
     _write_private(controller_cert, controller_pem)
-    local_public = _openssl(["pkey", "-in", str(key), "-pubout"])
-    certificate_public = _openssl(["x509", "-in", str(worker_cert), "-pubkey", "-noout"])
-    if public_key_identity(local_public) != public_key_identity(certificate_public):
-        raise ProtocolError("issued certificate does not match the local worker private key")
-    _openssl(["verify", "-CAfile", str(ca_cert), str(worker_cert)])
     TrustStore(root / "worker-trust.jsonl").enroll(
         "controller", controller_id, str(value["controller_certificate_fingerprint"])
     )

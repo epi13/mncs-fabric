@@ -26,10 +26,13 @@ change firewall rules, or use SSH as the Fabric execution path.
    and issue the public credential document:
 
    ```bash
-   mncs-fabric enrollment submit join-request.json --state STATE/lifecycle.jsonl
+   mncs-fabric enrollment submit join-request.json \
+     --admin-socket STATE/controller-admin.sock
    mncs-fabric enrollment pending --admin-socket STATE/controller-admin.sock
    mncs-fabric enrollment approve REQUEST_ID --admin-socket STATE/controller-admin.sock
-   mncs-fabric enrollment issue join-request.json --state STATE/lifecycle.jsonl \
+   # Stop the controller before the explicit offline signing operation.
+   mncs-fabric enrollment issue join-request.json \
+     --offline-state STATE/lifecycle.jsonl \
      --ca ca.pem --ca-key ca.key --controller-certificate controller.pem \
      --trust-state controller-trust.jsonl --output worker-credentials.json
    ```
@@ -46,3 +49,10 @@ change firewall rules, or use SSH as the Fabric execution path.
 Rerunning the installer upgrades the isolated environment and restarts the unit
 without deleting the private key, trust ledger, installation identity, or worker
 execution ledger. Uninstall is deliberately not implicit.
+
+Enabling a user unit does not by itself prove boot-before-login behavior. If the
+deployment requires the worker to reconnect before interactive login, the
+operator must enable the user's systemd manager at boot (normally
+`loginctl enable-linger USER`) and verify `loginctl show-user USER -p Linger`
+reports `Linger=yes`. This is a host-administration action and is intentionally
+not performed by the installer.

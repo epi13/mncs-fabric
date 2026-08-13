@@ -317,8 +317,8 @@ class LifecycleStore:
         )
         return self.authorization(authorization_id, now=current)
 
+    @staticmethod
     def build_request(
-        self,
         *,
         worker_identity: str,
         public_key_pem: str,
