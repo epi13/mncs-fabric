@@ -155,32 +155,49 @@ class ControllerService:
             self._worker_registry_report = self._worker_client.load_registry(
                 self.config.worker_registry_path_value
             )
-            if self.config.rendezvous_configured:
-                known = {
-                    str(worker_id): dict(worker)
-                    for worker_id, worker in getattr(self._worker_client, "registry_entries", {}).items()
-                    if isinstance(worker, dict)
-                }
-                self._rendezvous = RendezvousCoordinator(
-                    self.config.controller_id,
-                    self.config.worker_state_path_value.with_name("rendezvous.jsonl"),
-                    known_workers=known,
-                    heartbeat_seconds=self.config.heartbeat_seconds,
-                )
+        if self.config.rendezvous_configured:
+            known = {
+                str(worker_id): dict(worker)
+                for worker_id, worker in getattr(self._worker_client, "registry_entries", {}).items()
+                if isinstance(worker, dict)
+            }
+            self._rendezvous = RendezvousCoordinator(
+                self.config.controller_id,
+                self.config.worker_state_path_value.with_name("rendezvous.jsonl"),
+                known_workers=known,
+                membership_provider=self._approved_rendezvous_members,
+                heartbeat_seconds=self.config.heartbeat_seconds,
+            )
 
     @property
     def worker_backend_enabled(self) -> bool:
-        return self._worker_client is not None
+        return self._worker_client is not None or self._rendezvous is not None
+
+    def _approved_rendezvous_members(self) -> dict[str, dict[str, Any]]:
+        return {
+            str(item["worker_id"]): {
+                "worker_id": str(item["worker_id"]),
+                "membership_id": item.get("membership_id"),
+                "membership_status": item.get("membership_status"),
+                "concurrency_limit": 1,
+                "source": "approved-enrollment",
+            }
+            for item in self.lifecycle.memberships()
+            if item.get("membership_status") == "ENROLLED"
+        }
 
     @property
     def rendezvous_ready(self) -> bool:
         return self._rendezvous is not None and self._rendezvous_server is not None
 
     def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-        if self._worker_client is None:
-            return [], self._worker_registry_report
         if self.rendezvous_ready and self._rendezvous is not None:
             return self._rendezvous.states(), self._worker_registry_report
+        if self._worker_client is None:
+            return (
+                self._rendezvous.states() if self._rendezvous is not None else [],
+                self._worker_registry_report,
+            )
         try:
             self._worker_client.refresh_workers()
         except Exception as exc:
@@ -285,10 +302,10 @@ class ControllerService:
             elif operation == "controller.doctor":
                 payload = self.doctor()
             elif operation == "fleet.list":
-                payload = {"workers": self._worker_backend_status()[0] if self._worker_client is not None else self.lifecycle.memberships()}
+                payload = {"workers": self._worker_backend_status()[0] if self.worker_backend_enabled else self.lifecycle.memberships()}
             elif operation in {"fleet.status", "worker.status", "worker.observations"}:
                 worker_id = str(args.get("worker_id"))
-                if self._worker_client is not None:
+                if self.worker_backend_enabled:
                     payload = next((worker for worker in self._worker_backend_status()[0] if worker.get("worker_id") == worker_id), None)
                     if payload is None:
                         raise ProtocolError("worker is not known to the controller")
@@ -369,7 +386,7 @@ class ControllerService:
             elif operation == "worker.revoke":
                 payload = self.lifecycle.revoke_worker(str(args.get("worker_id")), reason=str(args.get("reason", "operator revoked worker")))
             elif operation == "execution.dispatch":
-                if self._worker_client is None:
+                if self._worker_client is None and not self.rendezvous_ready:
                     raise ProtocolError("persistent execution backend is not configured")
                 reference = args.get("execution_bundle_reference")
                 if not isinstance(reference, dict) or set(reference) != {

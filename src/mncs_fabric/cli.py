@@ -6,6 +6,14 @@ from pathlib import Path
 
 from .artifacts import build_manifest, verify_manifest
 from .contracts import build_public_contract
+from .commissioning import (
+    activate_worker_credentials,
+    build_enrollment_material,
+    issue_worker_credentials,
+    prepare_join_request,
+    submit_join_request,
+    write_protected_json,
+)
 from .errors import FabricError
 from .enrollment import TrustStore
 from .io import load_json, write_json
@@ -194,6 +202,21 @@ def build_parser() -> argparse.ArgumentParser:
     rendezvous.add_argument("--heartbeat-seconds", type=float, default=5.0)
     rendezvous.add_argument("--timeout", type=float, default=5.0)
     rendezvous.add_argument("--max-seconds", type=float)
+    join = worker_sub.add_parser(
+        "join", help="generate a durable local identity and protected enrollment request"
+    )
+    join.add_argument("--material", type=_path, required=True)
+    join.add_argument("--worker-id", required=True)
+    join.add_argument("--state-root", type=_path, required=True)
+    join.add_argument("--request-output", type=_path, required=True)
+    join.add_argument("--hostname")
+    join.add_argument("--os", dest="operating_system")
+    join.add_argument("--architecture")
+    activate = worker_sub.add_parser(
+        "activate", help="install approved public credentials around the local worker key"
+    )
+    activate.add_argument("--credentials", type=_path, required=True)
+    activate.add_argument("--state-root", type=_path, required=True)
 
     contract = sub.add_parser("contract", help="inspect the installed public consumer contract")
     contract_sub = contract.add_subparsers(dest="contract_command", required=True)
@@ -235,6 +258,11 @@ def build_parser() -> argparse.ArgumentParser:
     enrollment_create.add_argument("--worker-id")
     enrollment_create.add_argument("--metadata", action="append", default=[])
     enrollment_create.add_argument("--json", action="store_true")
+    enrollment_create.add_argument("--material-output", type=_path)
+    enrollment_create.add_argument("--controller-id")
+    enrollment_create.add_argument("--controller-host")
+    enrollment_create.add_argument("--controller-port", type=int)
+    enrollment_create.add_argument("--controller-certificate", type=_path)
     enrollment_list = enrollment_sub.add_parser("list", help="list redacted authorizations")
     enrollment_list.add_argument("--json", action="store_true")
     enrollment_pending = enrollment_sub.add_parser("pending", help="list pending enrollment requests")
@@ -263,7 +291,23 @@ def build_parser() -> argparse.ArgumentParser:
     enrollment_expire = enrollment_sub.add_parser("expire", help="record an expired enrollment request")
     enrollment_expire.add_argument("request_id")
     enrollment_expire.add_argument("--json", action="store_true")
-    for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire):
+    enrollment_submit = enrollment_sub.add_parser(
+        "submit", help="submit a protected worker-generated join request"
+    )
+    enrollment_submit.add_argument("join_request", type=_path)
+    enrollment_submit.add_argument("--json", action="store_true")
+    enrollment_issue = enrollment_sub.add_parser(
+        "issue", help="issue approved rendezvous credentials with an operator CA"
+    )
+    enrollment_issue.add_argument("join_request", type=_path)
+    enrollment_issue.add_argument("--ca", type=_path, required=True)
+    enrollment_issue.add_argument("--ca-key", type=_path, required=True)
+    enrollment_issue.add_argument("--controller-certificate", type=_path, required=True)
+    enrollment_issue.add_argument("--trust-state", type=_path, required=True)
+    enrollment_issue.add_argument("--output", type=_path, required=True)
+    enrollment_issue.add_argument("--days", type=int, default=365)
+    enrollment_issue.add_argument("--json", action="store_true")
+    for enrollment_command in (enrollment_create, enrollment_list, enrollment_pending, enrollment_inspect, enrollment_request, enrollment_approve, enrollment_deny, enrollment_expire, enrollment_submit, enrollment_issue):
         enrollment_command.add_argument("--state", type=_path, default=default_lifecycle_path())
         enrollment_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
 
@@ -390,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return 0
         if args.command == "enrollment":
-            if args.admin_socket and args.enrollment_command != "request":
+            if args.admin_socket and args.enrollment_command not in {"request", "submit", "issue"}:
                 admin = FabricAdminClient.connect(args.admin_socket)
                 if args.enrollment_command == "create":
                     result = admin.create_enrollment_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
@@ -409,11 +453,69 @@ def main(argv: list[str] | None = None) -> int:
                 else:
                     raise AssertionError("unreachable service enrollment command")
                 admin.close()
+                if args.enrollment_command == "create" and args.material_output is not None:
+                    if any(
+                        value is None
+                        for value in (
+                            args.controller_id,
+                            args.controller_host,
+                            args.controller_port,
+                            args.controller_certificate,
+                        )
+                    ):
+                        raise ValueError(
+                            "material output requires controller id, host, port, and certificate"
+                        )
+                    material = build_enrollment_material(
+                        result,
+                        controller_id=args.controller_id,
+                        controller_host=args.controller_host,
+                        controller_port=args.controller_port,
+                        controller_certificate_pem=args.controller_certificate.read_text(
+                            encoding="ascii"
+                        ),
+                    )
+                    write_protected_json(args.material_output, material)
+                    result = {
+                        "outcome": "PASS",
+                        "authorization_id": result["authorization_id"],
+                        "material_identity": material["material_identity"],
+                        "material_output": str(args.material_output),
+                        "expires_at": result["expires_at"],
+                    }
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
             lifecycle = LifecycleStore(args.state)
             if args.enrollment_command == "create":
                 result = lifecycle.create_authorization(ttl_seconds=_duration(args.ttl), expected_worker_identity=args.worker_id, metadata=_metadata(args.metadata))
+                material_options = (
+                    args.controller_id,
+                    args.controller_host,
+                    args.controller_port,
+                    args.controller_certificate,
+                )
+                if args.material_output is not None:
+                    if any(value is None for value in material_options):
+                        raise ValueError(
+                            "material output requires controller id, host, port, and certificate"
+                        )
+                    material = build_enrollment_material(
+                        result,
+                        controller_id=args.controller_id,
+                        controller_host=args.controller_host,
+                        controller_port=args.controller_port,
+                        controller_certificate_pem=args.controller_certificate.read_text(
+                            encoding="ascii"
+                        ),
+                    )
+                    write_protected_json(args.material_output, material)
+                    result = {
+                        "outcome": "PASS",
+                        "authorization_id": result["authorization_id"],
+                        "material_identity": material["material_identity"],
+                        "material_output": str(args.material_output),
+                        "expires_at": result["expires_at"],
+                    }
             elif args.enrollment_command == "list":
                 result = {"outcome": "PASS", "authorizations": lifecycle.list_authorizations()}
             elif args.enrollment_command == "pending":
@@ -437,6 +539,25 @@ def main(argv: list[str] | None = None) -> int:
                 result = lifecycle.deny_request(args.request_id, reason=args.reason)
             elif args.enrollment_command == "expire":
                 result = lifecycle.expire_request(args.request_id)
+            elif args.enrollment_command == "submit":
+                result = submit_join_request(lifecycle, load_json(args.join_request))
+            elif args.enrollment_command == "issue":
+                result = issue_worker_credentials(
+                    lifecycle,
+                    load_json(args.join_request),
+                    ca_certificate=args.ca,
+                    ca_key=args.ca_key,
+                    controller_certificate=args.controller_certificate,
+                    controller_trust_state=args.trust_state,
+                    days=args.days,
+                )
+                write_protected_json(args.output, result)
+                result = {
+                    "outcome": "PASS",
+                    "worker_id": result["worker_id"],
+                    "credential_identity": result["credential_identity"],
+                    "output": str(args.output),
+                }
             else:
                 raise AssertionError("unreachable enrollment command")
             write_json(None, result)
@@ -559,6 +680,33 @@ def main(argv: list[str] | None = None) -> int:
             result = endpoint.run(max_seconds=args.max_seconds)
             write_json(None, result)
             return _status_code(result["outcome"])
+        if args.command == "worker" and args.worker_command == "join":
+            result = prepare_join_request(
+                load_json(args.material),
+                worker_id=args.worker_id,
+                state_root=args.state_root,
+                hostname=args.hostname,
+                operating_system=args.operating_system,
+                architecture=args.architecture,
+            )
+            write_protected_json(args.request_output, result)
+            write_json(
+                None,
+                {
+                    "outcome": "PASS",
+                    "worker_id": args.worker_id,
+                    "request_id": result["request"]["request_id"],
+                    "request_output": str(args.request_output),
+                    "lifecycle": "ENROLLMENT_REQUESTED",
+                },
+            )
+            return 0
+        if args.command == "worker" and args.worker_command == "activate":
+            result = activate_worker_credentials(
+                load_json(args.credentials), state_root=args.state_root
+            )
+            write_json(None, {"outcome": "PASS", **result})
+            return 0
         raise AssertionError("unreachable command")
     except (FabricError, OSError, ValueError) as exc:
         write_json(None, {"outcome": "UNKNOWN", "error": str(exc)})

@@ -24,6 +24,8 @@ PUBLIC_FEATURES = {
     "persistent_service_capability_ingestion": False,
     "persistent_worker_observations": False,
     "worker_rendezvous": False,
+    "operator_file_commissioning": True,
+    "approved_rendezvous_membership": True,
     "local_execution": True,
     "local_replication": True,
     "network_execution": True,

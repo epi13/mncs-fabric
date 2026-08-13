@@ -1,9 +1,10 @@
 # Worker bootstrap, discovery, and lifecycle
 
-Status: **Phase A and authenticated worker-initiated rendezvous implemented;
-discovery and installed service supervision remain planned**
+Status: **Phase A, protected file-mediated Fedora commissioning, and
+authenticated worker-initiated rendezvous implemented; online discovery and
+cross-platform service packaging remain planned**
 
-Implemented in `0.2.0a15`:
+Implemented through `0.2.0a16`:
 
 - versioned, append-only enrollment authorization, request, decision, fleet
   membership, revocation, and session-presence records;
@@ -19,15 +20,21 @@ Implemented in `0.2.0a15`:
 - authenticated worker-initiated TLS sessions with bounded heartbeat leases,
   live descriptions, capability/resource observations, and session dispatch;
 - a bounded local AF_UNIX consumer/operator service transport with
-  `FabricClient.connect()` and explicit `FabricAdminClient` authority.
+  `FabricClient.connect()` and explicit `FabricAdminClient` authority;
+- protected enrollment material, worker-local key/CSR generation, explicit
+  post-approval operator-CA issuance, and protected credential activation;
+- automatic projection of approved lifecycle membership into rendezvous
+  authorization without registry editing; and
+- an idempotent Fedora user-service install/update helper.
 
 The controller runtime owns this state independently of Local Harness or any
 other consumer process. `FabricClient` remains the ordinary consumer boundary
-and retains embedded/in-process compatibility. No Windows service transport,
-mDNS/DNS-SD discovery, certificate issuance, installer, or production OS
-service is implemented by this phase. The rendezvous and local transports are
-deterministic-test verified but not physically verified under systemd, Windows
-services, or cross-host deployment.
+and retains embedded/in-process compatibility. Commissioning is an explicit
+operator-controlled file handoff, not an online bootstrap listener; TrustStore
+remains authorization state and the CA stays operator managed. No Windows
+service transport or mDNS/DNS-SD discovery is implemented. The commissioning,
+rendezvous, and local transports are deterministic-test verified but not yet
+physically verified through a fresh-machine reboot in this change.
 
 This document describes a path from Fabric's current explicitly commissioned
 multi-host alpha to an operator-controlled fleet that can be installed, enrolled,

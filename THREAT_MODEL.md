@@ -85,6 +85,16 @@ private-key generation are required before this can be treated as a supported
 commissioning path. The bootstrap service must never accept Fabric jobs, arbitrary
 commands, or remote shell requests from an unenrolled peer.
 
+The implemented commissioning path deliberately opens no pre-enrollment
+listener. It transfers bounded identity-addressed enrollment material, join
+requests, and public credentials through an operator-chosen protected file
+channel. The worker private key is generated locally and never appears in those
+documents, diagnostics, or service environment. The handoff channel's
+confidentiality and destination remain operator responsibilities. A leaked
+unexpired authorization can submit at most its bound single-use request; it
+cannot obtain usable credentials without the matching private key, an explicit
+approval, and a separate operator CA issuance step.
+
 TrustStore remains an authorization ledger rather than a certificate authority.
 Certificate issuance may use an external operator-managed CA or a separate bounded
 provisioning helper, but CA private keys must never be embedded in worker installers,
@@ -186,9 +196,10 @@ residual limitations.
 Phase A of the lifecycle is implemented as controller-local append-only state.
 Authenticated worker-initiated rendezvous, bounded reconnect/session handling,
 worker observations, and controller-owned service dispatch are implemented and
-covered by deterministic integration tests when explicitly configured. No automated
-commissioning or physical systemd/reboot claim is made: the implementation does not
-discover controllers or issue certificates. The foreground controller runtime owns
+covered by deterministic integration tests when explicitly configured. A protected
+file-mediated commissioning and operator-CA issuance command is implemented, but no
+online bootstrap, controller discovery, or physical systemd/reboot claim is made. The
+foreground controller runtime owns
 lifecycle and worker state independently of consumers; the embedded `FabricClient`
 path remains a compatibility mode.
 

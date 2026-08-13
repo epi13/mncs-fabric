@@ -53,6 +53,20 @@ worker presence or disconnect state. The rendezvous path has deterministic
 automated service-level tests but is not physically verified under systemd or
 across hosts.
 
+### Implemented commissioning foundation
+
+- [x] protected identity-addressed enrollment material and join handoff;
+- [x] durable worker-local private-key generation and exact approved-key binding;
+- [x] explicit post-approval operator-CA issuance with controller pinning;
+- [x] protected credential activation and idempotent Fedora user-service helper;
+- [x] approved enrollment automatically authorizes rendezvous membership without
+  controller registry editing; and
+- [x] the installed rendezvous worker reuses its identity and reconnects under
+  systemd supervision.
+
+Online bootstrap/discovery, physical reboot commissioning evidence, Windows
+service packaging, and Linux/ARM installer evidence remain planned.
+
 ### Planned after Phase A
 
 Fabric's current explicit endpoint registry and physical multi-host evidence prove the
@@ -116,7 +130,8 @@ Key roadmap constraints:
   commissioning remain incomplete;
 - [x] authenticated worker-initiated rendezvous with bounded reconnect/session state,
   deterministic service-level tests, and no claim of physical systemd/cross-host proof;
-- [ ] automatic TrustStore/fleet registration only after explicit approved enrollment;
+- [x] explicit post-approval TrustStore issuance and automatic approved fleet
+  projection into rendezvous membership;
 - [ ] optional local controller discovery with cryptographic controller verification;
 
 - [~] bounded worker lifecycle is experimental; production multi-host operation
