@@ -42,6 +42,10 @@ CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.3"
 CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
 
 
+class _DetachedSubmissionExists(Exception):
+    """Internal signal used to suppress an atomic duplicate submission append."""
+
+
 @dataclass(frozen=True, slots=True)
 class ControllerConfig:
     controller_id: str
@@ -157,6 +161,9 @@ class ControllerService:
         self.target_ledger = FabricLedger(
             self.config.worker_state_path_value.with_name("target-execution.jsonl")
         )
+        self.detached_ledger = FabricLedger(
+            self.config.service_log_path.with_name("detached-execution.jsonl")
+        )
         self._target_evidence_index = TargetEvidenceIndex(
             self.target_ledger, self.config.target_evidence_index_value
         )
@@ -169,6 +176,8 @@ class ControllerService:
             self.config.execution_bundle_root_value / "consumer-cache"
         )
         self._consumer_bundle_lock = Lock()
+        self._detached_lock = Lock()
+        self._detached_threads: dict[str, Thread] = {}
         if self.config.worker_registry_path_value is not None:
             from .api import FabricClient
 
@@ -197,6 +206,242 @@ class ControllerService:
     @property
     def worker_backend_enabled(self) -> bool:
         return self._worker_client is not None or self._rendezvous is not None
+
+    def _detached_records(self, work_id: str | None = None) -> list[dict[str, Any]]:
+        records = [
+            dict(entry["record"])
+            for entry in self.detached_ledger.records(record_type="detached.execution")
+        ]
+        if work_id is not None:
+            records = [record for record in records if record.get("work_id") == work_id]
+        return records
+
+    def _detached_status(self, work_id: str) -> dict[str, Any]:
+        if not is_sha256_identity(work_id):
+            raise ValidationError("detached work identity is invalid")
+        history = self._detached_records(work_id)
+        if not history:
+            raise ValidationError("detached work identity is unknown")
+        submitted = history[0]
+        latest = history[-1]
+        return {
+            "work_id": work_id,
+            "job_id": submitted["job_id"],
+            "state": latest["state"],
+            "persistent": True,
+            "attempt": latest.get("attempt", 1),
+            "submitted_at": submitted["observed_at"],
+            "updated_at": latest["observed_at"],
+            "worker_id": submitted.get("worker_id"),
+            "model": submitted.get("model"),
+            "result_available": latest["state"] in {"COMPLETED", "FAILED"},
+            "history": [
+                {
+                    key: record.get(key)
+                    for key in ("state", "attempt", "observed_at", "reason")
+                    if record.get(key) is not None
+                }
+                for record in history
+            ],
+        }
+
+    def _append_detached_event(
+        self,
+        work_id: str,
+        state: str,
+        *,
+        attempt: int,
+        reason: str | None = None,
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        event = {
+            "schema_version": "mncs-fabric.detached-execution.v0.1",
+            "work_id": work_id,
+            "state": state,
+            "attempt": attempt,
+            "observed_at": utc_now(),
+            "reason": reason,
+            "result": result,
+        }
+        self.detached_ledger.append(
+            "detached.execution", attach_identity(event, "event_identity")
+        )
+
+    def _execute_dispatch_arguments(self, args: Mapping[str, Any]) -> dict[str, Any]:
+        if self._worker_client is None and not self.rendezvous_ready:
+            raise ProtocolError("persistent execution backend is not configured")
+        revoked = self._revoked_worker_ids()
+        requested_worker = args.get("worker_id")
+        if requested_worker is not None and str(requested_worker) in revoked:
+            raise ProtocolError("worker Fabric membership is not active")
+        if self._worker_client is not None:
+            self._worker_client.blocked_worker_ids = revoked
+        reference = args.get("execution_bundle_reference")
+        if not isinstance(reference, dict) or set(reference) != {
+            "bundle_identity",
+            "archive_identity",
+        }:
+            raise ProtocolError("execution bundle reference is invalid")
+        with self._consumer_bundle_lock:
+            content = self._consumer_bundle_cache.root_for(
+                str(reference["bundle_identity"]),
+                str(reference["archive_identity"]),
+            )
+        archive = content.parent / "archive.zip"
+        if self.rendezvous_ready and self._rendezvous is not None:
+            results = self._rendezvous.dispatch(
+                args["plan"], args["manifest"], worker_id=args.get("worker_id"),
+                replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"),
+                challenge=args.get("challenge"), consumer_context=args.get("consumer_context"),
+                execution_bundle_archive=archive, placement=args.get("placement"),
+                runtime_observation=args.get("runtime_observation"),
+                runtime_capability_observation=args.get("runtime_capability_observation"),
+            )
+            execution_transport = "worker-initiated-persistent-rendezvous"
+        else:
+            results = self._worker_client.execute(
+                args["plan"], args["manifest"], worker_id=args.get("worker_id"),
+                replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"),
+                challenge=args.get("challenge"), consumer_context=args.get("consumer_context"),
+                execution_bundle_archive=archive, placement=args.get("placement"),
+                runtime_observation=args.get("runtime_observation"),
+                runtime_capability_observation=args.get("runtime_capability_observation"),
+            )
+            execution_transport = "controller-managed-authenticated-worker-endpoint"
+        return {
+            "results": results,
+            "execution_transport": execution_transport,
+            "fleet_authority": "persistent-controller",
+        }
+
+    def _run_detached(self, work_id: str, arguments: dict[str, Any], attempt: int) -> None:
+        self._append_detached_event(work_id, "RUNNING", attempt=attempt)
+        try:
+            result = self._execute_dispatch_arguments(arguments)
+        except Exception as exc:
+            self._append_detached_event(
+                work_id, "FAILED", attempt=attempt, reason=str(exc)
+            )
+        else:
+            self._append_detached_event(
+                work_id, "COMPLETED", attempt=attempt, result=result
+            )
+        finally:
+            with self._detached_lock:
+                self._detached_threads.pop(work_id, None)
+
+    def _start_detached(self, work_id: str, arguments: dict[str, Any], attempt: int) -> None:
+        with self._detached_lock:
+            existing = self._detached_threads.get(work_id)
+            if existing is not None and existing.is_alive():
+                return
+            thread = Thread(
+                target=self._run_detached,
+                args=(work_id, arguments, attempt),
+                daemon=True,
+                name=f"mncs-fabric-work-{work_id[7:19]}",
+            )
+            self._detached_threads[work_id] = thread
+            thread.start()
+
+    def _submit_detached(
+        self, args: Mapping[str, Any], *, client_identity: str, request_id: str
+    ) -> dict[str, Any]:
+        if not self.worker_backend_enabled:
+            raise ProtocolError("persistent execution backend is not configured")
+        dispatch_arguments = dict(args)
+        idempotency_key = dispatch_arguments.pop("idempotency_key", None) or request_id
+        if (
+            not isinstance(idempotency_key, str)
+            or not idempotency_key
+            or len(idempotency_key) > 256
+            or "\x00" in idempotency_key
+        ):
+            raise ValidationError("detached execution idempotency key is invalid")
+        plan = validate_job_plan(dispatch_arguments.get("plan"))
+        manifest = dispatch_arguments.get("manifest")
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("manifest_identity") != plan["artifact_manifest_identity"]
+        ):
+            raise ProtocolError("detached execution requires a matching manifest")
+        work_id = sha256_identity(
+            {"client_identity": client_identity, "idempotency_key": idempotency_key}
+        )
+        dispatch_arguments["request_id"] = dispatch_arguments.get("request_id") or work_id
+        reference = dispatch_arguments.get("execution_bundle_reference")
+        if not isinstance(reference, dict) or set(reference) != {
+            "bundle_identity",
+            "archive_identity",
+        }:
+            raise ProtocolError("execution bundle reference is invalid")
+        with self._consumer_bundle_lock:
+            self._consumer_bundle_cache.root_for(
+                str(reference["bundle_identity"]), str(reference["archive_identity"])
+            )
+        request_identity = sha256_identity(dispatch_arguments)
+        submitted = {
+            "schema_version": "mncs-fabric.detached-execution.v0.1",
+            "work_id": work_id,
+            "job_id": plan["job_id"],
+            "state": "QUEUED",
+            "attempt": 1,
+            "observed_at": utc_now(),
+            "client_identity": client_identity,
+            "idempotency_key": idempotency_key,
+            "request_identity": request_identity,
+            "worker_id": dispatch_arguments.get("worker_id"),
+            "model": dispatch_arguments.get("model"),
+            "arguments": dispatch_arguments,
+        }
+
+        def accept(records: list[dict[str, Any]]) -> None:
+            prior = [
+                entry["record"]
+                for entry in records
+                if entry["record"].get("work_id") == work_id
+            ]
+            if not prior:
+                return
+            if prior[0].get("request_identity") != request_identity:
+                raise ProtocolError("detached execution idempotency key conflicts with prior work")
+            raise _DetachedSubmissionExists
+
+        try:
+            self.detached_ledger.append_if(
+                "detached.execution",
+                attach_identity(submitted, "event_identity"),
+                accept,
+            )
+        except _DetachedSubmissionExists:
+            pass
+        existing = self._detached_records(work_id)
+        if existing[0].get("request_identity") != request_identity:
+            raise ProtocolError("detached execution idempotency key conflicts with prior work")
+        if existing[-1].get("state") in {"QUEUED", "RETRYING"}:
+            self._start_detached(
+                work_id, dict(existing[0]["arguments"]), int(existing[-1].get("attempt", 1))
+            )
+        return {"accepted": True, **self._detached_status(work_id)}
+
+    def _recover_detached(self) -> None:
+        by_work: dict[str, list[dict[str, Any]]] = {}
+        for record in self._detached_records():
+            by_work.setdefault(str(record.get("work_id")), []).append(record)
+        for work_id, history in by_work.items():
+            if history[-1].get("state") not in {"QUEUED", "RUNNING", "RETRYING"}:
+                continue
+            attempt = int(history[-1].get("attempt", 1)) + int(
+                history[-1].get("state") == "RUNNING"
+            )
+            if history[-1].get("state") == "RUNNING":
+                self._append_detached_event(
+                    work_id,
+                    "RETRYING",
+                    attempt=attempt,
+                    reason="controller restarted before terminal result",
+                )
+            self._start_detached(work_id, dict(history[0]["arguments"]), attempt)
 
     def _approved_rendezvous_members(self) -> dict[str, dict[str, Any]]:
         return {
@@ -552,37 +797,36 @@ class ControllerService:
             elif operation == "worker.revoke":
                 payload = self._revoke_worker(str(args.get("worker_id")), str(args.get("reason", "operator revoked worker")))
             elif operation == "execution.dispatch":
-                if self._worker_client is None and not self.rendezvous_ready:
-                    raise ProtocolError("persistent execution backend is not configured")
-                revoked = self._revoked_worker_ids()
-                requested_worker = args.get("worker_id")
-                if requested_worker is not None and str(requested_worker) in revoked:
-                    raise ProtocolError("worker Fabric membership is not active")
-                if self._worker_client is not None:
-                    self._worker_client.blocked_worker_ids = revoked
-                reference = args.get("execution_bundle_reference")
-                if not isinstance(reference, dict) or set(reference) != {
-                    "bundle_identity",
-                    "archive_identity",
-                }:
-                    raise ProtocolError("execution bundle reference is invalid")
-                with self._consumer_bundle_lock:
-                    content = self._consumer_bundle_cache.root_for(
-                        str(reference["bundle_identity"]),
-                        str(reference["archive_identity"]),
-                    )
-                archive = content.parent / "archive.zip"
-                if self.rendezvous_ready and self._rendezvous is not None:
-                    results = self._rendezvous.dispatch(
-                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
-                    )
-                    execution_transport = "worker-initiated-persistent-rendezvous"
-                else:
-                    results = self._worker_client.execute(
-                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
-                    )
-                    execution_transport = "controller-managed-authenticated-worker-endpoint"
-                payload = {"results": results, "execution_transport": execution_transport, "fleet_authority": "persistent-controller"}
+                payload = self._execute_dispatch_arguments(args)
+            elif operation == "execution.submit":
+                payload = self._submit_detached(
+                    args,
+                    client_identity=request["client_identity"],
+                    request_id=request["request_id"],
+                )
+            elif operation == "execution.status":
+                payload = self._detached_status(str(args.get("work_id", "")))
+            elif operation == "execution.result":
+                status = self._detached_status(str(args.get("work_id", "")))
+                history = self._detached_records(status["work_id"])
+                latest = history[-1]
+                payload = {
+                    **status,
+                    "result": latest.get("result"),
+                    "reason": latest.get("reason"),
+                }
+            elif operation == "execution.list":
+                limit = int(args.get("limit", 100))
+                if not 1 <= limit <= 1000:
+                    raise ValidationError("detached execution list limit is invalid")
+                work_ids: list[str] = []
+                for record in reversed(self._detached_records()):
+                    work_id = str(record.get("work_id", ""))
+                    if work_id not in work_ids:
+                        work_ids.append(work_id)
+                    if len(work_ids) >= limit:
+                        break
+                payload = {"work": [self._detached_status(work_id) for work_id in work_ids]}
             elif operation == "execution.target.dispatch":
                 if not self.worker_backend_enabled:
                     raise ProtocolError("persistent target execution backend is not configured")
@@ -751,6 +995,7 @@ class ControllerService:
                 # The platform-neutral runtime remains useful under a Windows
                 # supervisor while named-pipe transport is still planned.
                 server = ControllerServiceServer(self)
+            self._recover_detached()
             try:
                 if self._rendezvous is not None and self.config.rendezvous_configured:
                     rendezvous_server = TLSRendezvousServer(

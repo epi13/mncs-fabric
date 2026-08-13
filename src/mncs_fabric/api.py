@@ -700,6 +700,60 @@ class FabricClient:
         responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None, runtime_capability_observation=dict(runtime_capability_observation) if runtime_capability_observation else None)
         return [_consumer_result(response, context) for response in responses]
 
+    def submit_execution(
+        self,
+        plan: object,
+        manifest: object,
+        *,
+        worker_id: str | None = None,
+        replicas: int = 1,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        consumer_context: ConsumerContext | Mapping[str, Any] | None = None,
+        execution_bundle_archive: Path,
+        placement: PlacementRequest | Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Persist and enqueue execution, returning before worker completion."""
+
+        if self._service_transport is None:
+            raise ProtocolError("detached execution requires a persistent service client")
+        _context, context_value = _context_payload(consumer_context)
+        placement_value = (
+            placement.to_dict()
+            if isinstance(placement, PlacementRequest)
+            else (dict(placement) if placement is not None else None)
+        )
+        bundle_reference = self._upload_service_bundle(Path(execution_bundle_archive))
+        return self._service_payload(
+            "execution.submit",
+            {
+                "plan": dict(plan),
+                "manifest": dict(manifest),
+                "worker_id": worker_id,
+                "replicas": replicas,
+                "request_id": request_id,
+                "idempotency_key": idempotency_key,
+                "consumer_context": context_value,
+                "placement": placement_value,
+                "execution_bundle_reference": bundle_reference,
+            },
+        )
+
+    def execution_status(self, work_id: str) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution status requires a persistent service client")
+        return self._service_payload("execution.status", {"work_id": work_id})
+
+    def execution_result(self, work_id: str) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution result requires a persistent service client")
+        return self._service_payload("execution.result", {"work_id": work_id})
+
+    def executions(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution listing requires a persistent service client")
+        return list(self._service_payload("execution.list", {"limit": limit}).get("work", []))
+
     def _upload_service_bundle(self, archive: Path) -> dict[str, str]:
         """Transfer a verified archive without exposing consumer filesystem paths."""
 

@@ -182,6 +182,12 @@ service-request evidence is written to the separate
 `controller-service.jsonl`. A client connection closing is not a worker
 disconnect event; only the worker session owner may publish presence changes.
 
+Detached execution uses a separate append-only `detached-execution.jsonl` ledger.
+The consumer request ends after durable `QUEUED` acceptance; a controller-owned
+thread records `RUNNING` and a terminal result independently of that socket. On
+controller restart, unterminated work advances through `RETRYING` with a new attempt.
+This is execution durability, not semantic task acceptance or Commons authority.
+
 Transport timeouts have distinct scopes. Connection establishment, TLS handshake,
 worker description refresh, control messages, and listener idle periods use short
 operator bounds. Only a validated `dispatch.request` widens its response deadline,
