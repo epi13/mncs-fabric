@@ -53,6 +53,7 @@ from .runtime import (
 )
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
+from .targets import ExecutionTargetReference
 from .service_transport import ServiceClientTransport
 from .worker import LocalWorker
 from .models import validate_job_plan
@@ -989,5 +990,5 @@ class FabricAdminClient:
 
 __all__ = [
     "ConsumerContext", "FabricClient", "FabricAdminClient", "LocalWorkerConfig", "RemoteWorkerConfig",
-    "PlacementRequest", "WorkerRegistry",
+    "ExecutionTargetReference", "PlacementRequest", "WorkerRegistry",
 ]

@@ -109,6 +109,15 @@ Any tool request must return to the consuming harness or other control plane, wh
 applies its own policy and then submits a separate bounded execution request if the
 tool truly belongs on a remote worker.
 
+`targets.py` implements the first shared `ExecutionTargetReference` contract. It
+binds an exact logical worker, the sole supported bounded-argv execution class,
+factual required capabilities, optional runtime/tool capability identities,
+consumer context and authorization identities, and bounded liveness/capability
+freshness expectations. Current membership, authenticated presence, AVAILABLE
+state, and `fallback_policy=NONE` are mandatory. The reference contains neither
+argv nor tool-selection semantics; target-aware dispatch and Harness policy
+enforcement remain separate subsequent work.
+
 The capability-observation API can advertise provider-neutral facts such as:
 
 - installed model/runtime identities and declared runtime features;

@@ -33,6 +33,13 @@ worker liveness are evaluated separately: retained evidence cannot remain a curr
 availability claim after expiry or worker loss. Capability presence never grants
 execution, workspace, filesystem, shell, SSH, MCP, or semantic routing authority.
 
+Execution-target references bind a consumer authorization identity to one logical
+worker and factual admission requirements. They require current membership,
+authenticated presence, AVAILABLE state, bounded freshness, and no fallback. They do
+not contain commands, grant a model permission, or authorize tools merely because a
+worker reports them. A later target-aware dispatcher must re-evaluate those current
+facts and fail closed rather than reinterpret the reference as ambient authority.
+
 Resource placement adds consumer context and dynamic capacity to the protocol.
 Fabric rejects malformed or substituted placement requests and binds the
 resource snapshot and admission decision into the dispatch/receipt reference.

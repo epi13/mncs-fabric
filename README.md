@@ -57,6 +57,9 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - fixed, canonical controller/worker envelopes with optional operator-supplied HMAC authentication;
 - durable append-only controller/worker ledgers with explicit recovery diagnostics and duplicate protection; and
 - deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
+- an identity-addressed execution-target reference that binds one consumer-authorized
+  bounded argv workload to an exact worker, factual capability requirements,
+  freshness expectations, and an explicit no-fallback policy;
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
 - a versioned `FabricClient` consumer facade with identity-addressable public-contract metadata, typed remote-worker configuration, consumer provenance bindings, replication, reconciliation, and Fabric-owned receipts;
 - bounded native EA-NEXT-002 bundle transfer over Fabric envelopes with independent worker verification, chunk limits, atomic publication, and an immutable content-addressed cache;
