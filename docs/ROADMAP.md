@@ -195,9 +195,10 @@ does not establish independent freshness or custody.
   without adding autonomous Fabric prefetch, eviction, or residency policy;
 - [ ] explicit capability references for worker-local tools and MCP endpoints
   without making Fabric the semantic tool router;
-- [~] a first consumer now carries typed inference/workspace/tool target metadata;
-  Fabric retains independent execution placement and grants no implicit remote
-  authority, while a shared Fabric target-reference contract remains future work;
+- [x] a first consumer carries typed inference/workspace/tool target metadata and
+  Fabric now publishes an identity-addressed execution-target reference with exact
+  worker, capability, provenance, freshness, and no-fallback requirements; neither
+  side grants implicit remote authority;
 - [ ] bounded target-aware execution requests for consumer-authorized remote
   tools, preserving argv-only execution and Fabric evidence boundaries;
 - [x] deterministic and operator-controlled physical Local Harness integration proves

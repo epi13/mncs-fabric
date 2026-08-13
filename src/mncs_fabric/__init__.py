@@ -12,6 +12,7 @@ from .lifecycle import (
 )
 from .controller_service import CONTROLLER_CONFIG_SCHEMA, CONTROLLER_SERVICE_SCHEMA, ControllerConfig, ControllerService
 from .service_transport import SERVICE_REQUEST_SCHEMA, SERVICE_RESPONSE_SCHEMA
+from .targets import EXECUTION_TARGET_SCHEMA, ExecutionTargetReference
 
 __all__ = [
     "CAPABILITY_OBSERVATION_SCHEMA", "ConsumerContext", "FabricClient", "FabricAdminClient",
@@ -23,4 +24,5 @@ __all__ = [
     "ControllerConfig", "ControllerService",
     "CONTROLLER_CONFIG_SCHEMA", "CONTROLLER_SERVICE_SCHEMA",
     "SERVICE_REQUEST_SCHEMA", "SERVICE_RESPONSE_SCHEMA",
+    "EXECUTION_TARGET_SCHEMA", "ExecutionTargetReference",
 ]
