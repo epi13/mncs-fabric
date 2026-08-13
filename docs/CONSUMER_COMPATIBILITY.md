@@ -72,3 +72,13 @@ Local Harness 0.5.0 requires `mncs-fabric>=0.2.0a12,<0.3` for this behavior.
 Local Harness 0.6.0 requires `mncs-fabric>=0.2.0a13,<0.3` for the additional
 operator registry API. The registry is local configuration and does not bump the
 Fabric wire protocol.
+
+Exact-target migration (added in `0.2.0a17`): persistent consumers may construct an
+`ExecutionTargetReference` from a current fleet projection and capability
+observation, then call `FabricClient.execute_target()`. The consumer supplies its
+own context and opaque authorization-provenance identity plus a verified archive;
+it does not receive worker endpoint, certificate, TrustStore, registry, cache, or
+rendezvous details. Fabric rechecks current facts, dispatches only to the exact
+worker, and returns versioned admission/evidence records. A denied or unavailable
+target never falls back. Consumers should gate this path on the running service's
+`target_aware_execution` flag, not only the installed package version.

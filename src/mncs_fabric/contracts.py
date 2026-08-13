@@ -50,6 +50,7 @@ PUBLIC_FEATURES = {
     "runtime_aware_admission": True,
     "worker_capability_observation": True,
     "execution_target_reference": True,
+    "target_aware_execution": True,
     "windows_worker_launcher": True,
     "cuda_execution_probe": True,
     "operator_worker_registry": True,
@@ -208,6 +209,11 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
         "persistent_service_capability_ingestion": bool(worker_backend),
         "persistent_worker_observations": bool(worker_backend),
         "worker_rendezvous": bool(worker_rendezvous),
+        "target_aware_execution": bool(worker_backend),
+        "worker_commissioning": True,
+        "rendezvous_membership_projection": bool(worker_rendezvous),
+        "worker_tool_capability_observations": bool(worker_backend),
+        "resumable_service_bundle_transfer": True,
     }
 
 

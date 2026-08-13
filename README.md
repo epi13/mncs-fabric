@@ -1,6 +1,6 @@
 # MNCS Fabric
 
-Fabric 0.2.0a16 includes a versioned controller-local registry for explicitly
+Fabric 0.2.0a17 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
@@ -20,12 +20,16 @@ operator approval and CA issuance, activates pinned credentials, and installs an
 idempotent user service. Online bootstrap, discovery, and non-Fedora packaging
 remain deployment work.
 
-Loaded-model attributes are factual generic capability observations. Fabric does
-not choose resident models or semantic routes; Local Harness owns those policies.
+Loaded-model and worker-tool attributes are factual generic capability observations.
+The persistent client can submit a bounded archive and job to one exact current
+target with no fallback, returning identity-addressed admission and execution
+evidence. Fabric does not choose tools, resident models, semantic routes, or result
+acceptance; Local Harness and other consumers own those policies. See
+[`docs/TARGET_EXECUTION.md`](docs/TARGET_EXECUTION.md).
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a16` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Cross-platform worker packaging, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a17` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Cross-platform worker packaging, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -60,9 +64,12 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - fixed, canonical controller/worker envelopes with optional operator-supplied HMAC authentication;
 - durable append-only controller/worker ledgers with explicit recovery diagnostics and duplicate protection; and
 - deterministic capability-aware in-process scheduling with explicit `UNKNOWN` admission failures;
-- an identity-addressed execution-target reference that binds one consumer-authorized
+- an identity-addressed execution-target reference that binds one consumer-selected
   bounded argv workload to an exact worker, factual capability requirements,
   freshness expectations, and an explicit no-fallback policy;
+- persistent exact-target dispatch that rechecks membership, authenticated presence,
+  liveness, capability/runtime facts, consumer bindings, and returns first-class
+  target admission/execution evidence without exposing transport credentials;
 - a transport-independent envelope boundary, bounded framing, TLS 1.2+ mutual certificate authentication, operator-managed enrollment/revocation, and registered remote-worker dispatch;
 - a versioned `FabricClient` consumer facade with identity-addressable public-contract metadata, typed remote-worker configuration, consumer provenance bindings, replication, reconciliation, and Fabric-owned receipts;
 - bounded native EA-NEXT-002 bundle transfer over Fabric envelopes with independent worker verification, chunk limits, atomic publication, and an immutable content-addressed cache;

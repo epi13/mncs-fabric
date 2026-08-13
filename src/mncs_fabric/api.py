@@ -30,7 +30,7 @@ from .contracts import (
 from .controller import LocalController, NetworkController
 from .bundle_transfer import MAX_CHUNK_BYTES, transfer_archive
 from .bundles import verify_bundle_archive
-from .canonical import sha256_identity
+from .canonical import is_sha256_identity, sha256_identity
 from .collections import build_execution_collection, validate_execution_collection
 from .enrollment import TrustStore
 from .errors import ProtocolError, TransportTimeoutError, ValidationError
@@ -53,7 +53,7 @@ from .runtime import (
 )
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
-from .targets import ExecutionTargetReference
+from .targets import ExecutionTargetReference, validate_execution_target_reference
 from .service_transport import ServiceClientTransport
 from .worker import LocalWorker
 from .models import validate_job_plan
@@ -764,6 +764,66 @@ class FabricClient:
             "bundle_identity": report.bundle_identity,
             "archive_identity": report.archive_identity,
         }
+
+    def execute_target(
+        self,
+        target: ExecutionTargetReference | Mapping[str, Any],
+        plan: object,
+        manifest: object,
+        *,
+        consumer_context: ConsumerContext | Mapping[str, Any],
+        consumer_authorization_identity: str,
+        execution_bundle_archive: Path,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute one bounded workload on one exact consumer-selected target.
+
+        The authorization identity is bound as consumer provenance only. Fabric
+        authenticates the local peer and exact request but does not interpret
+        the identity as semantic policy permission.
+        """
+
+        if self._service_transport is None:
+            raise ProtocolError("target-aware execution requires a persistent controller connection")
+        if request_id is not None and not is_sha256_identity(request_id):
+            raise ValidationError("target execution request identity is invalid")
+        context, context_value = _context_payload(consumer_context)
+        if context is None or context_value is None:
+            raise ValidationError("target-aware execution requires consumer context")
+        target_value = target.to_dict() if isinstance(target, ExecutionTargetReference) else dict(target)
+        checked_target = validate_execution_target_reference(
+            target_value, expected_consumer_context_identity=context.context_identity
+        )
+        checked_plan = validate_job_plan(plan)
+        if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked_plan["artifact_manifest_identity"]:
+            raise ProtocolError("target dispatch requires a matching manifest")
+        bundle_reference = self._upload_service_bundle(Path(execution_bundle_archive))
+        execution_request_identity = request_id or sha256_identity({
+            "operation": "execution.target.dispatch",
+            "target_identity": checked_target["target_identity"],
+            "job_identity": checked_plan["job_identity"],
+            "manifest_identity": manifest["manifest_identity"],
+            "bundle_identity": bundle_reference["bundle_identity"],
+            "archive_identity": bundle_reference["archive_identity"],
+            "consumer_context_identity": context.context_identity,
+            "consumer_authorization_identity": consumer_authorization_identity,
+        })
+        payload = self._service_payload(
+            "execution.target.dispatch",
+            {
+                "target": checked_target,
+                "plan": checked_plan,
+                "manifest": dict(manifest),
+                "consumer_context": context_value,
+                "consumer_authorization_identity": consumer_authorization_identity,
+                "execution_request_identity": execution_request_identity,
+                "execution_bundle_reference": bundle_reference,
+            },
+        )
+        result = payload.get("result")
+        if not isinstance(result, dict):
+            raise ProtocolError("persistent controller returned no target execution result")
+        return dict(result)
 
     def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, execution_bundle_archive: Path | None, placement_value: dict[str, Any] | None, runtime_observation: Mapping[str, Any] | None, runtime_capability_observation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         """Schedule across registered local and remote workers deterministically."""

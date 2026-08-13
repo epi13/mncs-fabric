@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a16` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a17` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -33,12 +33,31 @@ worker liveness are evaluated separately: retained evidence cannot remain a curr
 availability claim after expiry or worker loss. Capability presence never grants
 execution, workspace, filesystem, shell, SSH, MCP, or semantic routing authority.
 
-Execution-target references bind a consumer authorization identity to one logical
-worker and factual admission requirements. They require current membership,
-authenticated presence, AVAILABLE state, bounded freshness, and no fallback. They do
-not contain commands, grant a model permission, or authorize tools merely because a
-worker reports them. A later target-aware dispatcher must re-evaluate those current
-facts and fail closed rather than reinterpret the reference as ambient authority.
+Execution-target references bind consumer-provided authorization provenance to one
+logical worker and factual admission requirements. Persistent target dispatch
+re-evaluates current membership/revocation, same-OS-user authenticated consumer
+presence, worker presence/availability, bounded liveness and capability freshness,
+required capabilities, optional runtime/tool identity, and consumer context before
+dispatch. It selects only that worker. Disconnection, stale/absent facts, revocation,
+and post-admission loss never trigger local or alternative-worker fallback.
+
+The local peer credential authenticates an operating-system user, not an application
+or human policy principal. `client_identity` is a bounded caller label. The resulting
+identity proves which local user and label submitted the exact bounded request, while
+`consumer_authorization_identity` remains opaque provenance and never becomes
+Fabric-established permission. Capability observations are non-attested facts
+supplied by a same-user consumer or bounded probe; a dishonest observation can cause
+bad admission but grants no shell or filesystem authority beyond the already supplied
+bounded workload. Harness or another consumer must authorize the tool and accept the
+result.
+
+Passing admission is not a reservation or future-capacity guarantee. Loss during
+bundle transfer or dispatch is retained as `TARGET_BECAME_UNAVAILABLE`. Deterministic
+execution request identities and worker-ledger replay return known identical results
+without re-execution, but Fabric is not a distributed transaction system and does not
+turn an unobserved in-flight result into certainty. Target admission and execution
+evidence bind the canonical target, authenticated client/request, session generation,
+capability/runtime observations, context/provenance, bundle, job, record, and receipt.
 
 Resource placement adds consumer context and dynamic capacity to the protocol.
 Fabric rejects malformed or substituted placement requests and binds the

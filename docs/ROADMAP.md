@@ -206,14 +206,16 @@ does not establish independent freshness or custody.
   filesystem, shell, MCP, workspace, or execution authority;
 - [ ] support explicit consumer/provider warm-operation evidence as a bounded operation
   without adding autonomous Fabric prefetch, eviction, or residency policy;
-- [ ] explicit capability references for worker-local tools and MCP endpoints
+- [x] explicit identity-addressed capability references for worker-local tools,
+  runtimes, services, and MCP endpoints
   without making Fabric the semantic tool router;
 - [x] a first consumer carries typed inference/workspace/tool target metadata and
   Fabric now publishes an identity-addressed execution-target reference with exact
   worker, capability, provenance, freshness, and no-fallback requirements; neither
   side grants implicit remote authority;
-- [ ] bounded target-aware execution requests for consumer-authorized remote
-  tools, preserving argv-only execution and Fabric evidence boundaries;
+- [x] bounded exact-target execution requests for consumer-selected remote tools,
+  preserving argv-only execution, current-fact re-admission, no fallback, opaque
+  authorization provenance, durable retry identity, and Fabric evidence boundaries;
 - [x] deterministic and operator-controlled physical Local Harness integration proves
   that `gemma4:e4b` on `collamore02-windows` can request controller-owned Commons while
   workspace/tools remain on Fedora; the companion evidence is retained by Local

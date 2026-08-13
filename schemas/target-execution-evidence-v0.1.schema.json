@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric target execution evidence 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target_identity", "target_admission_identity", "request_binding_identity", "request_identity", "execution_request_identity", "authenticated_client_identity", "client_label", "worker_identity", "session_id", "session_generation", "capability_observation_identity", "observed_capability_identities", "observed_runtime_identity", "consumer_context_identity", "consumer_authorization_identity", "authorization_interpretation", "bundle_identity", "job_identity", "record_identity", "receipt_identity", "disposition", "claim_boundary", "target_execution_evidence_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.target-execution-evidence.v0.1"},
+    "target_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "target_admission_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_binding_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "execution_request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authenticated_client_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "client_label": {"type": "string"},
+    "worker_identity": {"type": "string"},
+    "session_id": {"type": ["string", "null"]},
+    "session_generation": {"type": ["integer", "null"]},
+    "capability_observation_identity": {"type": ["string", "null"]},
+    "observed_capability_identities": {"type": "array", "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}},
+    "observed_runtime_identity": {"type": ["string", "null"]},
+    "consumer_context_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "consumer_authorization_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "authorization_interpretation": {"const": "CONSUMER_PROVIDED_PROVENANCE_ONLY"},
+    "bundle_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "job_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "record_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "receipt_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "disposition": {"enum": ["EXECUTED", "DUPLICATE_IDEMPOTENT"]},
+    "claim_boundary": {"type": "string"},
+    "target_execution_evidence_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

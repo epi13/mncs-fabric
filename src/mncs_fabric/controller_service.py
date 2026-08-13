@@ -19,14 +19,22 @@ from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Mapping
 
-from .canonical import attach_identity
+from .canonical import attach_identity, is_sha256_identity, sha256_identity
+from .capabilities import build_capability_observation, validate_capability_observation
+from .contracts import CONSUMER_RESULT_SCHEMA
 from .bundle_transfer import BundleCache
 from .errors import FabricError, ProtocolError, ValidationError
 from .lifecycle import LifecycleStore, default_lifecycle_path, default_state_dir
 from .node import utc_now
+from .models import validate_job_plan
 from .store import FabricLedger
 from .enrollment import TrustStore
 from .rendezvous import RendezvousCoordinator
+from .targets import (
+    build_target_execution_evidence,
+    evaluate_target_admission,
+    validate_execution_target_reference,
+)
 from .transport import TLSRendezvousServer
 
 CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.2"
@@ -135,6 +143,13 @@ class ControllerService:
         self.config = config or default_controller_config()
         self.lifecycle = LifecycleStore(self.config.lifecycle_state)
         self.service_ledger = FabricLedger(self.config.service_log_path)
+        # Keep the established controller worker-state ledger so upgrades retain
+        # direct-worker capability history while rendezvous-only deployments can
+        # use the same controller-owned record stream.
+        self.capability_ledger = FabricLedger(self.config.worker_state_path_value)
+        self.target_ledger = FabricLedger(
+            self.config.worker_state_path_value.with_name("target-execution.jsonl")
+        )
         self._stop = Event()
         self._worker_client: Any | None = None
         self._worker_registry_report: dict[str, Any] | None = None
@@ -270,6 +285,65 @@ class ControllerService:
             }
         return self._apply_membership_precedence([dict(worker) for worker in self._worker_client.workers()]), self._worker_registry_report
 
+    def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 1000:
+            raise ValidationError("capability observation limit is invalid")
+        values: list[dict[str, Any]] = []
+        for entry in self.capability_ledger.records(
+            record_type="worker.capability-observation", limit=limit
+        ):
+            record = entry["record"]
+            if record.get("worker_identity") == worker_id:
+                values.append(validate_capability_observation(record, expected_worker_id=worker_id))
+        return values
+
+    def _latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        values = self._capability_observations(worker_id)
+        return values[-1] if values else None
+
+    def _ingest_capability_observation(self, worker_id: str, args: Mapping[str, Any]) -> dict[str, Any]:
+        worker = next(
+            (item for item in self._worker_backend_status()[0] if item.get("worker_id") == worker_id),
+            None,
+        )
+        if worker is None:
+            raise ProtocolError("worker is not known to the controller")
+        if worker.get("membership_status") == "REVOKED":
+            raise ProtocolError("worker Fabric membership is not active")
+        capabilities = args.get("capabilities")
+        if not isinstance(capabilities, list):
+            raise ValidationError("capabilities must be an array")
+        observation = build_capability_observation(
+            worker_identity=worker_id,
+            capabilities=capabilities,
+            availability=str(args.get("availability", "AVAILABLE")),
+            captured_at=args.get("captured_at"),
+            observation_source=str(args.get("observation_source", "consumer-bounded-worker-probe")),
+            status_reason=args.get("status_reason"),
+        )
+        self.capability_ledger.append("worker.capability-observation", observation)
+        return observation
+
+    @staticmethod
+    def _target_rejection(admission: Mapping[str, Any], *, diagnostic: str | None = None) -> dict[str, Any]:
+        return {
+            "schema_version": CONSUMER_RESULT_SCHEMA,
+            "disposition": admission["disposition"],
+            "worker_identity": admission["worker_identity"],
+            "request_identity": admission["request_binding"]["execution_request_identity"],
+            "job_identity": admission["request_binding"]["job_identity"],
+            "record": None,
+            "record_identity": None,
+            "receipt": None,
+            "receipt_identity": None,
+            "bundle_identity": admission["request_binding"]["bundle_identity"],
+            "reason": admission["reason_code"],
+            "diagnostic": diagnostic,
+            "execution_target_reference_identity": admission["target_identity"],
+            "target_admission": dict(admission),
+            "target_admission_identity": admission["target_admission_identity"],
+        }
+
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
         # the package surface is being initialized.
@@ -323,7 +397,7 @@ class ControllerService:
         }
         return result
 
-    def handle_service_request(self, request: Mapping[str, Any], *, role: str) -> dict[str, Any]:
+    def handle_service_request(self, request: Mapping[str, Any], *, role: str, peer_identity: str | None = None) -> dict[str, Any]:
         """Serve one already-framed local consumer or operator request."""
 
         from .service_transport import (
@@ -347,6 +421,7 @@ class ControllerService:
             "request_id": request["request_id"],
             "client_identity": request["client_identity"],
             "role": role,
+            "peer_identity": peer_identity,
             "operation": operation,
             "observed_at": utc_now(),
         }
@@ -486,35 +561,112 @@ class ControllerService:
                     )
                     execution_transport = "controller-managed-authenticated-worker-endpoint"
                 payload = {"results": results, "execution_transport": execution_transport, "fleet_authority": "persistent-controller"}
+            elif operation == "execution.target.dispatch":
+                if not self.worker_backend_enabled:
+                    raise ProtocolError("persistent target execution backend is not configured")
+                if peer_identity is None:
+                    raise ProtocolError("target execution requires an authenticated local peer")
+                reference = args.get("execution_bundle_reference")
+                if not isinstance(reference, dict) or set(reference) != {"bundle_identity", "archive_identity"}:
+                    raise ProtocolError("execution bundle reference is invalid")
+                with self._consumer_bundle_lock:
+                    content = self._consumer_bundle_cache.root_for(
+                        str(reference["bundle_identity"]), str(reference["archive_identity"])
+                    )
+                archive = content.parent / "archive.zip"
+                plan = validate_job_plan(args.get("plan"))
+                manifest = args.get("manifest")
+                if not isinstance(manifest, dict) or manifest.get("manifest_identity") != plan["artifact_manifest_identity"]:
+                    raise ProtocolError("target dispatch requires a matching manifest")
+                target = validate_execution_target_reference(args.get("target"))
+                execution_request_identity = args.get("execution_request_identity")
+                if not is_sha256_identity(execution_request_identity):
+                    raise ValidationError("target execution request identity is invalid")
+                workers = self._worker_backend_status()[0]
+                worker = next(
+                    (item for item in workers if item.get("worker_id") == target["worker_identity"]),
+                    None,
+                )
+                authenticated_client_identity = sha256_identity({
+                    "peer_identity": peer_identity,
+                    "client_label": request["client_identity"],
+                    "authentication": "LOCAL_PEER_CREDENTIAL",
+                })
+                admission = evaluate_target_admission(
+                    target,
+                    worker_state=worker,
+                    capability_observation=self._latest_capability_observation(target["worker_identity"]),
+                    consumer_context=args.get("consumer_context"),
+                    consumer_authorization_identity=args.get("consumer_authorization_identity"),
+                    authenticated_client_identity=authenticated_client_identity,
+                    client_label=request["client_identity"],
+                    request_identity=request["request_id"],
+                    execution_request_identity=str(execution_request_identity),
+                    job_identity=plan["job_identity"],
+                    bundle_identity=str(reference["bundle_identity"]),
+                )
+                self.target_ledger.append("target.admission", admission)
+                if admission["disposition"] != "PASS":
+                    payload = {"result": self._target_rejection(admission), "admission": admission}
+                else:
+                    try:
+                        if self.rendezvous_ready and self._rendezvous is not None:
+                            results = self._rendezvous.dispatch(
+                                plan, manifest, worker_id=target["worker_identity"], replicas=1,
+                                request_id=str(execution_request_identity),
+                                consumer_context=args.get("consumer_context"),
+                                execution_bundle_archive=archive,
+                            )
+                            execution_transport = "worker-initiated-persistent-rendezvous"
+                        elif self._worker_client is not None:
+                            self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
+                            results = self._worker_client.execute(
+                                plan, manifest, worker_id=target["worker_identity"], replicas=1,
+                                request_id=str(execution_request_identity),
+                                consumer_context=args.get("consumer_context"),
+                                execution_bundle_archive=archive,
+                            )
+                            execution_transport = "controller-managed-authenticated-worker-endpoint"
+                        else:
+                            results = []
+                        result = results[0] if len(results) == 1 else None
+                        if not isinstance(result, dict) or result.get("worker_identity") != target["worker_identity"] or result.get("disposition") not in {"EXECUTED", "DUPLICATE_IDEMPOTENT"}:
+                            raise ProtocolError("target became unavailable before exact-worker execution")
+                        evidence = build_target_execution_evidence(admission, result)
+                        self.target_ledger.append("target.execution", evidence)
+                        result = {
+                            **result,
+                            "execution_target_reference_identity": target["target_identity"],
+                            "target_admission": admission,
+                            "target_admission_identity": admission["target_admission_identity"],
+                            "target_execution_evidence": evidence,
+                            "target_execution_evidence_identity": evidence["target_execution_evidence_identity"],
+                        }
+                        payload = {"result": result, "admission": admission, "execution_transport": execution_transport}
+                    except (FabricError, OSError, TimeoutError) as exc:
+                        failed = {
+                            **admission,
+                            "disposition": "UNKNOWN",
+                            "reason_code": "TARGET_BECAME_UNAVAILABLE",
+                        }
+                        failed.pop("target_admission_identity", None)
+                        failed = attach_identity(failed, "target_admission_identity")
+                        self.target_ledger.append("target.admission", failed)
+                        payload = {"result": self._target_rejection(failed, diagnostic=str(exc)), "admission": failed}
             elif operation == "worker.capability.ingest":
-                if self._worker_client is None:
+                if not self.worker_backend_enabled:
                     raise ProtocolError("persistent capability backend is not configured")
                 worker_id = str(args.get("worker_id", ""))
-                capabilities = args.get("capabilities")
-                if not isinstance(capabilities, list):
-                    raise ValidationError("capabilities must be an array")
                 payload = {
-                    "observation": self._worker_client.ingest_capability_observation(
-                        worker_id,
-                        capabilities,
-                        availability=str(args.get("availability", "AVAILABLE")),
-                        captured_at=args.get("captured_at"),
-                        observation_source=str(
-                            args.get("observation_source", "consumer-bounded-worker-probe")
-                        ),
-                        status_reason=args.get("status_reason"),
-                    ),
+                    "observation": self._ingest_capability_observation(worker_id, args),
                     "fleet_authority": "persistent-controller",
                 }
             elif operation == "worker.capability.observations":
-                if self._worker_client is None:
+                if not self.worker_backend_enabled:
                     raise ProtocolError("persistent capability backend is not configured")
                 worker_id = str(args.get("worker_id", ""))
                 payload = {
-                    "observations": self._worker_client.capability_observations(
-                        worker_id,
-                        limit=int(args.get("limit", 1000)),
-                    ),
+                    "observations": self._capability_observations(worker_id, limit=int(args.get("limit", 1000))),
                     "fleet_authority": "persistent-controller",
                 }
             else:
