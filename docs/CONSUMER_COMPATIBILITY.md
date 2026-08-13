@@ -28,6 +28,11 @@ first admits the request, then transfers the verified typed archive only to the
 selected remote worker before dispatch. This preserves placement authority and
 avoids broadcasting prompt or input material to ineligible workers.
 
+When the client is connected to the persistent local service, the public client
+uploads that verified archive in bounded chunks and dispatches by logical/archive
+identity. The service stages it below its controller-owned cache. Consumers do not
+provide a server-readable path or discover the controller bundle root.
+
 Optional live sibling integration remains outside Fabric CI. A missing sibling
 is `UNKNOWN`, not a self-contained Fabric failure.
 

@@ -32,13 +32,14 @@ from .transport import receive_frame, send_frame
 SERVICE_REQUEST_SCHEMA = "mncs-fabric.service-request.v0.1"
 SERVICE_RESPONSE_SCHEMA = "mncs-fabric.service-response.v0.1"
 SERVICE_EVENT_SCHEMA = "mncs-fabric.controller-service.v0.1"
-SERVICE_MAX_FRAME_BYTES = 256 * 1024
+SERVICE_MAX_FRAME_BYTES = 4 * 1024 * 1024
 SERVICE_REQUEST_TTL_SECONDS = 30.0
 SERVICE_MAX_CONNECTIONS = 32
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _OPERATIONS = {
     "controller.status", "controller.doctor", "fleet.list", "fleet.status",
     "worker.status", "worker.observations", "fleet.doctor",
+    "execution.bundle.begin", "execution.bundle.chunk", "execution.bundle.commit",
     "execution.dispatch",
     "worker.capability.ingest", "worker.capability.observations",
     "enrollment.create", "enrollment.list", "enrollment.pending",

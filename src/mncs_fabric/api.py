@@ -8,6 +8,7 @@ contexts are opaque provenance and never evaluator or promotion authority.
 
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -27,7 +28,9 @@ from .contracts import (
     validate_consumer_context,
 )
 from .controller import LocalController, NetworkController
-from .bundle_transfer import transfer_archive
+from .bundle_transfer import MAX_CHUNK_BYTES, transfer_archive
+from .bundles import verify_bundle_archive
+from .canonical import sha256_identity
 from .collections import build_execution_collection, validate_execution_collection
 from .enrollment import TrustStore
 from .errors import ProtocolError, TransportTimeoutError, ValidationError
@@ -618,6 +621,11 @@ class FabricClient:
         if self._service_transport is not None:
             context, context_value = _context_payload(consumer_context)
             placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
+            bundle_reference = (
+                self._upload_service_bundle(Path(execution_bundle_archive))
+                if execution_bundle_archive is not None
+                else None
+            )
             payload = self._service_payload(
                 "execution.dispatch",
                 {
@@ -631,7 +639,7 @@ class FabricClient:
                     "placement": placement_value,
                     "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
                     "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
-                    "execution_bundle_archive": str(execution_bundle_archive) if execution_bundle_archive is not None else None,
+                    "execution_bundle_reference": bundle_reference,
                 },
             )
             return [dict(item) for item in payload.get("results", [])]
@@ -678,6 +686,71 @@ class FabricClient:
             return [_consumer_result(response, context) for response in responses]
         responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None, runtime_capability_observation=dict(runtime_capability_observation) if runtime_capability_observation else None)
         return [_consumer_result(response, context) for response in responses]
+
+    def _upload_service_bundle(self, archive: Path) -> dict[str, str]:
+        """Transfer a verified archive without exposing consumer filesystem paths."""
+
+        candidate = Path(archive).expanduser()
+        if candidate.is_symlink():
+            raise ProtocolError("persistent execution bundle must not be a symbolic link")
+        archive = candidate.resolve(strict=True)
+        if not archive.is_file():
+            raise ProtocolError("persistent execution bundle must be a regular file")
+        report = verify_bundle_archive(archive)
+        if not report.valid or report.bundle_identity is None or report.archive_identity is None:
+            raise ProtocolError("persistent service will not accept an unverified execution bundle")
+        total_bytes = archive.stat().st_size
+        chunk_bytes = min(32 * 1024, MAX_CHUNK_BYTES)
+        chunk_count = (total_bytes + chunk_bytes - 1) // chunk_bytes
+        transfer_id = "service-" + sha256_identity(
+            {
+                "bundle_identity": report.bundle_identity,
+                "archive_identity": report.archive_identity,
+            }
+        )[7:39]
+        base = {
+            "transfer_id": transfer_id,
+            "bundle_identity": report.bundle_identity,
+            "archive_identity": report.archive_identity,
+            "total_bytes": total_bytes,
+            "chunk_bytes": chunk_bytes,
+            "chunk_count": chunk_count,
+        }
+        offered = self._service_payload("execution.bundle.begin", base)
+        if offered.get("status") == "TRANSFER_REQUIRED":
+            next_sequence = offered.get("next_sequence")
+            received_bytes = offered.get("received_bytes")
+            if (
+                not isinstance(next_sequence, int)
+                or not 0 <= next_sequence <= chunk_count
+                or received_bytes != min(next_sequence * chunk_bytes, total_bytes)
+            ):
+                raise ProtocolError("persistent service returned invalid bundle progress")
+            with archive.open("rb") as stream:
+                stream.seek(int(received_bytes))
+                for sequence in range(next_sequence, chunk_count):
+                    data = stream.read(chunk_bytes)
+                    accepted = self._service_payload(
+                        "execution.bundle.chunk",
+                        {
+                            "transfer_id": transfer_id,
+                            "bundle_identity": report.bundle_identity,
+                            "archive_identity": report.archive_identity,
+                            "sequence": sequence,
+                            "data": base64.b64encode(data).decode("ascii"),
+                        },
+                    )
+                    if accepted.get("status") != "ACCEPTED":
+                        raise ProtocolError("persistent service rejected an execution bundle chunk")
+            committed = self._service_payload("execution.bundle.commit", base)
+            if committed.get("status") not in {"COMMITTED", "ALREADY_PRESENT"}:
+                raise ProtocolError("persistent service did not commit the execution bundle")
+        elif offered.get("status") != "ALREADY_PRESENT":
+            raise ProtocolError("persistent service rejected the execution bundle offer")
+        return {
+            "bundle_identity": report.bundle_identity,
+            "archive_identity": report.archive_identity,
+        }
 
     def _execute_registered(self, plan: object, manifest: object, *, replicas: int, request_id: str | None, challenge: dict[str, Any] | None, context: ConsumerContext | None, context_value: dict[str, Any] | None, execution_bundle: dict[str, str] | None, execution_bundle_archive: Path | None, placement_value: dict[str, Any] | None, runtime_observation: Mapping[str, Any] | None, runtime_capability_observation: Mapping[str, Any] | None) -> list[dict[str, Any]]:
         """Schedule across registered local and remote workers deterministically."""

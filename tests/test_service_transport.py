@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 import json
 import socket
@@ -24,7 +25,7 @@ from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.service_transport import SERVICE_MAX_FRAME_BYTES, SERVICE_REQUEST_SCHEMA, ServiceClientTransport
 from mncs_fabric.transport import TLSWorkerServer
 from mncs_fabric.worker import LocalWorker
-from mncs_fabric.canonical import attach_identity
+from mncs_fabric.canonical import attach_identity, sha256_identity
 from tests.test_transport import _certificates
 
 
@@ -102,6 +103,65 @@ class ServiceTransportTests(unittest.TestCase):
         self.assertEqual(transport.request_envelope(request), {"workers": []})
         with self.assertRaises(ProtocolError):
             self.assertEqual(transport.request_envelope(request), {"workers": []})
+
+    def test_consumer_bundle_upload_resumes_an_interrupted_transfer(self) -> None:
+        root = Path(self.temp.name)
+        source = root / "resume-source"
+        source.mkdir()
+        (source / "task.py").write_text("print('resume')\n", encoding="utf-8")
+        archive = root / "consumer-resume.zip"
+        report = build_bundle_archive(source, archive)
+        self.assertIsNotNone(report.bundle_identity)
+        self.assertIsNotNone(report.archive_identity)
+        bundle_identity = str(report.bundle_identity)
+        archive_identity = str(report.archive_identity)
+        chunk_bytes = 32 * 1024
+        total_bytes = archive.stat().st_size
+        chunk_count = (total_bytes + chunk_bytes - 1) // chunk_bytes
+        transfer_id = "service-" + sha256_identity(
+            {
+                "bundle_identity": bundle_identity,
+                "archive_identity": archive_identity,
+            }
+        )[7:39]
+        base = {
+            "transfer_id": transfer_id,
+            "bundle_identity": bundle_identity,
+            "archive_identity": archive_identity,
+            "total_bytes": total_bytes,
+            "chunk_bytes": chunk_bytes,
+            "chunk_count": chunk_count,
+        }
+        client = FabricClient.connect(self.config.socket_path_value, client_identity="resume-test")
+        try:
+            offered = client._service_transport.request("execution.bundle.begin", base)  # type: ignore[union-attr]
+            self.assertEqual(offered["next_sequence"], 0)
+            with archive.open("rb") as stream:
+                first = stream.read(chunk_bytes)
+            accepted = client._service_transport.request(  # type: ignore[union-attr]
+                "execution.bundle.chunk",
+                {
+                    "transfer_id": transfer_id,
+                    "bundle_identity": bundle_identity,
+                    "archive_identity": archive_identity,
+                    "sequence": 0,
+                    "data": base64.b64encode(first).decode("ascii"),
+                },
+            )
+            self.assertEqual(accepted["status"], "ACCEPTED")
+            self.assertEqual(
+                client._upload_service_bundle(archive),
+                {
+                    "bundle_identity": bundle_identity,
+                    "archive_identity": archive_identity,
+                },
+            )
+            content = self.service._consumer_bundle_cache.root_for(
+                bundle_identity, archive_identity
+            )
+            self.assertTrue((content / "task.py").is_file())
+        finally:
+            client.close()
 
     def test_malformed_and_unsafe_socket_paths_fail_closed(self) -> None:
         root = Path(self.temp.name)
@@ -262,7 +322,7 @@ class ServiceTransportTests(unittest.TestCase):
                 worker_state_path=root / "controller-workers.jsonl",
                 execution_bundle_root=root / "execution-bundles",
             )
-            archive = config.execution_bundle_root_value / "job.zip"
+            archive = root / "consumer-owned-job.zip"
             bundle_report = build_bundle_archive(source, archive)
             service = ControllerService(config)
             service_thread = threading.Thread(
@@ -305,6 +365,11 @@ class ServiceTransportTests(unittest.TestCase):
                     worker_id="worker-service",
                     execution_bundle_archive=archive,
                 )
+                with self.assertRaisesRegex(ProtocolError, "bundle reference"):
+                    client._service_transport.request(  # type: ignore[union-attr]
+                        "execution.dispatch",
+                        {"execution_bundle_archive": str(archive)},
+                    )
                 scheduled_plan = validate_job_plan(
                     {
                         **{key: value for key, value in plan.items() if key != "job_identity"},
