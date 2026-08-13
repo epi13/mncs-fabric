@@ -6,7 +6,7 @@ After=network-online.target
 [Service]
 Type=simple
 EnvironmentFile=%h/.config/mncs-fabric/workers/%i.env
-ExecStart=%h/.local/share/mncs-fabric/venv/bin/mncs-fabric worker rendezvous --worker-id %i --controller-id ${MNCS_FABRIC_CONTROLLER_ID} --controller-host ${MNCS_FABRIC_CONTROLLER_HOST} --controller-port ${MNCS_FABRIC_CONTROLLER_PORT} --bundle-root ${MNCS_FABRIC_BUNDLE_ROOT} --state ${MNCS_FABRIC_WORKER_STATE} --trust-state ${MNCS_FABRIC_TRUST_STATE} --ca ${MNCS_FABRIC_CA} --certificate ${MNCS_FABRIC_CERTIFICATE} --key ${MNCS_FABRIC_CERTIFICATE_KEY}
+ExecStart=%h/.local/share/mncs-fabric/venv/bin/mncs-fabric worker rendezvous --worker-id %i --controller-id ${MNCS_FABRIC_CONTROLLER_ID} --controller-host ${MNCS_FABRIC_CONTROLLER_HOST} --controller-port ${MNCS_FABRIC_CONTROLLER_PORT} --bundle-root ${MNCS_FABRIC_BUNDLE_ROOT} --state ${MNCS_FABRIC_WORKER_STATE} --trust-state ${MNCS_FABRIC_TRUST_STATE} --ca ${MNCS_FABRIC_CA} --certificate ${MNCS_FABRIC_CERTIFICATE} --key ${MNCS_FABRIC_CERTIFICATE_KEY} --containment-mode ${MNCS_FABRIC_CONTAINMENT_MODE}
 Restart=on-failure
 RestartSec=2s
 UMask=0077

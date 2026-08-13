@@ -188,6 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--max-concurrent-connections", type=int, default=1)
     serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
     serve.add_argument("--bundle-cache", type=_path, help="immutable EA-NEXT-002 bundle cache for native transfer")
+    serve.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
     rendezvous = worker_sub.add_parser("rendezvous", help="dial a persistent controller and maintain a worker session")
     rendezvous.add_argument("--worker-id", required=True)
     rendezvous.add_argument("--controller-id", required=True)
@@ -203,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     rendezvous.add_argument("--heartbeat-seconds", type=float, default=5.0)
     rendezvous.add_argument("--timeout", type=float, default=5.0)
     rendezvous.add_argument("--max-seconds", type=float)
+    rendezvous.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
     join = worker_sub.add_parser(
         "join", help="generate a durable local identity and protected enrollment request"
     )
@@ -350,7 +352,10 @@ def build_parser() -> argparse.ArgumentParser:
     worker_revoke.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
 
     controller = sub.add_parser("controller", help="inspect or run the persistent Fabric controller foundation")
-    controller.add_argument("--controller-id", default="local")
+    controller.add_argument(
+        "--controller-id",
+        default=os.environ.get("MNCS_FABRIC_CONTROLLER_ID", "mncs-fabric-controller"),
+    )
     controller_sub = controller.add_subparsers(dest="controller_command", required=True)
     controller_status = controller_sub.add_parser("status", help="inspect controller and lifecycle health")
     controller_status.add_argument("--json", action="store_true")
@@ -688,7 +693,7 @@ def main(argv: list[str] | None = None) -> int:
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
         if args.command == "worker" and args.worker_command == "serve":
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
             endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
             if args.max_requests == 1 and args.idle_timeout is None and args.max_concurrent_connections == 1:
                 endpoint.serve_once()
@@ -699,7 +704,7 @@ def main(argv: list[str] | None = None) -> int:
             return _status_code(result["outcome"])
         if args.command == "worker" and args.worker_command == "rendezvous":
             from .transport import TLSRendezvousWorker
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
             endpoint = TLSRendezvousWorker(worker_service, args.controller_host, args.controller_port, ca_file=args.ca, client_cert=args.certificate, client_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), heartbeat_seconds=args.heartbeat_seconds, timeout=args.timeout)
             result = endpoint.run(max_seconds=args.max_seconds)
             write_json(None, result)

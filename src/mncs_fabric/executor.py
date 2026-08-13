@@ -16,6 +16,7 @@ from typing import Any, BinaryIO
 
 from .artifacts import copy_manifest_files, file_identity, verify_manifest
 from .canonical import attach_identity, sha256_identity
+from .containment import BubblewrapProvider, ContainmentUnavailable, prepare_launch
 from .errors import FabricError, IntegrityError, ValidationError
 from .models import EXECUTION_SCHEMA, validate_job_plan
 from .node import capability_names, collect_node_capabilities, utc_now
@@ -121,6 +122,7 @@ def _stream_record(value: _CapturedStream) -> dict[str, Any]:
 def _failure_record(
     *, plan: dict[str, Any], manifest_identity: str | None, node: dict[str, Any],
     started_at: str, started_monotonic: float, reason: str, detail: str,
+    containment_mode: str | None = None,
 ) -> dict[str, Any]:
     record = {
         "schema_version": EXECUTION_SCHEMA,
@@ -149,6 +151,9 @@ def _failure_record(
         "policy_observations": {
             "network_policy": plan.get("network_policy"),
             "network_enforcement": "UNKNOWN",
+            "containment_mode": containment_mode,
+            "containment_provider": "unavailable" if reason == "CONTAINMENT_UNAVAILABLE" else None,
+            "filesystem_enforcement": "UNAVAILABLE" if reason == "CONTAINMENT_UNAVAILABLE" else "UNKNOWN",
         },
         "limitations": ["No hardware-backed attestation or independent custody was established."],
     }
@@ -158,6 +163,8 @@ def _failure_record(
 def execute_local(
     plan_value: Any, bundle_root: Path, manifest_value: Any, machine_label: str,
     *, results_dir: Path | None = None, work_root: Path | None = None,
+    containment_mode: str = "compatibility-uncontained",
+    containment_provider: BubblewrapProvider | None = None,
 ) -> dict[str, Any]:
     started_at = utc_now()
     started_monotonic = time.monotonic()
@@ -191,12 +198,34 @@ def execute_local(
             executable_size, executable_identity = file_identity(executable)
         except OSError as exc:
             return _failure_record(plan=plan, manifest_identity=manifest["manifest_identity"], node=node, started_at=started_at, started_monotonic=started_monotonic, reason="EXECUTABLE_UNAVAILABLE", detail=str(exc))
+        environment = _minimal_environment(plan["environment"])
+        try:
+            launch = prepare_launch(
+                argv,
+                workdir=workdir,
+                cwd=cwd,
+                environment=environment,
+                network_policy=plan["network_policy"],
+                mode=containment_mode,
+                provider=containment_provider,
+            )
+        except (ContainmentUnavailable, ValueError) as exc:
+            return _failure_record(
+                plan=plan,
+                manifest_identity=manifest["manifest_identity"],
+                node=node,
+                started_at=started_at,
+                started_monotonic=started_monotonic,
+                reason="CONTAINMENT_UNAVAILABLE",
+                detail=str(exc),
+                containment_mode=containment_mode,
+            )
         creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) if os.name == "nt" else 0
         try:
             proc = subprocess.Popen(
-                argv,
-                cwd=cwd,
-                env=_minimal_environment(plan["environment"]),
+                launch.argv,
+                cwd=launch.cwd,
+                env=launch.environment,
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -293,12 +322,14 @@ def execute_local(
             "results": sorted(results, key=lambda item: item["path"]),
             "policy_observations": {
                 "network_policy": plan["network_policy"],
-                "network_enforcement": "UNKNOWN",
+                "network_enforcement": launch.network_enforcement,
+                "containment_mode": containment_mode,
+                "containment_provider": launch.provider,
+                "filesystem_enforcement": launch.filesystem_enforcement,
             },
             "limitations": [
-                "Execution is bounded but not a security sandbox.",
+                *launch.limitations,
                 "No hardware-backed attestation or independent custody was established.",
-                "Network policy is recorded but not enforced by the local executor.",
             ],
         }
         return attach_identity(record, "record_id")

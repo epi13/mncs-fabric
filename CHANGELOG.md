@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.0a18 - reusable deployment, containment, and durable lookup
+
+- replace consumer-specific controller identity/state paths with Fabric-owned,
+  configurable systemd deployment plus idempotent controller/worker update and
+  explicit non-revoking uninstall helpers;
+- add an explicit worker containment provider boundary, fail-closed required mode,
+  and a concrete Fedora/Linux bubblewrap backend with bundle-only filesystem access,
+  ambient-home removal, and offline network namespace enforcement;
+- replace bounded retry scans with restart-rebuilt in-memory worker replay state and
+  an identity-validated, stale-detecting derived target-evidence index whose JSONL
+  ledger remains authoritative; and
+- publish additive containment feature flags and controller config v0.3 without
+  expanding the ordinary consumer authority surface.
+
 ## 0.2.0a17 - persistent substrate hardening and exact-target execution
 
 - make lifecycle revocation authoritative over legacy registry entries, active

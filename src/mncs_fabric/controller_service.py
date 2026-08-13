@@ -34,11 +34,11 @@ from .targets import (
     build_target_execution_evidence,
     evaluate_target_admission,
     validate_execution_target_reference,
-    validate_target_execution_evidence,
 )
+from .target_index import TargetEvidenceIndex
 from .transport import TLSRendezvousServer
 
-CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.2"
+CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.3"
 CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
 
 
@@ -53,6 +53,7 @@ class ControllerConfig:
     worker_registry_path: Path | None = None
     worker_state_path: Path | None = None
     execution_bundle_root: Path | None = None
+    target_evidence_index: Path | None = None
     rendezvous_host: str | None = None
     rendezvous_port: int | None = None
     rendezvous_ca: Path | None = None
@@ -93,6 +94,7 @@ class ControllerConfig:
             "admin_socket_path": str(self.admin_socket_path_value),
             "worker_registry_path": str(self.worker_registry_path_value) if self.worker_registry_path is not None else None,
             "execution_bundle_root": str(self.execution_bundle_root_value),
+            "target_evidence_index": str(self.target_evidence_index_value),
             "rendezvous_host": self.rendezvous_host,
             "rendezvous_port": self.rendezvous_port,
             "administrative_transport": "separate local operator socket",
@@ -124,12 +126,16 @@ class ControllerConfig:
         return Path(self.execution_bundle_root).expanduser() if self.execution_bundle_root is not None else self.lifecycle_state.parent / "execution-bundles"
 
     @property
+    def target_evidence_index_value(self) -> Path:
+        return Path(self.target_evidence_index).expanduser() if self.target_evidence_index is not None else self.lifecycle_state.parent / "target-evidence-index.json"
+
+    @property
     def rendezvous_configured(self) -> bool:
         return self.rendezvous_host is not None and self.rendezvous_port is not None and all(value is not None for value in (self.rendezvous_ca, self.rendezvous_certificate, self.rendezvous_key, self.rendezvous_trust_state))
 
 
 def default_controller_config() -> ControllerConfig:
-    return ControllerConfig("local", default_lifecycle_path())
+    return ControllerConfig("mncs-fabric-controller", default_lifecycle_path())
 
 
 def controller_paths() -> dict[str, Path]:
@@ -150,6 +156,9 @@ class ControllerService:
         self.capability_ledger = FabricLedger(self.config.worker_state_path_value)
         self.target_ledger = FabricLedger(
             self.config.worker_state_path_value.with_name("target-execution.jsonl")
+        )
+        self._target_evidence_index = TargetEvidenceIndex(
+            self.target_ledger, self.config.target_evidence_index_value
         )
         self._stop = Event()
         self._worker_client: Any | None = None
@@ -348,26 +357,14 @@ class ControllerService:
     def _prior_target_execution_evidence(
         self,
         execution_request_identity: str,
+        admission: Mapping[str, Any],
         result: Mapping[str, Any],
     ) -> dict[str, Any] | None:
         """Find the original evidence for a durable idempotent worker result."""
 
-        for entry in reversed(
-            self.target_ledger.records(record_type="target.execution", limit=100000)
-        ):
-            evidence = validate_target_execution_evidence(entry["record"])
-            if evidence["execution_request_identity"] != execution_request_identity:
-                continue
-            compared = (
-                "worker_identity",
-                "job_identity",
-                "bundle_identity",
-                "record_identity",
-                "receipt_identity",
-            )
-            if all(evidence[field] == result.get(field) for field in compared):
-                return evidence
-        return None
+        return self._target_evidence_index.lookup(
+            execution_request_identity, admission, result
+        )
 
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
@@ -661,7 +658,7 @@ class ControllerService:
                             raise ProtocolError("target became unavailable before exact-worker execution")
                         if result["disposition"] == "DUPLICATE_IDEMPOTENT":
                             evidence = self._prior_target_execution_evidence(
-                                str(execution_request_identity), result
+                                str(execution_request_identity), admission, result
                             )
                             if evidence is None:
                                 raise ProtocolError(
@@ -670,6 +667,7 @@ class ControllerService:
                         else:
                             evidence = build_target_execution_evidence(admission, result)
                             self.target_ledger.append("target.execution", evidence)
+                            self._target_evidence_index.add(evidence)
                         result = {
                             **result,
                             "execution_target_reference_identity": target["target_identity"],

@@ -4,7 +4,7 @@ Status: **Phase A, protected file-mediated Fedora commissioning, and
 authenticated worker-initiated rendezvous implemented; online discovery and
 cross-platform service packaging remain planned**
 
-Implemented through `0.2.0a17`:
+Implemented through `0.2.0a18`:
 
 - versioned, append-only enrollment authorization, request, decision, fleet
   membership, revocation, and session-presence records;

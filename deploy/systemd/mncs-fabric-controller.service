@@ -5,7 +5,7 @@ After=default.target
 [Service]
 Type=simple
 EnvironmentFile=-%h/.config/mncs-fabric/controller.env
-ExecStart=%h/.local/bin/mncs-fabric controller --controller-id epi13-local-harness service run --state %h/.local/state/mncs-fabric/lifecycle.jsonl --registry %h/.local/state/mncs-fabric/workers.json --worker-state %h/.local/state/mncs-fabric/controller-workers.jsonl --execution-bundle-root %h/.local/state/mncs-control-mcp/fabric-bundles
+ExecStart=%h/.local/share/mncs-fabric/venv/bin/mncs-fabric controller service run --state %h/.local/state/mncs-fabric/lifecycle.jsonl --worker-state %h/.local/state/mncs-fabric/controller-workers.jsonl --execution-bundle-root %h/.local/state/mncs-fabric/execution-bundles
 Restart=on-failure
 RestartSec=2s
 UMask=0077

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .canonical import sha256_identity
@@ -25,7 +26,7 @@ from .runtime import build_runtime_binding, build_runtime_capability_binding, bu
 class LocalWorker:
     """A worker callable in-process; no unauthenticated listener is created."""
 
-    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None) -> None:
+    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained") -> None:
         if not worker_id or concurrency_limit < 1:
             raise ValueError("worker_id and a positive concurrency limit are required")
         self.worker_id = worker_id
@@ -33,6 +34,19 @@ class LocalWorker:
         self.ledger = FabricLedger(Path(state_path))
         self.concurrency_limit = concurrency_limit
         self.bundle_cache = BundleCache(Path(bundle_cache_root)) if bundle_cache_root is not None else None
+        self.containment_mode = containment_mode
+        self._replay_lock = Lock()
+        self._dispatch_by_request: dict[str, dict[str, Any]] = {}
+        self._result_by_request: dict[str, dict[str, Any]] = {}
+        for entry in self.ledger.all_records():
+            record = entry["record"]
+            request = record.get("request_id")
+            if not isinstance(request, str):
+                continue
+            if entry["record_type"] == "protocol.dispatch":
+                self._dispatch_by_request[request] = record
+            elif entry["record_type"] == "protocol.result":
+                self._result_by_request[request] = record
         # The profile describes the interpreter that launched this worker
         # process. Capture it once so repeated descriptions do not rotate the
         # profile identity merely because contact time changed.
@@ -71,16 +85,12 @@ class LocalWorker:
         from datetime import datetime, timezone
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
-    def _entries(self, record_type: str) -> list[dict[str, Any]]:
-        return self.ledger.records(record_type=record_type, limit=100000)
-
     def _prior_dispatch(self, request_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        dispatches = [entry["record"] for entry in self._entries("protocol.dispatch") if entry["record"].get("request_id") == request_id]
-        if not dispatches:
-            return None, None
-        dispatch = dispatches[-1]
-        results = [entry["record"] for entry in self._entries("protocol.result") if entry["record"].get("request_id") == request_id]
-        return dispatch, results[-1] if results else None
+        with self._replay_lock:
+            return (
+                self._dispatch_by_request.get(request_id),
+                self._result_by_request.get(request_id),
+            )
 
     def handle(self, envelope: object, *, now: str | None = None) -> dict[str, Any]:
         message = validate_envelope(envelope, now=now)
@@ -151,9 +161,18 @@ class LocalWorker:
                 raise ProtocolError("dispatch requires a bundle cache that is not configured")
             execution_root = self.bundle_cache.root_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
             bundle_report = self.bundle_cache.report_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
-        self.ledger.append("protocol.dispatch", {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"], "bundle_identity": bundle_info.get("bundle_identity") if isinstance(bundle_info, dict) else None, "archive_identity": bundle_info.get("archive_identity") if isinstance(bundle_info, dict) else None})
+        dispatch_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"], "bundle_identity": bundle_info.get("bundle_identity") if isinstance(bundle_info, dict) else None, "archive_identity": bundle_info.get("archive_identity") if isinstance(bundle_info, dict) else None}
+        self.ledger.append("protocol.dispatch", dispatch_record)
+        with self._replay_lock:
+            self._dispatch_by_request[request_id] = dispatch_record
         try:
-            record = execute_local(payload["job_plan"], execution_root, payload["artifact_manifest"], self.worker_id)
+            record = execute_local(
+                payload["job_plan"],
+                execution_root,
+                payload["artifact_manifest"],
+                self.worker_id,
+                containment_mode=self.containment_mode,
+            )
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
         placement_reference = build_placement_reference(placement_admission) if placement_admission is not None else None
@@ -184,6 +203,8 @@ class LocalWorker:
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         self.ledger.append("protocol.result", result_record)
+        with self._replay_lock:
+            self._result_by_request[request_id] = result_record
         return self._response(message, "execution.result", response_payload)
 
     def _handle_bundle_message(self, message: dict[str, Any]) -> dict[str, Any]:
