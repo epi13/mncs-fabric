@@ -217,7 +217,7 @@ class RendezvousCoordinator:
             })
         return result
 
-    def dispatch(self, plan: object, manifest: object, *, worker_id: str | None = None, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle_archive: Path | None = None, placement: Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    def dispatch(self, plan: object, manifest: object, *, worker_id: str | None = None, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle_archive: Path | None = None, placement: Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None, expected_session_id: str | None = None, expected_session_generation: int | None = None) -> list[dict[str, Any]]:
         from .api import _consumer_result
         from .bundle_transfer import transfer_archive
         from .controller import NetworkController
@@ -238,6 +238,16 @@ class RendezvousCoordinator:
             if worker_id in known and not self._member_allowed(known.get(worker_id)):
                 raise ProtocolError("worker Fabric membership is not active")
             sessions = {worker_id: sessions[worker_id]} if worker_id in sessions else {}
+        if expected_session_id is not None or expected_session_generation is not None:
+            if worker_id is None:
+                raise ProtocolError("session-bound dispatch requires one exact worker")
+            session = sessions.get(worker_id)
+            if (
+                session is None
+                or session.session_id != expected_session_id
+                or session.generation != expected_session_generation
+            ):
+                raise ProtocolError("worker rendezvous session changed after target admission")
         slots = [WorkerSlot(worker_id=key, capabilities=frozenset(capability_names(value.description["node"])), concurrency_limit=int(known.get(key, {}).get("concurrency_limit", 1)), resource_snapshot=value.description.get("resource_snapshot")) for key, value in sessions.items()]
         decision = schedule(checked, slots, replicas=replicas, placement=placement)
         if decision.disposition != "PASS":

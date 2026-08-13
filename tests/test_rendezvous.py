@@ -20,7 +20,6 @@ from mncs_fabric.models import validate_job_plan
 from mncs_fabric.api import FabricAdminClient, FabricClient
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.lifecycle import LifecycleStore
-from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.rendezvous import RendezvousCoordinator
 from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.transport import TLSRendezvousServer, TLSRendezvousWorker
@@ -330,6 +329,18 @@ class RendezvousTests(unittest.TestCase):
             )
             self.assertEqual(duplicate["disposition"], "DUPLICATE_IDEMPOTENT")
             self.assertEqual(duplicate["worker_identity"], worker.worker_id)
+            self.assertGreater(
+                duplicate["target_admission"]["session_generation"],
+                duplicate["target_execution_evidence"]["session_generation"],
+            )
+            self.assertEqual(
+                duplicate["target_execution_evidence_identity"],
+                result["target_execution_evidence_identity"],
+            )
+            self.assertEqual(
+                duplicate["target_execution_evidence"]["session_generation"],
+                first_generation,
+            )
 
             admin = FabricAdminClient.connect(config.admin_socket_path_value)
             try:

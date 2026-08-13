@@ -518,6 +518,10 @@ class ServiceTransportTests(unittest.TestCase):
             self.assertEqual(targeted["disposition"], "EXECUTED")
             self.assertEqual(targeted_retry["disposition"], "DUPLICATE_IDEMPOTENT")
             self.assertEqual(
+                targeted_retry["target_execution_evidence_identity"],
+                targeted["target_execution_evidence_identity"],
+            )
+            self.assertEqual(
                 targeted["target_execution_evidence"]["worker_identity"],
                 "worker-service",
             )

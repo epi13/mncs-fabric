@@ -34,6 +34,7 @@ from .targets import (
     build_target_execution_evidence,
     evaluate_target_admission,
     validate_execution_target_reference,
+    validate_target_execution_evidence,
 )
 from .transport import TLSRendezvousServer
 
@@ -344,6 +345,30 @@ class ControllerService:
             "target_admission_identity": admission["target_admission_identity"],
         }
 
+    def _prior_target_execution_evidence(
+        self,
+        execution_request_identity: str,
+        result: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Find the original evidence for a durable idempotent worker result."""
+
+        for entry in reversed(
+            self.target_ledger.records(record_type="target.execution", limit=100000)
+        ):
+            evidence = validate_target_execution_evidence(entry["record"])
+            if evidence["execution_request_identity"] != execution_request_identity:
+                continue
+            compared = (
+                "worker_identity",
+                "job_identity",
+                "bundle_identity",
+                "record_identity",
+                "receipt_identity",
+            )
+            if all(evidence[field] == result.get(field) for field in compared):
+                return evidence
+        return None
+
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
         # the package surface is being initialized.
@@ -616,6 +641,8 @@ class ControllerService:
                                 request_id=str(execution_request_identity),
                                 consumer_context=args.get("consumer_context"),
                                 execution_bundle_archive=archive,
+                                expected_session_id=admission.get("session_id"),
+                                expected_session_generation=admission.get("session_generation"),
                             )
                             execution_transport = "worker-initiated-persistent-rendezvous"
                         elif self._worker_client is not None:
@@ -632,8 +659,17 @@ class ControllerService:
                         result = results[0] if len(results) == 1 else None
                         if not isinstance(result, dict) or result.get("worker_identity") != target["worker_identity"] or result.get("disposition") not in {"EXECUTED", "DUPLICATE_IDEMPOTENT"}:
                             raise ProtocolError("target became unavailable before exact-worker execution")
-                        evidence = build_target_execution_evidence(admission, result)
-                        self.target_ledger.append("target.execution", evidence)
+                        if result["disposition"] == "DUPLICATE_IDEMPOTENT":
+                            evidence = self._prior_target_execution_evidence(
+                                str(execution_request_identity), result
+                            )
+                            if evidence is None:
+                                raise ProtocolError(
+                                    "idempotent target result lacks durable original execution evidence"
+                                )
+                        else:
+                            evidence = build_target_execution_evidence(admission, result)
+                            self.target_ledger.append("target.execution", evidence)
                         result = {
                             **result,
                             "execution_target_reference_identity": target["target_identity"],
