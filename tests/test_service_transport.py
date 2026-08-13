@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.api import FabricAdminClient, FabricClient
+from mncs_fabric.contracts import ConsumerContext
 from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
@@ -25,6 +26,7 @@ from mncs_fabric.models import validate_job_plan
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.service_transport import SERVICE_MAX_FRAME_BYTES, SERVICE_REQUEST_SCHEMA, ServiceClientTransport
 from mncs_fabric.transport import TLSWorkerServer
+from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.canonical import attach_identity, sha256_identity
 from tests.test_transport import _certificates
@@ -343,6 +345,20 @@ class ServiceTransportTests(unittest.TestCase):
                 worker_state_path=root / "controller-workers.jsonl",
                 execution_bundle_root=root / "execution-bundles",
             )
+            lifecycle = LifecycleStore(config.lifecycle_state)
+            authorization = lifecycle.create_authorization(
+                expected_worker_identity="worker-service"
+            )
+            enrollment_request = lifecycle.build_request(
+                worker_identity="worker-service",
+                public_key_pem="-----BEGIN PUBLIC KEY-----\nMDEyMzQ1Njc4OWFiY2RlZg==\n-----END PUBLIC KEY-----\n",
+                hostname_hint="worker-service.local",
+                operating_system="linux",
+                architecture="x86_64",
+                authorization_id=str(authorization["authorization_id"]),
+            )
+            lifecycle.submit_request(enrollment_request, str(authorization["token"]))
+            lifecycle.approve_request(str(enrollment_request["request_id"]))
             archive = root / "consumer-owned-job.zip"
             bundle_report = build_bundle_archive(source, archive)
             service = ControllerService(config)
@@ -362,12 +378,23 @@ class ServiceTransportTests(unittest.TestCase):
                 status = client.controller_status()
                 self.assertTrue(status["service_features"]["persistent_service_execution"])
                 self.assertTrue(status["service_features"]["persistent_worker_observations"])
+                self.assertTrue(status["service_features"]["target_aware_execution"])
+                self.assertTrue(status["service_features"]["worker_commissioning"])
+                self.assertTrue(status["service_features"]["worker_tool_capability_observations"])
+                self.assertTrue(status["service_features"]["resumable_service_bundle_transfer"])
+                self.assertFalse(status["service_features"]["rendezvous_membership_projection"])
                 workers = client.workers()
                 self.assertEqual(workers[0]["worker_id"], "worker-service")
                 self.assertEqual(workers[0]["availability"], "AVAILABLE")
                 observation = client.ingest_capability_observation(
                     "worker-service",
                     [
+                        {
+                            "kind": "runtime",
+                            "namespace": "system",
+                            "name": "python",
+                            "attributes": {"status": "ready"},
+                        },
                         {
                             "kind": "tool",
                             "namespace": "test",
@@ -379,6 +406,62 @@ class ServiceTransportTests(unittest.TestCase):
                 self.assertEqual(observation["availability"], "AVAILABLE")
                 self.assertEqual(
                     client.capability_inventory("worker-service")["status"], "CURRENT"
+                )
+                context = ConsumerContext(
+                    source_project="integration-harness",
+                    consumer_workload_identity="sha256:" + "a" * 64,
+                )
+                tool_identity = next(
+                    item["capability_identity"]
+                    for item in observation["capabilities"]
+                    if item["kind"] == "tool"
+                )
+                runtime_identity = workers[0]["description"]["runtime_profile"]["runtime_profile_identity"]
+                target = ExecutionTargetReference(
+                    worker_identity="worker-service",
+                    required_capabilities=("python", "tool:persistent-service-probe"),
+                    tool_capability_identity=tool_identity,
+                    runtime_identity=runtime_identity,
+                    consumer_context_identity=context.context_identity,
+                    consumer_authorization_identity="sha256:" + "b" * 64,
+                )
+                targeted = client.execute_target(
+                    target,
+                    plan,
+                    manifest,
+                    consumer_context=context,
+                    consumer_authorization_identity="sha256:" + "b" * 64,
+                    execution_bundle_archive=archive,
+                )
+                targeted_retry = client.execute_target(
+                    target,
+                    plan,
+                    manifest,
+                    consumer_context=context,
+                    consumer_authorization_identity="sha256:" + "b" * 64,
+                    execution_bundle_archive=archive,
+                )
+                before_missing_capability = len(
+                    worker.ledger.records(record_type="execution.record")
+                )
+                client.ingest_capability_observation(
+                    "worker-service",
+                    [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                )
+                missing_capability_target = client.execute_target(
+                    target,
+                    plan,
+                    manifest,
+                    consumer_context=context,
+                    consumer_authorization_identity="sha256:" + "b" * 64,
+                    execution_bundle_archive=archive,
+                    request_id="sha256:" + "d" * 64,
+                )
+                self.assertEqual(missing_capability_target["disposition"], "DENIED")
+                self.assertEqual(missing_capability_target["reason"], "TARGET_CAPABILITY_MISSING")
+                self.assertEqual(
+                    len(worker.ledger.records(record_type="execution.record")),
+                    before_missing_capability,
                 )
                 results = client.execute(
                     plan,
@@ -402,6 +485,25 @@ class ServiceTransportTests(unittest.TestCase):
                     manifest,
                     execution_bundle_archive=archive,
                 )
+                execution_count = len(worker.ledger.records(record_type="execution.record"))
+                admin = FabricAdminClient.connect(config.admin_socket_path_value)
+                try:
+                    admin.revoke_worker("worker-service", reason="target revocation test")
+                finally:
+                    admin.close()
+                revoked_target = client.execute_target(
+                    target,
+                    plan,
+                    manifest,
+                    consumer_context=context,
+                    consumer_authorization_identity="sha256:" + "b" * 64,
+                    execution_bundle_archive=archive,
+                    request_id="sha256:" + "c" * 64,
+                )
+                self.assertEqual(
+                    len(worker.ledger.records(record_type="execution.record")),
+                    execution_count,
+                )
             finally:
                 client.close()
                 service.request_stop()
@@ -413,6 +515,14 @@ class ServiceTransportTests(unittest.TestCase):
             self.assertEqual(bundle_report.category, "PASS")
             self.assertEqual(results[0]["record"]["outcome"], "PASS")
             self.assertEqual(results[0]["worker_identity"], "worker-service")
+            self.assertEqual(targeted["disposition"], "EXECUTED")
+            self.assertEqual(targeted_retry["disposition"], "DUPLICATE_IDEMPOTENT")
+            self.assertEqual(
+                targeted["target_execution_evidence"]["worker_identity"],
+                "worker-service",
+            )
+            self.assertEqual(revoked_target["disposition"], "DENIED")
+            self.assertEqual(revoked_target["reason"], "TARGET_REVOKED")
             self.assertEqual(scheduled_results[0]["record"]["outcome"], "PASS")
             self.assertEqual(scheduled_results[0]["worker_identity"], "worker-service")
 

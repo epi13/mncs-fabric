@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.2.0a17 - persistent substrate hardening and exact-target execution
+
+- make lifecycle revocation authoritative over legacy registry entries, active
+  rendezvous sessions, direct dispatch, and configured transport trust while
+  retaining append-only history;
+- route online enrollment mutations through the operator service, make offline
+  signing explicit, and validate CA/controller/worker certificate, key, identity,
+  and pin bindings before issuance or activation;
+- add a two-phase Fedora reboot acceptance helper that verifies the Fabric consumer
+  projection before post-reboot SSH and preserves physical status as `UNKNOWN` until
+  a real reboot is completed;
+- add exact no-fallback persistent target dispatch with current membership,
+  authenticated presence, liveness, capability, runtime, context, and provenance
+  re-admission plus first-class identity-addressed evidence;
+- preserve deterministic worker-ledger idempotence across exact-target retry and
+  expose stable target failure codes; and
+- make rendezvous heartbeat deadlines tolerate the negotiated interval and declared
+  job bound while advancing multi-command verified bundle transfer without a full
+  heartbeat delay per chunk.
+
 ## 0.2.0a16 - persistent worker rendezvous and service execution
 
 - route bounded execution requests through the persistent controller-owned worker

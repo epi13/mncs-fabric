@@ -502,12 +502,16 @@ class TLSRendezvousServer:
                     if accepted["message_type"] != "worker.session.accept":
                         raise ProtocolError("rendezvous coordinator returned an invalid acceptance")
                     session_id = str(accepted["payload"]["session_id"])
+                    heartbeat_seconds = float(accepted["payload"]["heartbeat_seconds"])
+                    idle_receive_timeout = heartbeat_seconds + self.timeout
                     send_frame(stream, accepted, max_frame_bytes=self.max_frame_bytes)
                     self.handled_sessions += 1
+                    receive_timeout = idle_receive_timeout
                     while not self._stop_event.is_set():
-                        message = validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes, deadline=time.monotonic() + self.timeout))
+                        message = validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes, deadline=time.monotonic() + receive_timeout))
                         response = validate_envelope(self.on_message(session_id, message))  # type: ignore[operator]
                         send_frame(stream, response, max_frame_bytes=self.max_frame_bytes)
+                        receive_timeout = self._next_receive_timeout(response, idle_receive_timeout)
         except (ProtocolError, OSError, ssl.SSLError, TimeoutError) as exc:
             self.last_error = str(exc)
         finally:
@@ -518,6 +522,20 @@ class TLSRendezvousServer:
                     self.last_error = str(exc)
             with self._threads_lock:
                 self._threads.discard(current)
+
+    def _next_receive_timeout(self, response: dict[str, object], idle_timeout: float) -> float:
+        """Allow a dispatched job its declared bound before expecting a result."""
+
+        payload = response.get("payload")
+        command = payload.get("command") if isinstance(payload, dict) else None
+        if not isinstance(command, dict) or command.get("message_type") != "dispatch.request":
+            return idle_timeout
+        command_payload = command.get("payload")
+        plan = command_payload.get("job_plan") if isinstance(command_payload, dict) else None
+        timeout_seconds = plan.get("timeout_seconds") if isinstance(plan, dict) else None
+        if not isinstance(timeout_seconds, (int, float)) or isinstance(timeout_seconds, bool):
+            return idle_timeout
+        return max(idle_timeout, float(timeout_seconds) + self.timeout)
 
     def _close_listener(self) -> None:
         if self._listener is not None:
@@ -585,6 +603,10 @@ class TLSRendezvousWorker:
                             response = validate_envelope(self.worker.handle(command))  # type: ignore[attr-defined]
                             send_frame(stream, response, max_frame_bytes=self.max_frame_bytes)
                             validate_envelope(receive_frame(stream, max_frame_bytes=self.max_frame_bytes, deadline=time.monotonic() + self.timeout))
+                            # Poll once immediately so a controller-side bundle
+                            # transfer can advance without waiting an entire
+                            # heartbeat interval between bounded commands.
+                            continue
                         self._stop_event.wait(interval)
         except (ProtocolError, OSError, ssl.SSLError, TimeoutError) as exc:
             self.last_error = str(exc)

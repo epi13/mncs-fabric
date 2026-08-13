@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric target admission 0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "target_identity", "target_reference", "worker_identity", "disposition", "reason_code", "evaluated_at", "request_binding", "membership_status", "availability", "transport", "session_id", "session_generation", "liveness_observed_at", "liveness_age_seconds", "capability_observation_identity", "capability_observed_at", "capability_age_seconds", "observed_capability_identities", "observed_runtime_identity", "checks", "authorization_interpretation", "claim_boundary", "target_admission_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.target-admission.v0.1"},
+    "target_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "target_reference": {"$ref": "execution-target-reference-v0.1.schema.json"},
+    "worker_identity": {"type": "string"},
+    "disposition": {"enum": ["PASS", "DENIED", "UNKNOWN"]},
+    "reason_code": {"enum": ["TARGET_ADMITTED", "TARGET_UNKNOWN", "TARGET_REVOKED", "TARGET_DISCONNECTED", "TARGET_LIVENESS_STALE", "TARGET_CAPABILITIES_STALE", "TARGET_CAPABILITY_MISSING", "TARGET_RUNTIME_MISMATCH", "TARGET_TOOL_CAPABILITY_MISMATCH", "TARGET_CONTEXT_MISMATCH", "TARGET_AUTHORIZATION_BINDING_INVALID", "TARGET_BECAME_UNAVAILABLE"]},
+    "evaluated_at": {"type": "string", "format": "date-time"},
+    "request_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_identity", "request_identity", "execution_request_identity", "authenticated_client_identity", "client_label", "consumer_context_identity", "consumer_authorization_identity", "job_identity", "bundle_identity", "authorization_interpretation", "request_binding_identity"],
+      "properties": {
+        "target_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "execution_request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "authenticated_client_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "client_label": {"type": "string"},
+        "consumer_context_identity": {"type": "string"},
+        "consumer_authorization_identity": {"type": "string"},
+        "job_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "bundle_identity": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "authorization_interpretation": {"const": "CONSUMER_PROVIDED_PROVENANCE_ONLY"},
+        "request_binding_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    },
+    "membership_status": {"type": ["string", "null"]},
+    "availability": {"type": ["string", "null"]},
+    "transport": {"type": ["string", "null"]},
+    "session_id": {"type": ["string", "null"]},
+    "session_generation": {"type": ["integer", "null"]},
+    "liveness_observed_at": {"type": ["string", "null"]},
+    "liveness_age_seconds": {"type": ["number", "null"]},
+    "capability_observation_identity": {"type": ["string", "null"]},
+    "capability_observed_at": {"type": ["string", "null"]},
+    "capability_age_seconds": {"type": ["number", "null"]},
+    "observed_capability_identities": {"type": "array", "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}},
+    "observed_runtime_identity": {"type": ["string", "null"]},
+    "checks": {"type": "object", "additionalProperties": {"enum": ["PASS", "FAIL", "UNKNOWN", "NOT_REQUIRED", "PROVENANCE_ONLY"]}},
+    "authorization_interpretation": {"const": "CONSUMER_PROVIDED_PROVENANCE_ONLY"},
+    "claim_boundary": {"type": "string"},
+    "target_admission_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

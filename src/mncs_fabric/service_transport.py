@@ -40,7 +40,7 @@ _OPERATIONS = {
     "controller.status", "controller.doctor", "fleet.list", "fleet.status",
     "worker.status", "worker.observations", "fleet.doctor",
     "execution.bundle.begin", "execution.bundle.chunk", "execution.bundle.commit",
-    "execution.dispatch",
+    "execution.dispatch", "execution.target.dispatch",
     "worker.capability.ingest", "worker.capability.observations",
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
@@ -274,12 +274,12 @@ class ControllerServiceServer:
             self._threads.append(thread)
             thread.start()
 
-    def _peer_allowed(self, connection: socket.socket) -> bool:
+    def _peer_identity(self, connection: socket.socket) -> str | None:
         if not hasattr(socket, "SO_PEERCRED"):
-            return False
+            return None
         raw = connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("3i"))
         _pid, uid, _gid = struct.unpack("3i", raw)
-        return uid == os.getuid()
+        return f"local-uid:{uid}" if uid == os.getuid() else None
 
     def _accept_loop(self, listener: socket.socket, role: str) -> None:
         while not self._stop.is_set():
@@ -298,11 +298,14 @@ class ControllerServiceServer:
 
     def _handle(self, connection: socket.socket, role: str) -> None:
         try:
-            if not self._peer_allowed(connection):
+            peer_identity = self._peer_identity(connection)
+            if peer_identity is None:
                 return
             deadline = time.monotonic() + 10.0
             request = _validate_request(receive_frame(connection, max_frame_bytes=SERVICE_MAX_FRAME_BYTES, deadline=deadline))
-            response = self.owner.handle_service_request(request, role=role)
+            response = self.owner.handle_service_request(
+                request, role=role, peer_identity=peer_identity
+            )
             send_frame(connection, response, max_frame_bytes=SERVICE_MAX_FRAME_BYTES)
         except (FabricError, OSError):
             # A malformed or unauthorized request is not allowed to disclose

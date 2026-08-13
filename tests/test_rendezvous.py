@@ -12,14 +12,17 @@ import unittest
 from pathlib import Path
 
 from mncs_fabric.artifacts import build_manifest
+from mncs_fabric.bundles import build_bundle_archive
+from mncs_fabric.contracts import ConsumerContext
 from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
 from mncs_fabric.errors import ProtocolError
 from mncs_fabric.models import validate_job_plan
-from mncs_fabric.api import FabricClient
+from mncs_fabric.api import FabricAdminClient, FabricClient
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.lifecycle import LifecycleStore
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.rendezvous import RendezvousCoordinator
+from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.transport import TLSRendezvousServer, TLSRendezvousWorker
 from mncs_fabric.worker import LocalWorker
 
@@ -170,13 +173,37 @@ class RendezvousTests(unittest.TestCase):
             service_thread.join(timeout=5)
 
     @unittest.skipUnless(os.name == "posix", "persistent consumer transport is POSIX-only")
-    def test_controller_service_exposes_live_rendezvous_fleet_to_consumer(self) -> None:
+    def test_persistent_substrate_target_restart_retry_and_revoke(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             cert = _certificates(root)
             source = root / "worker-root"
             source.mkdir()
-            worker = LocalWorker("worker-service-rendezvous", source, root / "worker.jsonl")
+            (source / "task.py").write_text("print('rendezvous-target')\n", encoding="utf-8")
+            manifest = build_manifest(source)
+            plan = validate_job_plan({
+                "schema_version": "mncs-fabric.job-plan.v0.1",
+                "job_id": "rendezvous:target",
+                "candidate_identity": manifest["manifest_identity"],
+                "evaluator_identity": None,
+                "artifact_manifest_identity": manifest["manifest_identity"],
+                "argv": ["@python", "task.py"],
+                "working_directory": ".",
+                "timeout_seconds": 5,
+                "output_limit_bytes": 4096,
+                "environment": {},
+                "required_capabilities": ["python"],
+                "result_paths": [],
+                "network_policy": "DECLARED_OFFLINE",
+            })
+            archive = root / "rendezvous-target.zip"
+            build_bundle_archive(source, archive)
+            worker = LocalWorker(
+                "worker-service-rendezvous",
+                source,
+                root / "worker.jsonl",
+                bundle_cache_root=root / "worker-bundle-cache",
+            )
             controller_trust_path = root / "controller-trust.jsonl"
             worker_trust_path = root / "worker-trust.jsonl"
             controller_trust = TrustStore(controller_trust_path)
@@ -185,23 +212,43 @@ class RendezvousTests(unittest.TestCase):
             worker_fp = certificate_fingerprint(ssl.PEM_cert_to_DER_cert(cert["client"].read_text(encoding="ascii")))
             controller_trust.enroll("worker", worker.worker_id, worker_fp)
             worker_trust.enroll("controller", "controller-service-rendezvous", controller_fp)
-            registry_path = root / "workers.json"
-            WorkerRegistry(registry_path, "controller-service-rendezvous").register(RegistryWorker(worker_id=worker.worker_id, host="127.0.0.1", port=6553, capabilities=("python",), ca_file=str(cert["ca"]), client_certificate=str(cert["server"]), client_key=str(cert["server_key"]), trust_state=str(controller_trust_path)))
+            lifecycle = LifecycleStore(root / "lifecycle.jsonl")
+            authorization = lifecycle.create_authorization(
+                expected_worker_identity=worker.worker_id
+            )
+            public_key = subprocess.run(
+                ["openssl", "x509", "-in", str(cert["client"]), "-pubkey", "-noout"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            enrollment = lifecycle.build_request(
+                worker_identity=worker.worker_id,
+                public_key_pem=public_key,
+                hostname_hint="worker-dhcp-a",
+                operating_system="linux",
+                architecture="x86_64",
+                authorization_id=str(authorization["authorization_id"]),
+            )
+            lifecycle.submit_request(enrollment, str(authorization["token"]))
+            lifecycle.approve_request(str(enrollment["request_id"]))
             with socket.socket() as probe:
                 probe.bind(("127.0.0.1", 0))
                 rendezvous_port = int(probe.getsockname()[1])
-            config = ControllerConfig("controller-service-rendezvous", root / "lifecycle.jsonl", socket_path=root / "consumer.sock", admin_socket_path=root / "admin.sock", service_log=root / "service.jsonl", worker_registry_path=registry_path, worker_state_path=root / "worker-state.jsonl", rendezvous_host="127.0.0.1", rendezvous_port=rendezvous_port, rendezvous_ca=cert["ca"], rendezvous_certificate=cert["server"], rendezvous_key=cert["server_key"], rendezvous_trust_state=controller_trust_path)
+            config = ControllerConfig("controller-service-rendezvous", root / "lifecycle.jsonl", socket_path=root / "consumer.sock", admin_socket_path=root / "admin.sock", service_log=root / "service.jsonl", worker_state_path=root / "worker-state.jsonl", rendezvous_host="127.0.0.1", rendezvous_port=rendezvous_port, rendezvous_ca=cert["ca"], rendezvous_certificate=cert["server"], rendezvous_key=cert["server_key"], rendezvous_trust_state=controller_trust_path, heartbeat_seconds=0.5)
             service = ControllerService(config)
-            service_thread = threading.Thread(target=service.run, kwargs={"max_seconds": 8}, daemon=True)
+            service_thread = threading.Thread(target=service.run, kwargs={"max_seconds": 25}, daemon=True)
             service_thread.start()
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline and not service.rendezvous_ready:
                 time.sleep(0.02)
             self.assertTrue(service.rendezvous_ready)
             client = TLSRendezvousWorker(worker, "127.0.0.1", rendezvous_port, ca_file=cert["ca"], client_cert=cert["client"], client_key=cert["client_key"], controller_id="controller-service-rendezvous", worker_id=worker.worker_id, trust_store=worker_trust, heartbeat_seconds=0.5, timeout=2)
-            worker_thread = threading.Thread(target=client.run, kwargs={"max_seconds": 3}, daemon=True)
+            worker_thread = threading.Thread(target=client.run, kwargs={"max_seconds": 12}, daemon=True)
             worker_thread.start()
-            consumer = FabricClient.connect(config.socket_path_value, client_identity="test-consumer")
+            consumer = FabricClient.connect(
+                config.socket_path_value, client_identity="test-consumer", timeout=15
+            )
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 status = consumer.controller_status()
@@ -209,15 +256,110 @@ class RendezvousTests(unittest.TestCase):
                     break
                 time.sleep(0.05)
             self.assertTrue(status["service_features"]["worker_rendezvous"], client.last_error)
+            self.assertTrue(status["service_features"]["target_aware_execution"])
+            self.assertTrue(status["service_features"]["rendezvous_membership_projection"])
             diagnostic = f"client={client.last_error}; server={service._rendezvous_server.last_error if service._rendezvous_server is not None else None}"
             self.assertTrue(status["fleet"]["workers"], diagnostic)
             self.assertEqual(status["fleet"]["workers"][0]["worker_id"], worker.worker_id)
             self.assertEqual(consumer.fleet()[0]["availability"], "AVAILABLE")
+            observation = consumer.ingest_capability_observation(
+                worker.worker_id,
+                [{"kind": "runtime", "namespace": "system", "name": "python"}],
+            )
+            context = ConsumerContext(
+                source_project="rendezvous-integration",
+                consumer_workload_identity="sha256:" + "d" * 64,
+            )
+            runtime_identity = status["fleet"]["workers"][0]["description"]["runtime_profile"]["runtime_profile_identity"]
+            target = ExecutionTargetReference(
+                worker_identity=worker.worker_id,
+                required_capabilities=("python",),
+                runtime_identity=runtime_identity,
+                consumer_context_identity=context.context_identity,
+                consumer_authorization_identity="sha256:" + "e" * 64,
+            )
+            result = consumer.execute_target(
+                target,
+                plan,
+                manifest,
+                consumer_context=context,
+                consumer_authorization_identity="sha256:" + "e" * 64,
+                execution_bundle_archive=archive,
+            )
+            self.assertEqual(observation["worker_identity"], worker.worker_id)
+            self.assertEqual(
+                result["disposition"],
+                "EXECUTED",
+                {
+                    "result": result,
+                    "worker_error": client.last_error,
+                    "server_error": service._rendezvous_server.last_error if service._rendezvous_server is not None else None,
+                },
+            )
+            self.assertEqual(result["target_admission"]["session_id"], status["fleet"]["workers"][0]["session_id"])
+            self.assertEqual(result["target_execution_evidence"]["worker_identity"], worker.worker_id)
+            first_generation = int(result["target_admission"]["session_generation"])
+            client.request_stop()
+            worker_thread.join(timeout=3)
+            unavailable_deadline = time.monotonic() + 3
+            while time.monotonic() < unavailable_deadline:
+                state = consumer.fleet_status(worker.worker_id)
+                if state["availability"] != "AVAILABLE":
+                    break
+                time.sleep(0.05)
+            self.assertNotEqual(state["availability"], "AVAILABLE")
+
+            restarted = TLSRendezvousWorker(worker, "127.0.0.1", rendezvous_port, ca_file=cert["ca"], client_cert=cert["client"], client_key=cert["client_key"], controller_id="controller-service-rendezvous", worker_id=worker.worker_id, trust_store=worker_trust, heartbeat_seconds=0.5, timeout=2)
+            restarted_thread = threading.Thread(target=restarted.run, kwargs={"max_seconds": 12}, daemon=True)
+            restarted_thread.start()
+            reconnect_deadline = time.monotonic() + 3
+            while time.monotonic() < reconnect_deadline:
+                state = consumer.fleet_status(worker.worker_id)
+                if state["availability"] == "AVAILABLE" and int(state["session_generation"]) > first_generation:
+                    break
+                time.sleep(0.05)
+            self.assertEqual(state["availability"], "AVAILABLE")
+            self.assertGreater(int(state["session_generation"]), first_generation)
+            duplicate = consumer.execute_target(
+                target,
+                plan,
+                manifest,
+                consumer_context=context,
+                consumer_authorization_identity="sha256:" + "e" * 64,
+                execution_bundle_archive=archive,
+            )
+            self.assertEqual(duplicate["disposition"], "DUPLICATE_IDEMPOTENT")
+            self.assertEqual(duplicate["worker_identity"], worker.worker_id)
+
+            admin = FabricAdminClient.connect(config.admin_socket_path_value)
+            try:
+                admin.revoke_worker(worker.worker_id, reason="substrate acceptance")
+            finally:
+                admin.close()
+            execution_count = len(worker.ledger.records(record_type="execution.record"))
+            revoked = consumer.execute_target(
+                target,
+                plan,
+                manifest,
+                consumer_context=context,
+                consumer_authorization_identity="sha256:" + "e" * 64,
+                execution_bundle_archive=archive,
+                request_id="sha256:" + "f" * 64,
+            )
+            self.assertEqual(revoked["disposition"], "DENIED")
+            self.assertEqual(revoked["reason"], "TARGET_REVOKED")
+            self.assertEqual(len(worker.ledger.records(record_type="execution.record")), execution_count)
+            restarted.request_stop()
+            restarted_thread.join(timeout=3)
+            denied_reconnect = TLSRendezvousWorker(worker, "127.0.0.1", rendezvous_port, ca_file=cert["ca"], client_cert=cert["client"], client_key=cert["client_key"], controller_id="controller-service-rendezvous", worker_id=worker.worker_id, trust_store=worker_trust, heartbeat_seconds=0.5, timeout=1).run(max_seconds=1)
+            self.assertEqual(denied_reconnect["outcome"], "UNKNOWN")
+            self.assertEqual(consumer.fleet_status(worker.worker_id)["membership_status"], "REVOKED")
             consumer.close()
-            worker_thread.join(timeout=5)
             service.request_stop()
             service_thread.join(timeout=5)
             self.assertFalse(worker_thread.is_alive())
+            self.assertFalse(restarted_thread.is_alive())
+            self.assertIsNone(config.worker_registry_path_value)
 
     def test_worker_dials_controller_heartbeats_and_executes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

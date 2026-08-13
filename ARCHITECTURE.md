@@ -119,14 +119,25 @@ Any tool request must return to the consuming harness or other control plane, wh
 applies its own policy and then submits a separate bounded execution request if the
 tool truly belongs on a remote worker.
 
-`targets.py` implements the first shared `ExecutionTargetReference` contract. It
+`targets.py` implements the shared `ExecutionTargetReference` contract. It
 binds an exact logical worker, the sole supported bounded-argv execution class,
 factual required capabilities, optional runtime/tool capability identities,
 consumer context and authorization identities, and bounded liveness/capability
 freshness expectations. Current membership, authenticated presence, AVAILABLE
 state, and `fallback_policy=NONE` are mandatory. The reference contains neither
-argv nor tool-selection semantics; target-aware dispatch and Harness policy
-enforcement remain separate subsequent work.
+argv nor tool-selection semantics. `FabricClient.execute_target()` uploads a
+verified immutable bundle to the persistent controller, binds the same-OS-user
+authenticated local peer and exact request, re-evaluates the current target facts,
+and dispatches only through that worker's authenticated transport. The controller
+persists identity-addressed admission and execution evidence. The authorization
+identity remains consumer-provided provenance rather than Fabric-verified semantic
+permission; Harness policy enforcement and result acceptance remain separate.
+
+Target admission is observational, not a resource reservation. A worker can become
+unavailable between the check and execution. Fabric reports that race as
+`TARGET_BECAME_UNAVAILABLE` and does not schedule a substitute. Identical retry uses
+the durable execution request identity and the worker replay ledger, returning the
+known result as `DUPLICATE_IDEMPOTENT` when available.
 
 The capability-observation API can advertise provider-neutral facts such as:
 

@@ -32,6 +32,12 @@ under worker B's identity; it does not make the reported facts honest.
 - `workers(capability_max_age_seconds=...)` includes the observation and an explicit
   `CURRENT`, `STALE`, `UNKNOWN`, or `UNAVAILABLE` inventory status.
 
+In persistent mode the controller retains observations in its append-only worker-state ledger;
+the observation API works for direct mTLS workers and worker-initiated rendezvous.
+Exact-target admission uses only the latest validated observation, enforces the
+target's age bound, distinguishes missing facts from stale facts, and compares a
+`tool_capability_identity` only with a capability whose kind is `tool`.
+
 The default freshness bound is 300 seconds and timestamps more than 60 seconds in
 the future are not fresh. A stale observation remains durable evidence but is never
 reported as current. A lost/unavailable worker similarly retains its last observation
