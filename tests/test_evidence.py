@@ -56,6 +56,66 @@ class PhysicalEvidenceTests(unittest.TestCase):
         tampered["worker_description"]["worker_identity"] = "substituted-worker"
         self.assertEqual(validate_physical_evidence(tampered)["outcome"], "FAIL")
 
+    def test_fedora_reboot_unknown_is_preserved_and_pass_requires_identity_bindings(self) -> None:
+        root = Path(__file__).parents[1] / "development-evidence"
+        unknown = json.loads((root / "fedora-reboot-acceptance-unknown.json").read_text(encoding="utf-8"))
+        report = validate_physical_evidence(unknown)
+        self.assertEqual(report["outcome"], "PASS")
+        self.assertEqual(report["physical_outcome"], "UNKNOWN")
+        overstated = copy.deepcopy(unknown)
+        overstated["status"] = "PASS"
+        overstated["physical_test"] = True
+        self.assertEqual(validate_physical_evidence(overstated)["outcome"], "FAIL")
+
+        identity = "sha256:" + "a" * 64
+        base = {
+            "availability": "AVAILABLE",
+            "boot_id": "boot-before",
+            "session_generation": 3,
+            "unit_enabled": "enabled",
+            "unit_active": "active",
+            "linger": "yes",
+            "installation_identity": identity,
+            "credential_identity": identity,
+        }
+        passed = {
+            "schema_version": "mncs-fabric.fedora-reboot-acceptance.v0.1",
+            "record_type": "mncs-fabric.fedora-reboot-acceptance",
+            "status": "PASS",
+            "physical_test": True,
+            "controller_fabric_commit": "a" * 40,
+            "worker_fabric_commit": "a" * 40,
+            "controller_identity": "controller",
+            "worker_identity": "worker",
+            "worker_certificate_fingerprint": identity,
+            "before": base,
+            "after": {**base, "boot_id": "boot-after", "session_generation": 4},
+            "controller_observed_reconnect_before_acceptance_ssh": True,
+            "invariants": {
+                "same_logical_identity": True,
+                "higher_session_generation": True,
+                "same_certificate_fingerprint": True,
+                "same_installation_identity": True,
+                "same_credential_identity": True,
+                "registry_unchanged": True,
+                "manual_worker_launch": False,
+                "consumer_worker_endpoint_knowledge": False,
+            },
+            "execution": {
+                "disposition": "EXECUTED",
+                "worker_identity": "worker",
+                "record_identity": identity,
+                "receipt_identity": "b" * 64,
+                "bundle_identity": "c" * 64,
+                "archive_identity": identity,
+            },
+            "claim_boundary": "operator-controlled physical evidence; no attestation, semantic correctness, custody, independence, conformance, or certification claim",
+            "limitations": ["operator-controlled"],
+        }
+        self.assertEqual(validate_physical_evidence(passed)["physical_outcome"], "PASS")
+        passed["after"]["session_generation"] = 3
+        self.assertEqual(validate_physical_evidence(passed)["outcome"], "FAIL")
+
     def test_windows_gpu_and_cross_os_evidence_validate(self) -> None:
         root = Path(__file__).parents[1] / "development-evidence"
         windows = json.loads((root / "windows-gpu-worker.json").read_text(encoding="utf-8"))

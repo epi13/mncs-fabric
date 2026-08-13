@@ -230,7 +230,10 @@ operator mode; consumer sockets cannot approve enrollment or revoke workers.
 The local service is implemented on POSIX with restrictive Unix-socket checks.
 Windows local transport and service installation remain planned. Fedora
 commissioning and installation are deterministic-test verified but have not yet
-been physically verified across reboot in this change. Closing a consumer does
+been physically verified across reboot in this change. The two-phase
+`scripts/fedora_reboot_acceptance.py` workflow records this status as `UNKNOWN`
+until a real reboot, higher rendezvous generation, unchanged identities, and
+post-reboot exact-worker dispatch all succeed. Closing a consumer does
 not publish worker disconnect state.
 
 `worker serve` is explicit and serves one bounded TLS request by default. An

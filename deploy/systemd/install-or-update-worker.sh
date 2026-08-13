@@ -34,6 +34,12 @@ if [[ ! -x $venv/bin/python ]]; then
   python3 -m venv "$venv"
 fi
 "$venv/bin/python" -m pip install --disable-pip-version-check --upgrade "$fabric_source"
+if fabric_revision=$(git -C "$fabric_source" rev-parse --verify HEAD 2>/dev/null); then
+  printf '%s\n' "$fabric_revision" > "$install_root/fabric-revision.txt"
+  chmod 0600 "$install_root/fabric-revision.txt"
+else
+  rm -f "$install_root/fabric-revision.txt"
+fi
 install -m 0644 "$fabric_source/deploy/systemd/mncs-fabric-worker-rendezvous@.service" \
   "$unit_root/mncs-fabric-worker-rendezvous@.service"
 install -m 0600 "$state_root/worker.env" "$config_root/$worker_id.env"
