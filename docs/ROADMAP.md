@@ -72,8 +72,8 @@ Key roadmap constraints:
 - TrustStore remains authorization state rather than certificate-issuance authority;
 - worker private keys are generated and retained locally;
 - direct controller-to-worker endpoint mode remains supported;
-- worker-initiated rendezvous is additive and requires a new/additive versioned
-  transport or fleet representation where current schemas cannot express it;
+- worker-initiated rendezvous remains additive and uses its explicit versioned
+  session/transport representation rather than changing existing endpoint schemas;
 - authenticated presence, liveness, resource freshness, and capability freshness stay
   distinct;
 - Fabric owns installation/connectivity/identity facts while Local Harness retains
@@ -111,8 +111,11 @@ Key roadmap constraints:
   and immutable cache, including direct physical execution evidence;
 - [x] local service transport for `FabricClient` to connect to a running
   controller; LAN/Windows transport remains planned;
-- [ ] production-shaped installed worker service lifecycle for Linux and Windows;
-- [ ] authenticated worker-initiated rendezvous with bounded reconnect/session state;
+- [~] production-shaped systemd user units exist for the controller and Fedora
+  worker-rendezvous process; Windows service installation and physical reboot
+  commissioning remain incomplete;
+- [x] authenticated worker-initiated rendezvous with bounded reconnect/session state,
+  deterministic service-level tests, and no claim of physical systemd/cross-host proof;
 - [ ] automatic TrustStore/fleet registration only after explicit approved enrollment;
 - [ ] optional local controller discovery with cryptographic controller verification;
 

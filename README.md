@@ -248,7 +248,9 @@ it is not general file transfer. `FabricClient.execute()` returns a versioned
 consumer result containing the Fabric record, Fabric-generated MNCS receipt,
 and optional provenance binding. Request-scoped consumers may pass an
 `execution_bundle_archive`; Fabric admits placement first, then stages the verified
-archive only to the selected remote worker. Consumer projects retain semantic
+archive only to the selected remote worker. In persistent service mode the client
+first transfers the archive in bounded, identity-bound chunks to a controller-owned
+cache; it never asks the controller to open a consumer pathname. Consumer projects retain semantic
 workload, evaluation, promotion, and learning authority.
 
 `FabricClient.refresh_worker()` obtains the current authenticated worker

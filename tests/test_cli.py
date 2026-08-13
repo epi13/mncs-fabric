@@ -38,7 +38,7 @@ class ControllerEnvironmentTests(unittest.TestCase):
                 "MNCS_FABRIC_RENDEZVOUS_KEY": str(root / "controller.key"),
                 "MNCS_FABRIC_RENDEZVOUS_TRUST_STATE": str(root / "trust.jsonl"),
             }
-            with patch.dict(os.environ, environment, clear=True):
+            with patch.dict(os.environ, environment):
                 config = _controller_config(self._args(root))
             self.assertTrue(config.rendezvous_configured)
             self.assertEqual(config.rendezvous_host, "192.0.2.10")
@@ -70,7 +70,7 @@ class ControllerEnvironmentTests(unittest.TestCase):
                 "--rendezvous-trust-state",
                 str(root / "cli-trust.jsonl"),
             ]
-            with patch.dict(os.environ, environment, clear=True):
+            with patch.dict(os.environ, environment):
                 config = _controller_config(self._args(root, *explicit))
             self.assertEqual(config.rendezvous_host, "198.51.100.20")
             self.assertEqual(config.rendezvous_port, 8444)
@@ -82,7 +82,6 @@ class ControllerEnvironmentTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 {"MNCS_FABRIC_RENDEZVOUS_HOST": "192.0.2.10"},
-                clear=True,
             ), self.assertRaises(ValidationError):
                 _controller_config(self._args(root))
 

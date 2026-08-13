@@ -80,9 +80,13 @@ rejection, restrictive path/peer checks, and an exclusive controller-state
 owner lock. `FabricClient.connect()` reads the persistent controller without
 loading controller ledgers into the consumer; `FabricAdminClient` is the
 explicit operator surface. The embedded `FabricClient`/controller path remains
-supported for tests and development. Windows local transport, LAN listeners,
-worker-initiated rendezvous, and execution dispatch over the service boundary
-remain planned.
+supported for tests and development. An explicitly configured controller-owned
+worker backend enables bounded execution dispatch, capability ingestion, worker
+observations, and authenticated worker-initiated rendezvous over the running
+service boundary. Those instance-dependent operations are advertised only by the
+live `service_features` projection; the static package contract does not claim
+them. Windows local transport and general LAN administrative listeners remain
+planned.
 
 ### Distributed capability and target separation
 
@@ -185,6 +189,13 @@ operator bootstrap channel for source, trust, and worker startup; it is no
 longer required to stage candidate execution material in the native-transfer
 path.
 
+The local persistent-service boundary uses the same identity separation and a
+bounded offer/chunk/commit sequence before dispatch. The controller publishes a
+verified archive into its own cache and resolves only an identity reference during
+execution. A consumer-supplied filesystem path is not accepted as a service
+execution reference, so Harness and Control do not need controller state-directory
+knowledge or shared path authority.
+
 The bounded Linux operator harness in `scripts/two_host_fedora_test.py` stages the
 exact source, trust material, and verified execution material over SSH, then
 uses direct Fabric mTLS for the request. SSH is not a candidate execution
@@ -254,6 +265,6 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - hardware attestation;
 - a distributed RAVEL mechanism; and
 - public semantic ownership for MNEL/RAVEL workloads or collection aggregation; and
-- worker-initiated rendezvous and production multi-host daemon installation;
+- production multi-host commissioning and reboot/reconnect evidence across supported OSes;
 - certificate provisioning, mDNS/DNS-SD discovery, and installer packaging; and
 - arbitrary remote shell, ambient SSH/WinRM, or consumer-owned controller state.

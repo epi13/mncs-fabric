@@ -9,16 +9,18 @@ worker-initiated rendezvous session owned by this runtime.
 
 from __future__ import annotations
 
+import base64
 import signal
 import time
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from typing import Any, Mapping
 
 from .canonical import attach_identity
+from .bundle_transfer import BundleCache
 from .errors import FabricError, ProtocolError, ValidationError
 from .lifecycle import LifecycleStore, default_lifecycle_path, default_state_dir
 from .node import utc_now
@@ -138,6 +140,10 @@ class ControllerService:
         self._worker_registry_report: dict[str, Any] | None = None
         self._rendezvous: RendezvousCoordinator | None = None
         self._rendezvous_server: TLSRendezvousServer | None = None
+        self._consumer_bundle_cache = BundleCache(
+            self.config.execution_bundle_root_value / "consumer-cache"
+        )
+        self._consumer_bundle_lock = Lock()
         if self.config.worker_registry_path_value is not None:
             from .api import FabricClient
 
@@ -290,6 +296,58 @@ class ControllerService:
                     payload = self.lifecycle.membership(worker_id)
             elif operation == "fleet.doctor":
                 payload = self.lifecycle.doctor()
+            elif operation == "execution.bundle.begin":
+                transfer_id = str(args.get("transfer_id", ""))
+                bundle_identity = str(args.get("bundle_identity", ""))
+                archive_identity = str(args.get("archive_identity", ""))
+                with self._consumer_bundle_lock:
+                    status = self._consumer_bundle_cache.begin(
+                        transfer_id=transfer_id,
+                        bundle_identity=bundle_identity,
+                        archive_identity=archive_identity,
+                        total_bytes=int(args.get("total_bytes", 0)),
+                        chunk_bytes=int(args.get("chunk_bytes", 0)),
+                        chunk_count=int(args.get("chunk_count", 0)),
+                    )
+                    progress = (
+                        self._consumer_bundle_cache.progress(
+                            transfer_id=transfer_id,
+                            bundle_identity=bundle_identity,
+                            archive_identity=archive_identity,
+                        )
+                        if status == "TRANSFER_REQUIRED"
+                        else {}
+                    )
+                payload = {"status": status, **progress}
+            elif operation == "execution.bundle.chunk":
+                encoded = args.get("data")
+                if not isinstance(encoded, str):
+                    raise ValidationError("bundle chunk data must be base64 text")
+                try:
+                    data = base64.b64decode(encoded, validate=True)
+                except ValueError as exc:
+                    raise ValidationError("bundle chunk data is not valid base64") from exc
+                with self._consumer_bundle_lock:
+                    status = self._consumer_bundle_cache.chunk(
+                        transfer_id=str(args.get("transfer_id", "")),
+                        bundle_identity=str(args.get("bundle_identity", "")),
+                        archive_identity=str(args.get("archive_identity", "")),
+                        sequence=int(args.get("sequence", -1)),
+                        data=data,
+                    )
+                payload = {"status": status}
+            elif operation == "execution.bundle.commit":
+                with self._consumer_bundle_lock:
+                    status, report, _content = self._consumer_bundle_cache.commit(
+                        transfer_id=str(args.get("transfer_id", "")),
+                        bundle_identity=str(args.get("bundle_identity", "")),
+                        archive_identity=str(args.get("archive_identity", "")),
+                    )
+                payload = {
+                    "status": status,
+                    "bundle_identity": report.bundle_identity if report is not None else None,
+                    "archive_identity": report.archive_identity if report is not None else None,
+                }
             elif operation == "enrollment.create":
                 payload = self.lifecycle.create_authorization(
                     ttl_seconds=float(args.get("ttl_seconds", 600.0)),
@@ -313,11 +371,18 @@ class ControllerService:
             elif operation == "execution.dispatch":
                 if self._worker_client is None:
                     raise ProtocolError("persistent execution backend is not configured")
-                archive = Path(str(args.get("execution_bundle_archive", ""))).expanduser().resolve(strict=True)
-                try:
-                    archive.relative_to(self.config.execution_bundle_root_value.resolve())
-                except ValueError as exc:
-                    raise ProtocolError("execution bundle is outside the controller bundle root") from exc
+                reference = args.get("execution_bundle_reference")
+                if not isinstance(reference, dict) or set(reference) != {
+                    "bundle_identity",
+                    "archive_identity",
+                }:
+                    raise ProtocolError("execution bundle reference is invalid")
+                with self._consumer_bundle_lock:
+                    content = self._consumer_bundle_cache.root_for(
+                        str(reference["bundle_identity"]),
+                        str(reference["archive_identity"]),
+                    )
+                archive = content.parent / "archive.zip"
                 if self.rendezvous_ready and self._rendezvous is not None:
                     results = self._rendezvous.dispatch(
                         args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),

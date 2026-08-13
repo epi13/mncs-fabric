@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from .bundles import MAX_ARCHIVE_BYTES, BundleReport, verify_bundle_archive
-from .canonical import canonical_json_bytes, is_sha256_identity, sha256_identity
+from .canonical import is_sha256_identity, sha256_identity
 from .errors import ProtocolError, StorageError
 from .io import write_json
 from .node import utc_now
@@ -236,6 +236,32 @@ class BundleCache:
         metadata["received_bytes"] += len(data)
         write_json(state_file, metadata)
         return "ACCEPTED"
+
+    def progress(
+        self, *, transfer_id: str, bundle_identity: str, archive_identity: str
+    ) -> dict[str, int]:
+        """Return resumable bounded progress for an identity-bound transfer."""
+
+        state = self._state(transfer_id)
+        if not state.is_dir():
+            raise ProtocolError("bundle transfer is unknown")
+        try:
+            metadata = json.loads((state / "state.json").read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise StorageError("bundle transfer state is corrupt") from exc
+        if (
+            metadata.get("bundle_identity") != bundle_identity
+            or metadata.get("archive_identity") != archive_identity
+        ):
+            raise ProtocolError("bundle transfer progress identity does not match transfer")
+        next_sequence = metadata.get("next_sequence")
+        received_bytes = metadata.get("received_bytes")
+        if not isinstance(next_sequence, int) or not isinstance(received_bytes, int):
+            raise StorageError("bundle transfer progress is corrupt")
+        return {
+            "next_sequence": next_sequence,
+            "received_bytes": received_bytes,
+        }
 
     def commit(self, *, transfer_id: str, bundle_identity: str, archive_identity: str) -> tuple[str, BundleReport | None, Path | None]:
         state = self._state(transfer_id)

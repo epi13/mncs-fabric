@@ -2,7 +2,7 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a12` is a bounded execution harness plus an experimental
+MNCS Fabric `0.2.0a16` is a bounded execution harness plus an experimental
 TLS/mutual-certificate transport foundation, not a hardened hostile-code
 sandbox. Only run bundles you are willing to execute under the worker account.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
@@ -61,7 +61,7 @@ Linux/ARM harness uses SSH only for source, certificate, trust, and worker
 lifecycle bootstrap; candidate execution material remains on the Fabric
 bundle-transfer path.
 
-### Proposed automated worker bootstrap and rendezvous boundary
+### Worker bootstrap and rendezvous boundary
 
 The proposed [worker bootstrap, discovery, and lifecycle](docs/WORKER_BOOTSTRAP_DISCOVERY.md)
 adds an installation/enrollment plane around the existing execution plane. It does not
@@ -70,7 +70,7 @@ request authoritative. Discovery is advisory; durable worker trust still require
 operator-approved cryptographic binding between logical worker identity and key
 material.
 
-The preferred installed-worker topology adds worker-initiated persistent rendezvous to
+The implemented opt-in topology adds worker-initiated persistent rendezvous to
 the controller while retaining current explicit controller-to-worker endpoint mode.
 Rendezvous must use mutual TLS after enrollment, bind the worker certificate to active
 TrustStore state, preserve replay and bounded framing semantics, distinguish session
@@ -122,6 +122,9 @@ The current implementation detects or bounds:
 - EA-NEXT-002 archive traversal, absolute/drive/UNC paths, Unicode/case
   collisions, duplicate members, special files, expansion limits, canonical
   manifest, entry, logical identity, and exact archive identity checks;
+- local-service bundle requests that attempt to make the controller open a
+  consumer-chosen pathname; the client instead transfers bounded verified chunks
+  and dispatches by identities resolved only inside the controller-owned cache;
 - TLS loopback encryption, CA validation, client-certificate requirement,
   certificate-fingerprint enrollment, logical identity binding, revocation,
   bounded frames, and truncated/oversized/canonical framing rejection; and
@@ -180,11 +183,14 @@ experimental bounded persistent mode, but this is not production supervision
 or unlimited daemon operation. The physical run does not remove these
 residual limitations.
 
-Phase A of the automated lifecycle is implemented as controller-local append-only
-state. No automated commissioning claim is made: the current implementation does
-not discover controllers, issue certificates, or establish worker-initiated
-rendezvous. The foreground controller runtime owns lifecycle state independently
-of consumers; the embedded `FabricClient` path remains a compatibility mode.
+Phase A of the lifecycle is implemented as controller-local append-only state.
+Authenticated worker-initiated rendezvous, bounded reconnect/session handling,
+worker observations, and controller-owned service dispatch are implemented and
+covered by deterministic integration tests when explicitly configured. No automated
+commissioning or physical systemd/reboot claim is made: the implementation does not
+discover controllers or issue certificates. The foreground controller runtime owns
+lifecycle and worker state independently of consumers; the embedded `FabricClient`
+path remains a compatibility mode.
 
 The experimental persistent-controller transport is local-only on POSIX. It uses
 separate restrictive AF_UNIX consumer and operator sockets, peer-UID checks,
@@ -203,7 +209,10 @@ public-key binding, durable active-identity rebind rejection, explicit fleet
 revocation, session generation checks, and deterministic duplicate-session
 `DUPLICATE_IDENTITY` state. Lifecycle diagnostics omit raw tokens and private key
 material. Controller status/doctor does not expose a LAN administrative listener.
-The service boundary does not yet carry execution dispatch or worker rendezvous.
+The consumer service boundary carries bounded dispatch only when the running
+controller has a configured worker backend. Rendezvous is authenticated on its
+separate worker-facing mTLS listener and is projected to consumers only while that
+listener is running. Neither feature grants administrative authority to consumers.
 
 Remaining service threats include controller daemon compromise, unauthorized local
 clients, restart/reconnect storms, and state corruption/recovery. They remain
@@ -227,7 +236,7 @@ A network worker must retain:
 - revocation and key rotation; and
 - tests for stale, duplicate, reordered, truncated, and substituted messages.
 
-A future bootstrap/rendezvous implementation must additionally retain:
+Further bootstrap/rendezvous work must retain:
 
 - discovery that is advisory only and cannot create TrustStore authority;
 - cryptographic verification of the selected controller before durable worker trust;
