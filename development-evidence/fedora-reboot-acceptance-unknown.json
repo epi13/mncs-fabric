@@ -1,0 +1,13 @@
+{
+  "schema_version": "mncs-fabric.fedora-reboot-acceptance.v0.1",
+  "record_type": "mncs-fabric.fedora-reboot-acceptance",
+  "status": "UNKNOWN",
+  "physical_test": false,
+  "blocker": "No reboot-capable commissioned Fedora worker was established for this implementation session.",
+  "helper": "scripts/fedora_reboot_acceptance.py",
+  "claim_boundary": "operator-controlled status record only; no physical test, attestation, semantic correctness, custody, independence, conformance, or certification claim",
+  "limitations": [
+    "The deterministic reconnect tests do not establish host reboot persistence.",
+    "Run the prepare, request-reboot, and verify phases on a commissioned Fedora worker to replace UNKNOWN with sanitized physical evidence."
+  ]
+}

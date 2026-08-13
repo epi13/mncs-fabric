@@ -213,7 +213,76 @@ def validate_physical_evidence(evidence: object) -> dict[str, Any]:
         return validate_heterogeneous_fault_profile_evidence(evidence)
     if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.raspberry-pi-preflight.v0.1":
         return validate_raspberry_pi_preflight_evidence(evidence)
+    if isinstance(evidence, dict) and evidence.get("schema_version") == "mncs-fabric.fedora-reboot-acceptance.v0.1":
+        return validate_fedora_reboot_acceptance_evidence(evidence)
     return {"outcome": "FAIL", "issues": ["unsupported physical evidence schema"]}
+
+
+def validate_fedora_reboot_acceptance_evidence(evidence: object) -> dict[str, Any]:
+    """Validate sanitized Fedora reboot evidence without converting UNKNOWN to PASS."""
+
+    if not isinstance(evidence, dict):
+        return {"outcome": "FAIL", "issues": ["evidence must be an object"]}
+    issues: list[str] = []
+    if evidence.get("schema_version") != "mncs-fabric.fedora-reboot-acceptance.v0.1":
+        issues.append("unsupported Fedora reboot evidence schema")
+    if evidence.get("record_type") != "mncs-fabric.fedora-reboot-acceptance":
+        issues.append("record type is invalid")
+    status = evidence.get("status")
+    if status == "UNKNOWN":
+        if evidence.get("physical_test") is not False:
+            issues.append("UNKNOWN evidence must not claim a physical test")
+        if not isinstance(evidence.get("blocker"), str) or not evidence["blocker"]:
+            issues.append("UNKNOWN evidence requires a bounded blocker")
+        _validate_claim_boundary(evidence, issues)
+        return {"outcome": "PASS" if not issues else "FAIL", "issues": issues, "physical_outcome": "UNKNOWN"}
+    if status != "PASS" or evidence.get("physical_test") is not True:
+        issues.append("Fedora reboot acceptance is not a physical PASS")
+    for field in ("controller_fabric_commit", "worker_fabric_commit"):
+        if not isinstance(evidence.get(field), str) or not _COMMIT.fullmatch(evidence[field]):
+            issues.append(f"invalid:{field}")
+    if evidence.get("controller_fabric_commit") != evidence.get("worker_fabric_commit"):
+        issues.append("controller and worker revisions differ")
+    if not isinstance(evidence.get("worker_identity"), str) or not evidence["worker_identity"]:
+        issues.append("worker logical identity is missing")
+    if not _identity(evidence.get("worker_certificate_fingerprint")):
+        issues.append("worker certificate fingerprint is invalid")
+    before = evidence.get("before")
+    after = evidence.get("after")
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        issues.append("before/after observations are incomplete")
+    else:
+        if before.get("availability") != "AVAILABLE" or after.get("availability") != "AVAILABLE":
+            issues.append("worker was not AVAILABLE before and after reboot")
+        if not isinstance(before.get("session_generation"), int) or not isinstance(after.get("session_generation"), int) or after.get("session_generation", 0) <= before.get("session_generation", 0):
+            issues.append("rendezvous session generation did not increase")
+        if not isinstance(before.get("boot_id"), str) or before.get("boot_id") == after.get("boot_id"):
+            issues.append("worker boot identity did not change")
+        for value in (before, after):
+            if value.get("unit_enabled") != "enabled" or value.get("unit_active") != "active" or value.get("linger") != "yes":
+                issues.append("systemd user boot semantics are not established")
+        for field in ("installation_identity", "credential_identity"):
+            if not _identity(before.get(field)) or before.get(field) != after.get(field):
+                issues.append(f"worker {field} changed across reboot")
+    invariants = evidence.get("invariants")
+    required_true = {
+        "same_logical_identity", "higher_session_generation",
+        "same_certificate_fingerprint", "same_installation_identity",
+        "same_credential_identity", "registry_unchanged",
+    }
+    if not isinstance(invariants, dict) or any(invariants.get(field) is not True for field in required_true):
+        issues.append("reboot persistence invariants are incomplete")
+    elif invariants.get("manual_worker_launch") is not False or invariants.get("consumer_worker_endpoint_knowledge") is not False:
+        issues.append("manual launch or endpoint abstraction boundary is invalid")
+    if evidence.get("controller_observed_reconnect_before_acceptance_ssh") is not True:
+        issues.append("pre-diagnostic reconnect observation is missing")
+    execution = evidence.get("execution")
+    if not isinstance(execution, dict) or execution.get("disposition") != "EXECUTED" or execution.get("worker_identity") != evidence.get("worker_identity"):
+        issues.append("post-reboot exact-worker execution did not succeed")
+    elif not all(_identity(execution.get(field)) for field in ("record_identity", "archive_identity")) or not _identity(execution.get("receipt_identity"), bare=True) or not _identity(execution.get("bundle_identity"), bare=True):
+        issues.append("post-reboot execution identities are invalid")
+    _validate_claim_boundary(evidence, issues)
+    return {"outcome": "PASS" if not issues else "FAIL", "issues": issues, "physical_outcome": "PASS" if not issues else "FAIL"}
 
 
 def _validate_claim_boundary(evidence: dict[str, Any], issues: list[str]) -> None:

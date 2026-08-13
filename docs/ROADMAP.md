@@ -74,6 +74,12 @@ across hosts.
 Online bootstrap/discovery, physical reboot commissioning evidence, Windows
 service packaging, and Linux/ARM installer evidence remain planned.
 
+The Fedora reboot acceptance helper now verifies linger boot semantics, a
+changed kernel boot ID, reconnect before its first post-boot SSH diagnostic, a
+higher rendezvous generation, unchanged certificate/install/registry state, and
+successful exact-worker dispatch. Checked-in physical status remains `UNKNOWN`
+until that helper runs on a reboot-capable commissioned host.
+
 ### Planned after Phase A
 
 Fabric's current explicit endpoint registry and physical multi-host evidence prove the
