@@ -287,3 +287,16 @@ class FabricLedger:
             raise StorageError("ledger has an unrepaired truncated tail")
         values = [item for item in records if record_type is None or item["record_type"] == record_type]
         return values[-limit:] if limit else []
+
+    def all_records(self, *, record_type: str | None = None) -> list[dict[str, Any]]:
+        """Read the full authoritative ledger for deterministic derived-state rebuilds."""
+
+        with _exclusive_lock(self.path):
+            records, diagnostics, _ = self._read_unlocked()
+        if diagnostics:
+            raise StorageError("ledger has an unrepaired truncated tail")
+        return [
+            item
+            for item in records
+            if record_type is None or item["record_type"] == record_type
+        ]

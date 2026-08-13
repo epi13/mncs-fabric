@@ -54,6 +54,8 @@ PUBLIC_FEATURES = {
     "windows_worker_launcher": True,
     "cuda_execution_probe": True,
     "operator_worker_registry": True,
+    "worker_containment_policy": True,
+    "linux_bubblewrap_containment": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {

@@ -15,6 +15,7 @@ import secrets
 import shutil
 import ssl
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping
@@ -421,6 +422,7 @@ def activate_worker_credentials(value: Mapping[str, Any], *, state_root: Path) -
             f"MNCS_FABRIC_CA={environment_values['ca']}",
             f"MNCS_FABRIC_CERTIFICATE={environment_values['certificate']}",
             f"MNCS_FABRIC_CERTIFICATE_KEY={environment_values['key']}",
+            f"MNCS_FABRIC_CONTAINMENT_MODE={'required' if sys.platform.startswith('linux') else 'compatibility-uncontained'}",
             "",
         ]
     )

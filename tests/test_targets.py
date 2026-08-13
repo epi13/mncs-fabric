@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -9,7 +10,9 @@ from mncs_fabric.capabilities import build_capability_observation
 from mncs_fabric.canonical import sha256_identity
 from mncs_fabric.contracts import ConsumerContext
 from mncs_fabric.api import FabricClient
-from mncs_fabric.errors import ValidationError
+from mncs_fabric.errors import ProtocolError, ValidationError
+from mncs_fabric.store import FabricLedger
+from mncs_fabric.target_index import TargetEvidenceIndex
 from mncs_fabric.targets import (
     EXECUTION_TARGET_SCHEMA,
     TARGET_AUTHORIZATION_INTERPRETATION,
@@ -197,6 +200,91 @@ class ExecutionTargetReferenceTests(unittest.TestCase):
             build_target_execution_evidence(
                 admission,
                 {**result, "job_identity": "sha256:" + "f" * 64},
+            )
+
+    def test_target_evidence_index_rebuilds_and_rejects_binding_reuse(self) -> None:
+        target, kwargs, _now = self._admission_inputs()
+        admission = evaluate_target_admission(target, **kwargs)
+        result = {
+            "worker_identity": "worker-a",
+            "bundle_identity": "2" * 64,
+            "job_identity": "sha256:" + "3" * 64,
+            "record_identity": "sha256:" + "1" * 64,
+            "receipt_identity": "0" * 64,
+            "disposition": "EXECUTED",
+        }
+        evidence = build_target_execution_evidence(admission, result)
+        duplicate = {**result, "disposition": "DUPLICATE_IDEMPOTENT"}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ledger = FabricLedger(root / "target-execution.jsonl")
+            ledger.append("target.execution", evidence)
+            path = root / "target-evidence-index.json"
+            index = TargetEvidenceIndex(ledger, path)
+            self.assertEqual(
+                index.lookup(kwargs["execution_request_identity"], admission, duplicate),
+                evidence,
+            )
+
+            path.write_text("{malformed", encoding="utf-8")
+            rebuilt = TargetEvidenceIndex(ledger, path)
+            self.assertEqual(
+                rebuilt.lookup(kwargs["execution_request_identity"], admission, duplicate),
+                evidence,
+            )
+            path.unlink()
+            missing = TargetEvidenceIndex(ledger, path)
+            self.assertEqual(
+                missing.lookup(kwargs["execution_request_identity"], admission, duplicate),
+                evidence,
+            )
+
+            changed_target = ExecutionTargetReference(
+                worker_identity="worker-a",
+                required_capabilities=tuple(target["required_capabilities"]),
+                tool_capability_identity=target["tool_capability_identity"],
+                runtime_identity=target["runtime_identity"],
+                consumer_context_identity=target["consumer_context_identity"],
+                consumer_authorization_identity="sha256:" + "b" * 64,
+                liveness_max_age_seconds=30,
+                capability_max_age_seconds=30,
+            ).to_dict()
+            changed_admission = evaluate_target_admission(
+                changed_target,
+                **{
+                    **kwargs,
+                    "consumer_authorization_identity": changed_target[
+                        "consumer_authorization_identity"
+                    ],
+                },
+            )
+            with self.assertRaisesRegex(ProtocolError, "conflicts"):
+                missing.lookup(
+                    kwargs["execution_request_identity"], changed_admission, duplicate
+                )
+
+            second_kwargs = {
+                **kwargs,
+                "execution_request_identity": "sha256:" + "c" * 64,
+                "request_identity": "sha256:" + "d" * 64,
+            }
+            second_admission = evaluate_target_admission(target, **second_kwargs)
+            second_result = {
+                **result,
+                "record_identity": "sha256:" + "e" * 64,
+                "receipt_identity": "f" * 64,
+            }
+            second_evidence = build_target_execution_evidence(
+                second_admission, second_result
+            )
+            ledger.append("target.execution", second_evidence)
+            self.assertEqual(
+                missing.lookup(
+                    second_kwargs["execution_request_identity"],
+                    second_admission,
+                    {**second_result, "disposition": "DUPLICATE_IDEMPOTENT"},
+                ),
+                second_evidence,
             )
 
     def test_target_admission_failure_codes_are_stable_and_never_fallback(self) -> None:

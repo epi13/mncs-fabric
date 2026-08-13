@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -101,7 +102,14 @@ class CommissioningTests(unittest.TestCase):
             installation = activate_worker_credentials(credentials, state_root=worker_root)
             self.assertEqual(installation["lifecycle"], "ENROLLED")
             self.assertEqual(private_key.read_bytes(), original_key)
-            self.assertNotIn("PRIVATE KEY", (worker_root / "worker.env").read_text())
+            worker_environment = (worker_root / "worker.env").read_text()
+            self.assertNotIn("PRIVATE KEY", worker_environment)
+            expected_mode = (
+                "required" if sys.platform.startswith("linux") else "compatibility-uncontained"
+            )
+            self.assertIn(
+                f"MNCS_FABRIC_CONTAINMENT_MODE={expected_mode}", worker_environment
+            )
             self.assertEqual((worker_root / "worker.env").stat().st_mode & 0o777, 0o600)
             self.assertEqual((worker_root / "installation.json").stat().st_mode & 0o777, 0o600)
             self.assertTrue((worker_root / "tls" / "worker.pem").is_file())

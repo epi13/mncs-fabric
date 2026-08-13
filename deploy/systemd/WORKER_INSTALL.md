@@ -4,6 +4,22 @@ The supported commissioning helper is intentionally explicit and file-mediated.
 It does not discover controllers, move private keys, disable TLS verification,
 change firewall rules, or use SSH as the Fabric execution path.
 
+Install or upgrade the controller first. This preserves
+`~/.config/mncs-fabric/` and the authoritative ledgers below
+`~/.local/state/mncs-fabric/`:
+
+```bash
+deploy/systemd/install-or-update-controller.sh /path/to/mncs-fabric
+systemctl --user is-active mncs-fabric-controller.service
+mncs-fabric controller doctor \
+  --socket ~/.local/state/mncs-fabric/controller.sock
+```
+
+Edit the protected `~/.config/mncs-fabric/controller.env` before enrollment when
+worker rendezvous is required, then restart the controller. Set all six rendezvous
+TLS/listener values together. The Fabric-native controller identity defaults to
+`mncs-fabric-controller` and can be changed through that environment file.
+
 1. On the controller, create a one-time authorization and protected material file:
 
    ```bash
@@ -46,6 +62,11 @@ change firewall rules, or use SSH as the Fabric execution path.
    deploy/systemd/install-or-update-worker.sh WORKER /path/to/mncs-fabric
    ```
 
+   On Fedora/Linux the generated environment requests bubblewrap containment and
+   the installer fails if `bwrap` is unavailable. Install it with the host package
+   manager before continuing. The worker private key is generated and remains only
+   below its worker-local state root.
+
 Rerunning the installer upgrades the isolated environment and restarts the unit
 without deleting the private key, trust ledger, installation identity, or worker
 execution ledger. A Git checkout also produces a protected
@@ -58,6 +79,36 @@ operator must enable the user's systemd manager at boot (normally
 `loginctl enable-linger USER`) and verify `loginctl show-user USER -p Linger`
 reports `Linger=yes`. This is a host-administration action and is intentionally
 not performed by the installer.
+
+## Upgrade, disconnect, revoke, and retire
+
+Rerun either installer with the new source/release directory to upgrade. Controller
+and worker identities, trust state, append-only ledgers, and worker installation
+identity are preserved. After an upgrade or process restart, verify automatic
+reconnection through the consumer socket:
+
+```bash
+systemctl --user --no-pager status mncs-fabric-controller.service
+systemctl --user --no-pager status 'mncs-fabric-worker-rendezvous@WORKER.service'
+mncs-fabric fleet status WORKER \
+  --socket ~/.local/state/mncs-fabric/controller.sock
+```
+
+These are distinct operator actions:
+
+- `systemctl --user stop mncs-fabric-worker-rendezvous@WORKER.service` disconnects
+  the worker without deleting software or membership;
+- `deploy/systemd/uninstall-worker.sh WORKER` disables its local unit, retires the
+  installed environment file, and preserves private keys/ledgers; it does not revoke;
+- `mncs-fabric worker revoke WORKER --reason REASON --admin-socket
+  ~/.local/state/mncs-fabric/controller-admin.sock` appends authoritative controller
+  revocation history; and
+- `deploy/systemd/uninstall-controller.sh` removes the local controller unit while
+  preserving Fabric configuration/state and does not revoke any worker.
+
+Do not edit registry JSON for a rendezvous-enrolled worker. SSH may transfer the
+file-mediated enrollment documents or assist diagnostics, but Fabric mTLS remains
+the only job transport.
 
 ## Physical reboot acceptance
 
@@ -103,3 +154,10 @@ Omit `--registry` for a rendezvous-only deployment; the evidence then records
 registry absence. If supplied, the exact registry bytes must remain unchanged.
 The consumer never receives the worker address or credentials. Address changes
 are recorded as operational history, not authorization state.
+
+Until `prepare`, a real physical reboot, and `verify` all complete on the commissioned
+host, reboot survival remains `UNKNOWN`. Process-restart tests do not change that
+claim. The manual acceptance checklist is: confirm lingering; run `prepare`; reboot
+the physical worker; wait for a higher AVAILABLE session generation; run `verify`;
+retain `reboot-evidence.json`; and confirm its unchanged identities plus exact-worker
+dispatch result before reporting physical reboot acceptance.

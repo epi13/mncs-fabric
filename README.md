@@ -1,6 +1,6 @@
 # MNCS Fabric
 
-Fabric 0.2.0a17 includes a versioned controller-local registry for explicitly
+Fabric 0.2.0a18 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
@@ -29,7 +29,7 @@ acceptance; Local Harness and other consumers own those policies. See
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a17` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Cross-platform worker packaging, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a18` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, rebuildable target-evidence indexing, and required bubblewrap containment for Fedora/Linux Python targets are implemented and covered by tests. Cross-platform containment/packaging, resource reservation, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -56,6 +56,9 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - deterministic, ordered artifact manifests with mutation and extra-file rejection;
 - cross-platform node capability records for Linux and Windows hosts;
 - argv-only execution with no shell, bounded time, bounded stdout/stderr, isolated temporary work copies, and declared result artifacts;
+- an explicit worker containment policy with a fail-closed `required` mode,
+  a Fedora/Linux bubblewrap provider for Python targets, offline network namespace
+  isolation, and truthfully labeled `compatibility-uncontained` execution;
 - explicit `PASS`, `FAIL`, and `UNKNOWN` execution outcomes;
 - deterministic local or operator-controlled cross-host reconciliation;
 - companion adapters for the current experimental MNCS typed execution receipt and execution-assurance shape;
@@ -97,7 +100,16 @@ A Fabric `PASS` means the declared execution and reconciliation checks passed. I
 - JSON schemas, tests, CI, architecture documentation, and a portable example; and
 - standard-library-only runtime for Python 3.11 or newer.
 
-The executor is bounded but is **not a security sandbox**. Network policy is recorded but not enforced. TLS protects the transport and certificate enrollment authenticates the configured peer; neither establishes independent evaluation, protected custody, attestation, conformance, or correctness. HMAC authenticates message contents but does not encrypt transport. See [THREAT_MODEL.md](THREAT_MODEL.md).
+Logical bundle confinement is always enforced by manifest verification and staged
+argv execution, but it is not by itself an OS sandbox. Fedora/Linux worker units
+default to `required` bubblewrap containment: the staged bundle is the only writable
+host bind, ambient home/state paths are absent, and `DECLARED_OFFLINE` jobs receive
+a separate network namespace. Explicit `compatibility-uncontained` mode preserves
+older/platform portability and records that the worker account retains ambient
+filesystem/network authority. Execution records report the selected mode, provider,
+and enforcement state. TLS protects transport but does not establish independent
+evaluation, protected custody, attestation, conformance, or correctness. See
+[THREAT_MODEL.md](THREAT_MODEL.md).
 
 ## Quick start
 
@@ -194,19 +206,33 @@ mncs-fabric controller service run \
 # to enable worker-initiated sessions.
 ```
 
-For a user-supervised Fedora deployment, install
-`deploy/systemd/mncs-fabric-controller.service` under
-`~/.config/systemd/user/`, then enable it. The unit owns only the persistent
-controller lifecycle/socket state; it does not imply that a worker is present.
-The unit optionally reads `~/.config/mncs-fabric/controller.env`; copy
-`deploy/systemd/mncs-fabric-controller.env.example` there and replace the TLS
-paths to activate the worker-initiated listener without embedding operator trust
-paths in the unit. A complete rendezvous environment supplies
+For a user-supervised Fedora deployment, run:
+
+```bash
+deploy/systemd/install-or-update-controller.sh /path/to/mncs-fabric
+```
+
+The idempotent installer creates a Fabric-owned virtual environment, installs the
+unit, preserves existing configuration/state during upgrades, and starts
+`mncs-fabric-controller.service`. The controller identity comes from
+`~/.config/mncs-fabric/controller.env` and defaults to
+`mncs-fabric-controller`; durable state, sockets, worker transport ledgers, and
+execution bundles live below `~/.local/state/mncs-fabric/`. Consumers need only
+`~/.local/state/mncs-fabric/controller.sock` and never need deployment paths,
+worker endpoints, or credentials. A complete rendezvous environment supplies
 `MNCS_FABRIC_RENDEZVOUS_HOST`, `MNCS_FABRIC_RENDEZVOUS_PORT`,
 `MNCS_FABRIC_RENDEZVOUS_CA`, `MNCS_FABRIC_RENDEZVOUS_CERTIFICATE`,
 `MNCS_FABRIC_RENDEZVOUS_KEY`, and `MNCS_FABRIC_RENDEZVOUS_TRUST_STATE`.
 Bind only to an operator-selected interface and restrict the listener with the
 host firewall even though peer authentication remains mandatory.
+
+The controller is supervised independently of consumers: Harness exit does not stop
+it or disconnect workers. Controller restart reopens the authoritative ledgers and
+socket, and workers reconnect. Worker restart/reboot reloads its local identity,
+trust, replay, and execution ledgers before rendezvous. With systemd user lingering
+enabled, both services return after reboot. Run
+`deploy/systemd/uninstall-controller.sh` to remove only the local controller unit;
+configuration, canonical state, and membership history are preserved.
 
 Enrollment mutations require an explicit owner. Use `--admin-socket` while the
 persistent controller owns lifecycle state. `--offline-state` is an operator
@@ -222,7 +248,12 @@ an isolated virtual environment plus
 `mncs-fabric-worker-rendezvous@WORKER_ID.service`. The worker dials the
 controller; no inbound worker port is required. Approval automatically makes
 the enrolled identity eligible for rendezvous, so no worker-registry JSON edit
-is required.
+is required. Fedora/Linux commissioned workers default to containment mode
+`required`; installation fails if `bwrap` is missing. Run
+`deploy/systemd/uninstall-worker.sh WORKER_ID` to disable the unit and retire its
+environment while preserving its private key and ledgers. Disconnection or local
+uninstall does not revoke membership; use the controller's explicit
+`worker revoke` operation when revocation is intended.
 
 Worker-initiated rendezvous is opt-in and requires the controller listener TLS
 paths plus a worker process using `worker rendezvous`; otherwise the direct
@@ -323,6 +354,12 @@ be supervised independently of consumers, while `FabricClient` remains the
 ordinary consumer boundary. Local Harness, Forge, and MNCS Control retain
 semantic model, residency, task, tool, workspace, verification, and escalation
 policy; they do not own worker presence or Fabric process lifetime.
+
+The append-only lifecycle, worker, replay, and target-execution JSONL ledgers are
+authoritative. Content-addressed bundle stores and
+`target-evidence-index.json` are derived/cache state: a missing, malformed, or stale
+target index is rebuilt deterministically from `target-execution.jsonl` and cannot
+replace canonical evidence.
 
 ## Repository map
 
