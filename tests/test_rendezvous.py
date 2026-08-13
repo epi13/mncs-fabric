@@ -103,22 +103,26 @@ class RendezvousTests(unittest.TestCase):
             while time.monotonic() < deadline and not service.rendezvous_ready:
                 time.sleep(0.02)
             (root / "bundles").mkdir()
-            worker = LocalWorker("worker-auto", root / "bundles", root / "worker.jsonl")
-            endpoint = TLSRendezvousWorker(
-                worker,
-                "127.0.0.1",
-                port,
-                ca_file=cert["ca"],
-                client_cert=cert["client"],
-                client_key=cert["client_key"],
-                controller_id="controller-auto",
-                worker_id="worker-auto",
-                trust_store=TrustStore(worker_trust_path),
-                heartbeat_seconds=0.5,
-                timeout=2,
-            )
+            def endpoint() -> TLSRendezvousWorker:
+                worker = LocalWorker(
+                    "worker-auto", root / "bundles", root / "worker.jsonl"
+                )
+                return TLSRendezvousWorker(
+                    worker,
+                    "127.0.0.1",
+                    port,
+                    ca_file=cert["ca"],
+                    client_cert=cert["client"],
+                    client_key=cert["client_key"],
+                    controller_id="controller-auto",
+                    worker_id="worker-auto",
+                    trust_store=TrustStore(worker_trust_path),
+                    heartbeat_seconds=0.5,
+                    timeout=2,
+                )
+
             worker_thread = threading.Thread(
-                target=endpoint.run, kwargs={"max_seconds": 2}, daemon=True
+                target=endpoint().run, kwargs={"max_seconds": 1.5}, daemon=True
             )
             worker_thread.start()
             consumer = FabricClient.connect(config.socket_path_value)
@@ -132,8 +136,36 @@ class RendezvousTests(unittest.TestCase):
             self.assertEqual(workers[0]["worker_id"], "worker-auto")
             self.assertEqual(workers[0]["source"], "approved-enrollment")
             self.assertTrue(service.worker_backend_enabled)
-            consumer.close()
+            first_generation = int(workers[0]["session_generation"])
             worker_thread.join(timeout=5)
+
+            disconnected_deadline = time.monotonic() + 3
+            while time.monotonic() < disconnected_deadline:
+                workers = consumer.workers()
+                if workers and workers[0].get("availability") != "AVAILABLE":
+                    break
+                time.sleep(0.05)
+            self.assertNotEqual(workers[0]["availability"], "AVAILABLE")
+
+            restarted_thread = threading.Thread(
+                target=endpoint().run, kwargs={"max_seconds": 1.5}, daemon=True
+            )
+            restarted_thread.start()
+            reconnect_deadline = time.monotonic() + 3
+            while time.monotonic() < reconnect_deadline:
+                workers = consumer.workers()
+                if (
+                    workers
+                    and workers[0].get("availability") == "AVAILABLE"
+                    and int(workers[0].get("session_generation", 0)) > first_generation
+                ):
+                    break
+                time.sleep(0.05)
+            self.assertEqual(workers[0]["availability"], "AVAILABLE")
+            self.assertGreater(int(workers[0]["session_generation"]), first_generation)
+            self.assertEqual(workers[0]["source"], "approved-enrollment")
+            consumer.close()
+            restarted_thread.join(timeout=5)
             service.request_stop()
             service_thread.join(timeout=5)
 
