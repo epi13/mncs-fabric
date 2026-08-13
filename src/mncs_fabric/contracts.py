@@ -208,6 +208,7 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
     return {
         "persistent_fleet_read": True,
         "persistent_service_execution": bool(worker_backend),
+        "persistent_detached_execution": bool(worker_backend),
         "persistent_service_capability_ingestion": bool(worker_backend),
         "persistent_worker_observations": bool(worker_backend),
         "worker_rendezvous": bool(worker_rendezvous),

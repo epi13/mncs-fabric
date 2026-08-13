@@ -127,6 +127,133 @@ class ServiceTransportTests(unittest.TestCase):
         with self.assertRaises(ProtocolError):
             self.assertEqual(transport.request_envelope(request), {"workers": []})
 
+    def test_detached_execution_survives_submitting_client_disconnect(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+
+        class SlowBackend:
+            blocked_worker_ids: set[str] = set()
+
+            def execute(self, plan, _manifest, **_kwargs):
+                started.set()
+                release.wait(timeout=2.0)
+                return [{
+                    "disposition": "EXECUTED",
+                    "worker_identity": "slow-worker",
+                    "job_identity": plan["job_identity"],
+                    "record": {"outcome": "PASS"},
+                }]
+
+            def close(self):
+                return None
+
+        self.service._worker_client = SlowBackend()
+        root = Path(self.temp.name)
+        source = root / "detached-source"
+        source.mkdir()
+        (source / "task.py").write_text("print('detached')\n", encoding="utf-8")
+        manifest = build_manifest(source)
+        archive = root / "detached.zip"
+        build_bundle_archive(source, archive)
+        plan = validate_job_plan({
+            "schema_version": "mncs-fabric.job-plan.v0.1",
+            "job_id": "detached:test",
+            "candidate_identity": manifest["manifest_identity"],
+            "evaluator_identity": None,
+            "artifact_manifest_identity": manifest["manifest_identity"],
+            "argv": ["@python", "task.py"],
+            "working_directory": ".",
+            "timeout_seconds": 5.0,
+            "output_limit_bytes": 4096,
+            "environment": {},
+            "required_capabilities": ["python"],
+            "result_paths": [],
+            "network_policy": "DECLARED_OFFLINE",
+        })
+
+        staging = FabricClient.connect(
+            self.config.socket_path_value, client_identity="detached-client"
+        )
+        bundle_reference = staging._upload_service_bundle(archive)
+        staging.close()
+        submission_arguments = {
+            "plan": plan,
+            "manifest": manifest,
+            "worker_id": "slow-worker",
+            "replicas": 1,
+            "request_id": None,
+            "idempotency_key": "stable-detached-test",
+            "consumer_context": None,
+            "placement": None,
+            "execution_bundle_reference": bundle_reference,
+        }
+        original_append_if = self.service.detached_ledger.append_if
+        simultaneous_append = threading.Barrier(2)
+
+        def synchronized_append(*args, **kwargs):
+            simultaneous_append.wait(timeout=2.0)
+            return original_append_if(*args, **kwargs)
+
+        self.service.detached_ledger.append_if = synchronized_append  # type: ignore[method-assign]
+        accepted_retries = []
+        retry_errors = []
+
+        def submit_retry() -> None:
+            submitting = FabricClient.connect(
+                self.config.socket_path_value, client_identity="detached-client"
+            )
+            try:
+                accepted_retries.append(
+                    submitting._service_transport.request(  # type: ignore[union-attr]
+                        "execution.submit",
+                        submission_arguments,
+                    )
+                )
+            except Exception as exc:
+                retry_errors.append(exc)
+            finally:
+                submitting.close()
+
+        retry_threads = [threading.Thread(target=submit_retry) for _ in range(2)]
+        for retry_thread in retry_threads:
+            retry_thread.start()
+        for retry_thread in retry_threads:
+            retry_thread.join(timeout=3.0)
+        self.service.detached_ledger.append_if = original_append_if  # type: ignore[method-assign]
+
+        self.assertEqual(retry_errors, [])
+        self.assertEqual(len(accepted_retries), 2)
+        accepted = accepted_retries[0]
+        self.assertEqual(accepted_retries[1]["work_id"], accepted["work_id"])
+        queued = [
+            record
+            for record in self.service._detached_records(accepted["work_id"])
+            if record["state"] == "QUEUED"
+        ]
+        self.assertEqual(len(queued), 1)
+        self.assertTrue(accepted["accepted"])
+        self.assertTrue(accepted["persistent"])
+        self.assertIn(accepted["state"], {"QUEUED", "RUNNING"})
+        self.assertTrue(started.wait(timeout=1.0))
+
+        observer = FabricClient.connect(
+            self.config.socket_path_value, client_identity="detached-observer"
+        )
+        self.assertIn(
+            observer.execution_status(accepted["work_id"])["state"],
+            {"QUEUED", "RUNNING"},
+        )
+        release.set()
+        deadline = time.monotonic() + 2.0
+        result = observer.execution_result(accepted["work_id"])
+        while result["state"] != "COMPLETED" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            result = observer.execution_result(accepted["work_id"])
+        self.assertEqual(result["state"], "COMPLETED")
+        self.assertEqual(result["result"]["results"][0]["worker_identity"], "slow-worker")
+        self.assertEqual(observer.executions(limit=10)[0]["work_id"], accepted["work_id"])
+        observer.close()
+
     def test_consumer_bundle_upload_resumes_an_interrupted_transfer(self) -> None:
         root = Path(self.temp.name)
         source = root / "resume-source"

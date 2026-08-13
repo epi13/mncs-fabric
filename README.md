@@ -27,6 +27,13 @@ evidence. Fabric does not choose tools, resident models, semantic routes, or res
 acceptance; Local Harness and other consumers own those policies. See
 [`docs/TARGET_EXECUTION.md`](docs/TARGET_EXECUTION.md).
 
+`FabricClient.submit_execution()` persists a detached workload before returning.
+The persistent controller owns dispatch after the submitting client disconnects;
+later clients use `execution_status()`, `execution_result()`, or `executions()`.
+Caller-supplied idempotency keys reject conflicting duplicate submissions. Restart
+recovery records `RETRYING` and a new attempt instead of overwriting interrupted
+state.
+
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
 > **Status:** `0.2.0a18` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, rebuildable target-evidence indexing, and required bubblewrap containment for Fedora/Linux Python targets are implemented and covered by tests. Cross-platform containment/packaging, resource reservation, protected custody, and independent evaluation remain out of scope.
