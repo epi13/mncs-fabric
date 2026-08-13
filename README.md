@@ -14,15 +14,18 @@ The foreground controller service and local AF_UNIX consumer/operator transport
 are available through `mncs-fabric controller status|doctor|service run` and
 `FabricClient.connect()`/`FabricAdminClient.connect()`. An explicitly
 configured controller can also accept authenticated worker-initiated TLS
-rendezvous sessions; certificate provisioning, discovery, and OS service
-installation remain operator/deployment work.
+rendezvous sessions. Fedora workers can now use a protected, file-mediated
+commissioning path that generates their private key locally, requires explicit
+operator approval and CA issuance, activates pinned credentials, and installs an
+idempotent user service. Online bootstrap, discovery, and non-Fedora packaging
+remain deployment work.
 
 Loaded-model attributes are factual generic capability observations. Fabric does
 not choose resident models or semantic routes; Local Harness owns those policies.
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a16` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Production worker service installation, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
+> **Status:** `0.2.0a16` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, bounded persistent-service execution, and the direct endpoint compatibility path are implemented and covered by tests. Cross-platform worker packaging, resource reservation, sandboxing, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
@@ -141,9 +144,18 @@ mncs-fabric worker rendezvous --worker-id ID --controller-id ID \
   --controller-host HOST --controller-port PORT --bundle-root ROOT \
   --state worker.jsonl --trust-state trust.jsonl --ca ca.pem \
   --certificate worker.pem --key worker.key
-mncs-fabric enrollment create --ttl 10m [--worker-id ID]
+mncs-fabric worker join --material MATERIAL.json --worker-id ID \
+  --state-root STATE --request-output JOIN.json
+mncs-fabric worker activate --credentials CREDENTIALS.json --state-root STATE
+mncs-fabric enrollment create --ttl 10m [--worker-id ID] \
+  [--material-output MATERIAL.json --controller-id ID --controller-host HOST \
+   --controller-port PORT --controller-certificate controller.pem]
+mncs-fabric enrollment submit JOIN.json
 mncs-fabric enrollment list|pending|inspect REQUEST_ID
 mncs-fabric enrollment approve|deny REQUEST_ID
+mncs-fabric enrollment issue JOIN.json --ca ca.pem --ca-key ca.key \
+  --controller-certificate controller.pem --trust-state trust.jsonl \
+  --output CREDENTIALS.json
 mncs-fabric fleet list|status WORKER_ID|doctor
 mncs-fabric worker revoke WORKER_ID --reason REASON
 mncs-fabric controller status|doctor
@@ -185,11 +197,14 @@ paths in the unit. A complete rendezvous environment supplies
 Bind only to an operator-selected interface and restrict the listener with the
 host firewall even though peer authentication remains mandatory.
 
-For a Fedora worker that should survive login/session restarts, install
-`deploy/systemd/mncs-fabric-worker-rendezvous@.service` and create a protected
-`~/.config/mncs-fabric/workers/WORKER_ID.env` from the supplied example. Enable
-it as `mncs-fabric-worker-rendezvous@WORKER_ID.service`. The worker dials the
-controller; no inbound worker port is required for rendezvous mode.
+For a Fedora worker that should survive login/session restarts, follow
+[`deploy/systemd/WORKER_INSTALL.md`](deploy/systemd/WORKER_INSTALL.md). The
+commissioning commands create protected state and the idempotent installer owns
+an isolated virtual environment plus
+`mncs-fabric-worker-rendezvous@WORKER_ID.service`. The worker dials the
+controller; no inbound worker port is required. Approval automatically makes
+the enrolled identity eligible for rendezvous, so no worker-registry JSON edit
+is required.
 
 Worker-initiated rendezvous is opt-in and requires the controller listener TLS
 paths plus a worker process using `worker rendezvous`; otherwise the direct
@@ -202,9 +217,10 @@ projection before attempting dispatch.
 persistent controller. `FabricAdminClient.connect(socket_path)` is the explicit
 operator mode; consumer sockets cannot approve enrollment or revoke workers.
 The local service is implemented on POSIX with restrictive Unix-socket checks.
-Windows local transport and OS service installation are planned and not
-physically verified here. Closing a consumer does not publish worker disconnect
-state.
+Windows local transport and service installation remain planned. Fedora
+commissioning and installation are deterministic-test verified but have not yet
+been physically verified across reboot in this change. Closing a consumer does
+not publish worker disconnect state.
 
 `worker serve` is explicit and serves one bounded TLS request by default. An
 operator can opt into a bounded persistent service with `--max-requests` and

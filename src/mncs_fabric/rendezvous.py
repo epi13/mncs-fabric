@@ -7,7 +7,7 @@ import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .canonical import attach_identity, sha256_identity
 from .contracts import build_public_contract
@@ -105,7 +105,7 @@ class RendezvousSession:
 class RendezvousCoordinator:
     """Durable observation projection plus live session coordination."""
 
-    def __init__(self, controller_id: str, state_path: Path, *, known_workers: Mapping[str, Mapping[str, Any]] | None = None, heartbeat_seconds: float = 5.0, command_timeout: float = 300.0) -> None:
+    def __init__(self, controller_id: str, state_path: Path, *, known_workers: Mapping[str, Mapping[str, Any]] | None = None, membership_provider: Callable[[], Mapping[str, Mapping[str, Any]]] | None = None, heartbeat_seconds: float = 5.0, command_timeout: float = 300.0) -> None:
         if not 0.5 <= heartbeat_seconds <= 60 or not 1 <= command_timeout <= 3600:
             raise ValidationError("rendezvous bounds are invalid")
         self.controller_id = controller_id
@@ -113,14 +113,16 @@ class RendezvousCoordinator:
         self.heartbeat_seconds = heartbeat_seconds
         self.command_timeout = command_timeout
         self.known_workers = dict(known_workers or {})
-        self.membership_authority = known_workers is not None
+        self.membership_provider = membership_provider
+        self.membership_authority = known_workers is not None or membership_provider is not None
         self.sessions: dict[str, RendezvousSession] = {}
         self._lock = threading.RLock()
 
     def open(self, worker_id: str, fingerprint: str, opening: Mapping[str, Any]) -> dict[str, object]:
         description = opening["payload"]["description"]
         with self._lock:
-            if self.membership_authority and worker_id not in self.known_workers:
+            known = self._known_workers()
+            if self.membership_authority and worker_id not in known:
                 raise ProtocolError("worker is not a known Fabric member")
             if any(session.worker_id == worker_id and not session.closed for session in self.sessions.values()):
                 raise ProtocolError("worker identity already has an active rendezvous session")
@@ -167,7 +169,7 @@ class RendezvousCoordinator:
         now = time.monotonic()
         with self._lock:
             active = {session.worker_id: session for session in self.sessions.values() if not session.closed}
-            known = dict(self.known_workers)
+            known = self._known_workers()
         result: list[dict[str, Any]] = []
         for worker_id in sorted(set(known) | set(active)):
             session = active.get(worker_id)
@@ -178,9 +180,12 @@ class RendezvousCoordinator:
             fresh = now - session.last_seen <= self.heartbeat_seconds * 3
             description = session.description
             snapshot = description.get("resource_snapshot")
+            membership = known.get(worker_id, {})
             result.append({
                 "worker_id": worker_id, "availability": "AVAILABLE" if fresh else "UNKNOWN", "available": fresh,
                 "transport": "worker-initiated-tls-rendezvous", "observation_source": "worker-observed",
+                "source": membership.get("source", "rendezvous"),
+                "membership_id": membership.get("membership_id"),
                 "session_id": session.session_id, "session_generation": session.generation,
                 "last_seen": description.get("captured_at"), "capabilities": sorted(capability_names(description["node"])),
                 "description": dict(description), "resource_snapshot": snapshot,
@@ -203,7 +208,8 @@ class RendezvousCoordinator:
             sessions = {session.worker_id: session for session in self.sessions.values() if not session.closed and time.monotonic() - session.last_seen <= self.heartbeat_seconds * 3}
         if worker_id is not None:
             sessions = {worker_id: sessions[worker_id]} if worker_id in sessions else {}
-        slots = [WorkerSlot(worker_id=key, capabilities=frozenset(capability_names(value.description["node"])), concurrency_limit=int(self.known_workers.get(key, {}).get("concurrency_limit", 1)), resource_snapshot=value.description.get("resource_snapshot")) for key, value in sessions.items()]
+        known = self._known_workers()
+        slots = [WorkerSlot(worker_id=key, capabilities=frozenset(capability_names(value.description["node"])), concurrency_limit=int(known.get(key, {}).get("concurrency_limit", 1)), resource_snapshot=value.description.get("resource_snapshot")) for key, value in sessions.items()]
         decision = schedule(checked, slots, replicas=replicas, placement=placement)
         if decision.disposition != "PASS":
             return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": list(decision.admissions)}]
@@ -226,6 +232,12 @@ class RendezvousCoordinator:
     def _generation(self, worker_id: str) -> int:
         values = [entry["record"].get("generation", 0) for entry in self.ledger.records(record_type="worker.rendezvous") if entry["record"].get("worker_id") == worker_id]
         return max((int(value) for value in values), default=0)
+
+    def _known_workers(self) -> dict[str, Mapping[str, Any]]:
+        values: dict[str, Mapping[str, Any]] = dict(self.known_workers)
+        if self.membership_provider is not None:
+            values.update(self.membership_provider())
+        return values
 
     def _record(self, event: str, session: RendezvousSession) -> None:
         record = {"schema_version": RENDEZVOUS_SCHEMA, "event": event, "worker_id": session.worker_id, "session_id": session.session_id, "generation": session.generation, "certificate_fingerprint": session.certificate_fingerprint, "observed_at": utc_now(), "description": dict(session.description)}

@@ -17,6 +17,7 @@ from mncs_fabric.errors import ProtocolError
 from mncs_fabric.models import validate_job_plan
 from mncs_fabric.api import FabricClient
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
+from mncs_fabric.lifecycle import LifecycleStore
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.rendezvous import RendezvousCoordinator
 from mncs_fabric.transport import TLSRendezvousServer, TLSRendezvousWorker
@@ -29,7 +30,7 @@ def _certificates(root: Path) -> dict[str, Path]:
     assert openssl
     ca_key, ca_cert = root / "ca.key", root / "ca.pem"
     subprocess.run([openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(ca_key), "-out", str(ca_cert), "-subj", "/CN=Fabric test CA", "-days", "1", "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    result: dict[str, Path] = {"ca": ca_cert}
+    result: dict[str, Path] = {"ca": ca_cert, "ca_key": ca_key}
     for name in ("server", "client"):
         key, csr, cert = root / f"{name}.key", root / f"{name}.csr", root / f"{name}.pem"
         subprocess.run([openssl, "req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(csr), "-subj", f"/CN=Fabric {name}"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -40,6 +41,102 @@ def _certificates(root: Path) -> dict[str, Path]:
 
 
 class RendezvousTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == "posix", "persistent consumer transport is POSIX-only")
+    def test_approved_enrollment_automatically_authorizes_rendezvous_membership(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cert = _certificates(root)
+            public_key = subprocess.run(
+                ["openssl", "x509", "-in", str(cert["client"]), "-pubkey", "-noout"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            lifecycle = LifecycleStore(root / "lifecycle.jsonl")
+            authorization = lifecycle.create_authorization(expected_worker_identity="worker-auto")
+            request = lifecycle.build_request(
+                worker_identity="worker-auto",
+                public_key_pem=public_key,
+                hostname_hint="worker-dhcp-a",
+                operating_system="linux",
+                architecture="x86_64",
+                authorization_id=str(authorization["authorization_id"]),
+            )
+            submitted = lifecycle.submit_request(request, str(authorization["token"]))
+            lifecycle.approve_request(str(submitted["request_id"]))
+
+            controller_trust_path = root / "controller-trust.jsonl"
+            worker_trust_path = root / "worker-trust.jsonl"
+            controller_fp = certificate_fingerprint(
+                ssl.PEM_cert_to_DER_cert(cert["server"].read_text(encoding="ascii"))
+            )
+            worker_fp = certificate_fingerprint(
+                ssl.PEM_cert_to_DER_cert(cert["client"].read_text(encoding="ascii"))
+            )
+            TrustStore(controller_trust_path).enroll("worker", "worker-auto", worker_fp)
+            TrustStore(worker_trust_path).enroll(
+                "controller", "controller-auto", controller_fp
+            )
+            with socket.socket() as probe:
+                probe.bind(("127.0.0.1", 0))
+                port = int(probe.getsockname()[1])
+            config = ControllerConfig(
+                "controller-auto",
+                lifecycle.path,
+                socket_path=root / "consumer.sock",
+                admin_socket_path=root / "admin.sock",
+                service_log=root / "service.jsonl",
+                worker_state_path=root / "worker-state.jsonl",
+                rendezvous_host="127.0.0.1",
+                rendezvous_port=port,
+                rendezvous_ca=cert["ca"],
+                rendezvous_certificate=cert["server"],
+                rendezvous_key=cert["server_key"],
+                rendezvous_trust_state=controller_trust_path,
+            )
+            service = ControllerService(config)
+            service_thread = threading.Thread(
+                target=service.run, kwargs={"max_seconds": 8}, daemon=True
+            )
+            service_thread.start()
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline and not service.rendezvous_ready:
+                time.sleep(0.02)
+            (root / "bundles").mkdir()
+            worker = LocalWorker("worker-auto", root / "bundles", root / "worker.jsonl")
+            endpoint = TLSRendezvousWorker(
+                worker,
+                "127.0.0.1",
+                port,
+                ca_file=cert["ca"],
+                client_cert=cert["client"],
+                client_key=cert["client_key"],
+                controller_id="controller-auto",
+                worker_id="worker-auto",
+                trust_store=TrustStore(worker_trust_path),
+                heartbeat_seconds=0.5,
+                timeout=2,
+            )
+            worker_thread = threading.Thread(
+                target=endpoint.run, kwargs={"max_seconds": 2}, daemon=True
+            )
+            worker_thread.start()
+            consumer = FabricClient.connect(config.socket_path_value)
+            deadline = time.monotonic() + 3
+            workers: list[dict[str, object]] = []
+            while time.monotonic() < deadline:
+                workers = consumer.workers()
+                if workers and workers[0].get("availability") == "AVAILABLE":
+                    break
+                time.sleep(0.05)
+            self.assertEqual(workers[0]["worker_id"], "worker-auto")
+            self.assertEqual(workers[0]["source"], "approved-enrollment")
+            self.assertTrue(service.worker_backend_enabled)
+            consumer.close()
+            worker_thread.join(timeout=5)
+            service.request_stop()
+            service_thread.join(timeout=5)
+
     @unittest.skipUnless(os.name == "posix", "persistent consumer transport is POSIX-only")
     def test_controller_service_exposes_live_rendezvous_fleet_to_consumer(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

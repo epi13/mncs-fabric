@@ -71,6 +71,16 @@ presence, liveness, capability freshness, and resource freshness remain separate
 claims; only a fresh enrolled authenticated session can report current
 availability.
 
+`commissioning.py` is the explicit operator file-handoff boundary for Fedora
+commissioning. It creates identity-addressed, bounded enrollment material and
+join/credential documents; generates and retains the worker private key only on
+the worker; requires an approved lifecycle decision before an operator-held CA
+can sign the CSR; and activates pinned credentials into protected worker state.
+It opens no pre-enrollment network listener and does not turn TrustStore into a
+CA. Approved lifecycle membership is projected into rendezvous authorization at
+runtime, so ordinary clients can observe an authenticated commissioned worker
+without receiving controller registry or trust configuration.
+
 `controller_service.py` is a platform-neutral foreground service foundation.
 It owns lifecycle state independently of a consumer process and exposes
 status/doctor checks suitable for a thin systemd or Windows supervisor. Its
@@ -266,5 +276,5 @@ Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 - a distributed RAVEL mechanism; and
 - public semantic ownership for MNEL/RAVEL workloads or collection aggregation; and
 - production multi-host commissioning and reboot/reconnect evidence across supported OSes;
-- certificate provisioning, mDNS/DNS-SD discovery, and installer packaging; and
+- online certificate provisioning, mDNS/DNS-SD discovery, and non-Fedora installer packaging; and
 - arbitrary remote shell, ambient SSH/WinRM, or consumer-owned controller state.
