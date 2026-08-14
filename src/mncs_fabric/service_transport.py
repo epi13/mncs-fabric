@@ -43,6 +43,8 @@ _OPERATIONS = {
     "execution.dispatch", "execution.submit", "execution.status",
     "execution.result", "execution.list", "execution.target.dispatch",
     "worker.capability.ingest", "worker.capability.observations",
+    "schedule.enqueue", "schedule.list", "schedule.tick",
+    "schedule.pause", "schedule.resume", "schedule.policy",
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
     "enrollment.expire", "enrollment.submit", "worker.revoke",

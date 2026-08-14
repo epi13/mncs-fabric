@@ -69,6 +69,7 @@ class ControllerConfig:
     rendezvous_certificate: Path | None = None
     rendezvous_key: Path | None = None
     rendezvous_trust_state: Path | None = None
+    availability_policy_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.controller_id or len(self.controller_id) > 128 or "\x00" in self.controller_id:
@@ -171,6 +172,12 @@ class ControllerService:
         self.detached_ledger = FabricLedger(
             self.config.service_log_path.with_name("detached-execution.jsonl")
         )
+        self.schedule_ledger = FabricLedger(
+            self.config.service_log_path.with_name("scheduled-work.jsonl")
+        )
+        from .work_queue import WorkQueue
+
+        self.work_queue = WorkQueue(self.schedule_ledger)
         self._target_evidence_index = TargetEvidenceIndex(
             self.target_ledger, self.config.target_evidence_index_value
         )
@@ -350,6 +357,40 @@ class ControllerService:
             )
             self._detached_threads[work_id] = thread
             thread.start()
+
+    def _availability_policy(self) -> dict[str, Any]:
+        from .availability import AVAILABILITY_POLICY_SCHEMA, validate_availability_policy
+
+        path = self.config.availability_policy_path
+        if path is None:
+            return {
+                "schema_version": AVAILABILITY_POLICY_SCHEMA,
+                "timezone": "UTC",
+                "paused": False,
+                "workers": {},
+                "source": "none",
+            }
+        import json
+
+        policy = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+        checked = validate_availability_policy(policy)
+        checked["source"] = str(Path(path).expanduser())
+        return checked
+
+    def _tick_schedule(self, args: Mapping[str, Any]) -> dict[str, Any]:
+        from datetime import datetime, timezone
+
+        now = args.get("now")
+        current = None
+        if now is not None:
+            if not isinstance(now, str):
+                raise ValidationError("schedule tick now must be an RFC 3339 timestamp")
+            current = datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone(timezone.utc)
+        policy = args.get("policy")
+        if policy is None:
+            policy = self._availability_policy()
+        workers, _registry = self._worker_backend_status()
+        return self.work_queue.tick(policy=policy, workers=workers, now=current)
 
     def _submit_detached(
         self, args: Mapping[str, Any], *, client_identity: str, request_id: str
@@ -539,25 +580,26 @@ class ControllerService:
         probing is ``fleet.refresh``.
         """
 
-        if self._worker_client is not None:
+        if self._worker_client is not None and hasattr(self._worker_client, "blocked_worker_ids"):
             self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
             workers = self._rendezvous.states()
         elif self._worker_client is None:
             workers = self._rendezvous.states() if self._rendezvous is not None else []
         else:
+            from .worker_backend import list_backend_workers
+
             if refresh:
-                try:
-                    self._worker_client.refresh_workers()
-                except Exception as exc:
-                    self._worker_registry_report = {
-                        **(self._worker_registry_report or {}),
-                        "refresh_error": str(exc),
-                    }
-            workers = [
-                dict(worker)
-                for worker in self._worker_client.workers(apply_lease=refresh)
-            ]
+                refresher = getattr(self._worker_client, "refresh_workers", None)
+                if callable(refresher):
+                    try:
+                        refresher()
+                    except Exception as exc:
+                        self._worker_registry_report = {
+                            **(self._worker_registry_report or {}),
+                            "refresh_error": str(exc),
+                        }
+            workers = list_backend_workers(self._worker_client, apply_lease=refresh)
         return self._apply_capability_inventory(
             self._apply_membership_precedence([dict(worker) for worker in workers])
         ), self._worker_registry_report
@@ -696,7 +738,7 @@ class ControllerService:
         # Import lazily to keep the controller-service module importable while
         # the package surface is being initialized.
         from . import __version__
-        from .contracts import build_public_contract
+        from .contracts import build_public_contract, service_capability_projection, service_feature_projection
 
         health = self.lifecycle.doctor(now=now)
         service_health = self.service_ledger.verify()
@@ -705,9 +747,10 @@ class ControllerService:
         runtime = "RUNNING" if latest_event == "started" else "STOPPED" if latest_event == "stopped" else "NOT_STARTED"
         public_contract = build_public_contract(__version__)
         workers, registry = self._worker_backend_status()
-        from .contracts import service_feature_projection
-
         service_features = service_feature_projection(worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready)
+        service_capabilities = service_capability_projection(
+            worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready
+        )
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
@@ -735,6 +778,7 @@ class ControllerService:
                 "observation_mode": "last-known",
             },
             "service_features": service_features,
+            "service_capabilities": service_capabilities,
         }
 
     def doctor(self, *, now: str | None = None) -> dict[str, Any]:
@@ -921,6 +965,23 @@ class ControllerService:
                     if len(work_ids) >= limit:
                         break
                 payload = {"work": [self._detached_status(work_id) for work_id in work_ids]}
+            elif operation == "schedule.enqueue":
+                payload = self.work_queue.enqueue(args, client_identity=request["client_identity"])
+            elif operation == "schedule.list":
+                payload = {
+                    "paused": self.work_queue.paused(),
+                    "queued": self.work_queue.queued(),
+                    "commons_authority": "none",
+                    "authority": "persistent-fabric",
+                }
+            elif operation == "schedule.tick":
+                payload = self._tick_schedule(args)
+            elif operation == "schedule.pause":
+                payload = self.work_queue.pause()
+            elif operation == "schedule.resume":
+                payload = self.work_queue.resume()
+            elif operation == "schedule.policy":
+                payload = self._availability_policy()
             elif operation == "execution.target.dispatch":
                 if not self.worker_backend_enabled:
                     raise ProtocolError("persistent target execution backend is not configured")
