@@ -34,6 +34,12 @@ HMAC-only fallback.
 
 `FabricService` is the stable boundary for node inspection, capability inspection, plan validation, local execution, record verification, collection, and reconciliation. The CLI delegates to it. Forge invokes the same bounded service contract through its declared Provider Protocol workflow; it does not import Fabric internals.
 
+The persistent controller service treats `controller.status` and `fleet.list`
+as last-known read models. They do not describe workers. `fleet.refresh` is
+the explicit probe. Worker endpoints default to one concurrent connection, so
+an implicit describe during inference can stall unrelated clients or mark a
+busy worker unavailable.
+
 `mncs_fabric.api.FabricClient` is the consumer-facing distributed facade. It
 composes local and registered mTLS workers, typed `RemoteWorkerConfig`, bundle
 transfer, replication, reconciliation, Fabric-owned receipts, and optional

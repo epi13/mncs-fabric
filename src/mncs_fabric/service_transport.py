@@ -38,7 +38,7 @@ SERVICE_MAX_CONNECTIONS = 32
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _OPERATIONS = {
     "controller.status", "controller.doctor", "fleet.list", "fleet.status",
-    "worker.status", "worker.observations", "fleet.doctor",
+    "fleet.refresh", "worker.status", "worker.observations", "fleet.doctor",
     "execution.bundle.begin", "execution.bundle.chunk", "execution.bundle.commit",
     "execution.dispatch", "execution.submit", "execution.status",
     "execution.result", "execution.list", "execution.target.dispatch",

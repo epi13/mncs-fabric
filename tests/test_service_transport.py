@@ -510,7 +510,11 @@ class ServiceTransportTests(unittest.TestCase):
                 self.assertTrue(status["service_features"]["worker_tool_capability_observations"])
                 self.assertTrue(status["service_features"]["resumable_service_bundle_transfer"])
                 self.assertFalse(status["service_features"]["rendezvous_membership_projection"])
-                workers = client.workers()
+                self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+                listed = client.workers()
+                self.assertEqual(listed[0]["worker_id"], "worker-service")
+                self.assertNotEqual(listed[0]["availability"], "AVAILABLE")
+                workers = client.refresh_workers()
                 self.assertEqual(workers[0]["worker_id"], "worker-service")
                 self.assertEqual(workers[0]["availability"], "AVAILABLE")
                 observation = client.ingest_capability_observation(
@@ -664,6 +668,91 @@ class ServiceTransportTests(unittest.TestCase):
             self.assertEqual(revoked_target["reason"], "TARGET_REVOKED")
             self.assertEqual(scheduled_results[0]["record"]["outcome"], "PASS")
             self.assertEqual(scheduled_results[0]["worker_identity"], "worker-service")
+
+
+class _SlowRefreshClient:
+    def __init__(self) -> None:
+        self.refresh_calls = 0
+        self.refresh_started = threading.Event()
+        self.refresh_release = threading.Event()
+        self.blocked_worker_ids: set[str] = set()
+        self.registry_entries: dict[str, object] = {}
+
+    def refresh_workers(self) -> list[dict[str, object]]:
+        self.refresh_calls += 1
+        self.refresh_started.set()
+        self.refresh_release.wait(timeout=5)
+        return []
+
+    def workers(self, *, apply_lease: bool = True) -> list[dict[str, object]]:
+        del apply_lease
+        return [
+            {
+                "worker_id": "observed-worker",
+                "source": "remote",
+                "availability": "UNKNOWN",
+            }
+        ]
+
+    def close(self) -> None:
+        self.refresh_release.set()
+
+
+@unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
+class LastKnownFleetStatusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.config = ControllerConfig(
+            "controller-read-model-test",
+            root / "lifecycle.jsonl",
+            heartbeat_seconds=0.5,
+            service_log=root / "controller-service.jsonl",
+            socket_path=root / "controller.sock",
+            admin_socket_path=root / "controller-admin.sock",
+        )
+        self.service = ControllerService(self.config)
+        self.backend = _SlowRefreshClient()
+        self.service._worker_client = self.backend
+        self.thread = threading.Thread(
+            target=self.service.run, kwargs={"max_seconds": 4.0}, daemon=True
+        )
+        self.thread.start()
+        deadline = time.monotonic() + 2.0
+        while not self.config.socket_path_value.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(self.config.socket_path_value.exists())
+        self.client = FabricClient.connect(
+            self.config.socket_path_value, client_identity="read-model"
+        )
+
+    def tearDown(self) -> None:
+        self.backend.refresh_release.set()
+        self.client.close()
+        self.service.request_stop()
+        self.thread.join(timeout=3.0)
+        self.temp.cleanup()
+
+    def test_status_and_list_do_not_probe_workers(self) -> None:
+        status = self.client.controller_status()
+        listed = self.client.workers()
+        self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+        self.assertEqual(listed[0]["worker_id"], "observed-worker")
+        self.assertEqual(self.backend.refresh_calls, 0)
+
+    def test_status_does_not_wait_for_an_in_flight_refresh(self) -> None:
+        self.backend.refresh_release.clear()
+        refresh = threading.Thread(target=self.client.refresh_workers, daemon=True)
+        refresh.start()
+        self.assertTrue(self.backend.refresh_started.wait(2.0))
+        started = time.monotonic()
+        status = self.client.controller_status()
+        elapsed = time.monotonic() - started
+        self.backend.refresh_release.set()
+        refresh.join(timeout=3.0)
+        self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+        self.assertLess(elapsed, 1.0)
+        self.assertGreaterEqual(self.backend.refresh_calls, 1)
 
 
 if __name__ == "__main__":
