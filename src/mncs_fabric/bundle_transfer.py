@@ -287,6 +287,13 @@ class BundleCache:
             shutil.rmtree(state)
             return "ALREADY_PRESENT", report, target / "content"
         if self._cache_bytes() + archive.stat().st_size > self.max_cache_bytes:
+            self.gc(
+                dry_run=False,
+                confirm=True,
+                needed_bytes=archive.stat().st_size,
+                in_use=(bundle_identity,),
+            )
+        if self._cache_bytes() + archive.stat().st_size > self.max_cache_bytes:
             return "UNKNOWN", None, None
         publish_parent = self.bundle_root
         temporary = Path(tempfile.mkdtemp(prefix=".publish-", dir=publish_parent))
@@ -320,6 +327,110 @@ class BundleCache:
         except BaseException:
             shutil.rmtree(temporary, ignore_errors=True)
             raise
+
+    def _entry_bytes(self, target: Path) -> int:
+        return sum(path.stat().st_size for path in target.rglob("*") if path.is_file())
+
+    def status(self, *, pinned: set[str] | None = None, in_use: set[str] | None = None) -> dict[str, Any]:
+        pinned = set(pinned or ())
+        in_use = set(in_use or ())
+        entries: list[dict[str, Any]] = []
+        total = 0
+        reclaimable = 0
+        pinned_bytes = 0
+        active_bytes = 0
+        oldest: str | None = None
+        oldest_mtime = None
+        for target in sorted(self.bundle_root.iterdir()) if self.bundle_root.exists() else []:
+            if not target.is_dir() or target.name.startswith("."):
+                continue
+            size = self._entry_bytes(target)
+            total += size
+            metadata = self._published_metadata(target) or {}
+            identity = str(metadata.get("bundle_identity") or f"sha256:{target.name}")
+            mtime = target.stat().st_mtime
+            protected = identity in pinned or target.name in {item.removeprefix("sha256:") for item in pinned}
+            active = identity in in_use or target.name in {item.removeprefix("sha256:") for item in in_use}
+            if protected:
+                pinned_bytes += size
+            elif active:
+                active_bytes += size
+            else:
+                reclaimable += size
+                if oldest_mtime is None or mtime < oldest_mtime:
+                    oldest_mtime = mtime
+                    oldest = identity
+            entries.append(
+                {
+                    "bundle_identity": identity,
+                    "bytes": size,
+                    "pinned": protected,
+                    "in_use": active,
+                    "mtime": int(mtime),
+                }
+            )
+        return {
+            "cache_bytes": total,
+            "max_cache_bytes": self.max_cache_bytes,
+            "reclaimable_bytes": reclaimable,
+            "pinned_bytes": pinned_bytes,
+            "in_use_bytes": active_bytes,
+            "oldest_unused": oldest,
+            "entries": entries,
+            "pressure": total / self.max_cache_bytes if self.max_cache_bytes else 0,
+        }
+
+    def gc(
+        self,
+        *,
+        dry_run: bool = True,
+        confirm: bool = False,
+        needed_bytes: int = 0,
+        pinned: set[str] | None = None,
+        in_use: set[str] | None = None,
+    ) -> dict[str, Any]:
+        snapshot = self.status(pinned=pinned, in_use=in_use)
+        if dry_run or not confirm:
+            return {**snapshot, "action": "dry-run", "evicted": []}
+        evicted: list[str] = []
+        target_free = max(needed_bytes, 0)
+        reclaim_goal = target_free
+        if snapshot["cache_bytes"] >= int(self.max_cache_bytes * 0.8):
+            reclaim_goal = max(reclaim_goal, int(self.max_cache_bytes * 0.2))
+        candidates = sorted(
+            (
+                item
+                for item in snapshot["entries"]
+                if not item["pinned"] and not item["in_use"]
+            ),
+            key=lambda item: item["mtime"],
+        )
+        freed = 0
+        for item in candidates:
+            if target_free and self._cache_bytes() + target_free <= self.max_cache_bytes and freed >= reclaim_goal:
+                break
+            if not target_free and freed >= reclaim_goal:
+                break
+            identity = str(item["bundle_identity"])
+            raw = identity.removeprefix("sha256:")
+            path = self.bundle_root / raw
+            if path.exists():
+                self._discard_published_target(path)
+                evicted.append(identity)
+                freed += int(item["bytes"])
+        if needed_bytes and self._cache_bytes() + needed_bytes > self.max_cache_bytes:
+            return {
+                **self.status(pinned=pinned, in_use=in_use),
+                "action": "failed",
+                "evicted": evicted,
+                "reason": "SAFE_RECLAMATION_INSUFFICIENT",
+            }
+        return {
+            **self.status(pinned=pinned, in_use=in_use),
+            "action": "collected",
+            "evicted": evicted,
+            "freed_bytes": freed,
+        }
 
     def root_for(self, bundle_identity: str, archive_identity: str) -> Path:
         target = self._target(bundle_identity)

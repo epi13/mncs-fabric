@@ -40,6 +40,16 @@ the explicit probe. Worker endpoints default to one concurrent connection, so
 an implicit describe during inference can stall unrelated clients or mark a
 busy worker unavailable.
 
+Running-service capabilities are advertised in `service_capabilities`, not
+only the package version. A newer source talking to an older controller must
+report `restart_required` instead of generic compatibility.
+
+Scheduled work is a Fabric-owned queue plus operator availability policy.
+Windows are permission, not a command. Commons may observe work but never
+authorizes dispatch. Forge keeps evaluation semantics. Project agents such as
+RAVEL and MNEL should express capability/resource needs and consume this
+queue rather than building a second scheduler.
+
 `mncs_fabric.api.FabricClient` is the consumer-facing distributed facade. It
 composes local and registered mTLS workers, typed `RemoteWorkerConfig`, bundle
 transfer, replication, reconciliation, Fabric-owned receipts, and optional

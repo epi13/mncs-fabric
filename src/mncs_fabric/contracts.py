@@ -20,9 +20,13 @@ PUBLIC_FEATURES = {
     # Keep the service-boundary capabilities separate from embedded execution
     # features so consumers do not infer dispatch support from the latter.
     "persistent_fleet_read": True,
+    "persistent_fleet_refresh": True,
+    "last_known_fleet_status": True,
     "persistent_service_execution": False,
+    "persistent_detached_execution": False,
     "persistent_service_capability_ingestion": False,
     "persistent_worker_observations": False,
+    "scheduled_work_queue": True,
     "worker_rendezvous": False,
     "operator_file_commissioning": True,
     "approved_rendezvous_membership": True,
@@ -202,11 +206,16 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
     return value
 
 
+SERVICE_CAPABILITIES_SCHEMA = "mncs-fabric.service-capabilities.v0.2"
+
+
 def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool = False) -> dict[str, bool]:
     """Describe capabilities provided by the running controller instance."""
 
     return {
         "persistent_fleet_read": True,
+        "persistent_fleet_refresh": True,
+        "last_known_fleet_status": True,
         "persistent_service_execution": bool(worker_backend),
         "persistent_detached_execution": bool(worker_backend),
         "persistent_service_capability_ingestion": bool(worker_backend),
@@ -217,7 +226,43 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
         "rendezvous_membership_projection": bool(worker_rendezvous),
         "worker_tool_capability_observations": bool(worker_backend),
         "resumable_service_bundle_transfer": True,
+        "scheduled_work_queue": True,
     }
+
+
+def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bool = False) -> dict[str, Any]:
+    """Advertise the running service operations independently of package version."""
+
+    features = service_feature_projection(
+        worker_backend=worker_backend, worker_rendezvous=worker_rendezvous
+    )
+    operations = {
+        "controller.status": True,
+        "controller.doctor": True,
+        "fleet.list": True,
+        "fleet.refresh": True,
+        "fleet.status": True,
+        "execution.dispatch": bool(worker_backend),
+        "execution.submit": bool(worker_backend),
+        "execution.status": True,
+        "execution.result": True,
+        "execution.list": True,
+        "worker.capability.ingest": bool(worker_backend),
+        "schedule.enqueue": True,
+        "schedule.list": True,
+        "schedule.tick": True,
+        "schedule.pause": True,
+        "schedule.resume": True,
+        "schedule.policy": True,
+    }
+    value = {
+        "schema_version": SERVICE_CAPABILITIES_SCHEMA,
+        "features": features,
+        "operations": operations,
+        "restart_policy": "source newer than the running persistent controller requires a controller restart",
+    }
+    value["capabilities_identity"] = sha256_identity(value)
+    return value
 
 
 def validate_public_contract(value: object) -> dict[str, Any]:

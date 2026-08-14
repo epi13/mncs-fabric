@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- bundle cache GC can evict unused published bundles under pressure, never
+  evicts in-use or pinned identities, and fails closed when safe reclamation
+  cannot free enough space (`mncs-fabric cache status|gc`);
+- 0.2.0a19 advertises `service_capabilities` including last-known status,
+  explicit `fleet.refresh`, detached execution, and a scheduled work queue so
+  clients can detect a stale running controller without trusting package
+  versions alone;
+- controller-owned worker backends may implement `workers()` without
+  `apply_lease`; last-known reads remain compatible with Control fixtures;
 - `controller.status`, `fleet.list`, and other service reads now project
   last-known worker state without calling `refresh_workers()`; live describe
   probes are explicit through `fleet.refresh` so a busy worker no longer

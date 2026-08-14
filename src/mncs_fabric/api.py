@@ -721,6 +721,8 @@ class FabricClient:
         consumer_context: ConsumerContext | Mapping[str, Any] | None = None,
         execution_bundle_archive: Path,
         placement: PlacementRequest | Mapping[str, Any] | None = None,
+        model: str | None = None,
+        role: str | None = None,
     ) -> dict[str, Any]:
         """Persist and enqueue execution, returning before worker completion."""
 
@@ -745,6 +747,8 @@ class FabricClient:
                 "consumer_context": context_value,
                 "placement": placement_value,
                 "execution_bundle_reference": bundle_reference,
+                "model": model,
+                "role": role,
             },
         )
 
@@ -762,6 +766,36 @@ class FabricClient:
         if self._service_transport is None:
             raise ProtocolError("detached execution listing requires a persistent service client")
         return list(self._service_payload("execution.list", {"limit": limit}).get("work", []))
+
+    def enqueue_scheduled_work(self, **arguments: Any) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.enqueue", arguments)
+
+    def scheduled_work(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.list")
+
+    def tick_schedule(self, **arguments: Any) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.tick", arguments)
+
+    def pause_schedule(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.pause")
+
+    def resume_schedule(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.resume")
+
+    def availability_policy(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.policy")
 
     def _upload_service_bundle(self, archive: Path) -> dict[str, str]:
         """Transfer a verified archive without exposing consumer filesystem paths."""

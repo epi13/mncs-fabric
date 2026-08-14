@@ -321,6 +321,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="operator-only lifecycle state; the controller service must be stopped",
     )
 
+    cache = sub.add_parser("cache", help="inspect or reclaim the controller bundle cache")
+    cache_sub = cache.add_subparsers(dest="cache_command", required=True)
+    cache_status = cache_sub.add_parser("status")
+    cache_status.add_argument("--json", action="store_true")
+    cache_gc = cache_sub.add_parser("gc")
+    cache_gc.add_argument("--json", action="store_true")
+    cache_gc.add_argument("--dry-run", action="store_true")
+    cache_gc.add_argument("--confirm", action="store_true")
+    for cache_command in (cache_status, cache_gc):
+        cache_command.add_argument(
+            "--root",
+            type=_path,
+            help="bundle cache root; defaults to the controller execution-bundle consumer cache",
+        )
+
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
     fleet_list = fleet_sub.add_parser("list", help="list last-known fleet members")
@@ -591,6 +606,18 @@ def main(argv: list[str] | None = None) -> int:
                 }
             else:
                 raise AssertionError("unreachable enrollment command")
+            write_json(None, result)
+            return 0
+        if args.command == "cache":
+            from .bundle_transfer import BundleCache
+            from .lifecycle import default_state_dir
+
+            root = args.root or (default_state_dir() / "execution-bundles" / "consumer-cache")
+            cache = BundleCache(root)
+            if args.cache_command == "status":
+                result = cache.status()
+            else:
+                result = cache.gc(dry_run=args.dry_run or not args.confirm, confirm=args.confirm)
             write_json(None, result)
             return 0
         if args.command == "fleet":

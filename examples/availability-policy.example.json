@@ -1,0 +1,34 @@
+{
+  "schema_version": "mncs-fabric.availability-policy.v0.1",
+  "timezone": "America/Anchorage",
+  "paused": false,
+  "workers": {
+    "fabric-worker-01": {
+      "windows": [
+        {
+          "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+          "start": "22:00",
+          "end": "10:00"
+        }
+      ],
+      "paused": false,
+      "allowed_workload_classes": ["python", "inference", "eval"]
+    },
+    "collamore02-windows": {
+      "windows": [
+        {
+          "days": ["mon", "tue", "wed", "thu", "fri"],
+          "start": "02:00",
+          "end": "16:00"
+        },
+        {
+          "days": ["sat", "sun"],
+          "start": "02:00",
+          "end": "09:00"
+        }
+      ],
+      "paused": false,
+      "allowed_workload_classes": ["python", "inference", "eval"]
+    }
+  }
+}
