@@ -91,9 +91,14 @@ def _terminate_process(proc: subprocess.Popen[bytes]) -> None:
         if os.name == "posix":
             os.killpg(proc.pid, signal.SIGTERM)
         else:
-            proc.terminate()
+            subprocess.run(
+                ["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                check=False,
+                capture_output=True,
+                timeout=5,
+            )
         proc.wait(timeout=1.0)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
+    except (ProcessLookupError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
         try:
             if os.name == "posix":
                 os.killpg(proc.pid, signal.SIGKILL)

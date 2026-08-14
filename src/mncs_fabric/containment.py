@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,28 @@ class BubblewrapProvider:
             and os.access(str(self.executable), os.X_OK)
         )
 
+    def user_namespace_available(self) -> bool:
+        """True when this process can create a Bubblewrap user namespace."""
+
+        if not self.available or self.executable is None:
+            return False
+        try:
+            completed = subprocess.run(
+                [
+                    self.executable,
+                    "--die-with-parent",
+                    "--unshare-user",
+                    "--unshare-pid",
+                    "/bin/true",
+                ],
+                check=False,
+                capture_output=True,
+                timeout=2,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return False
+        return completed.returncode == 0
+
     def launch(
         self,
         argv: Sequence[str],
@@ -62,6 +85,11 @@ class BubblewrapProvider:
         if not self.available or self.executable is None:
             raise ContainmentUnavailable(
                 "required bubblewrap containment is unavailable on this worker"
+            )
+        if not self.user_namespace_available():
+            raise ContainmentUnavailable(
+                "required bubblewrap user namespace is unavailable "
+                "(nested sandbox or kernel userns restriction)"
             )
         if not argv or Path(argv[0]).resolve() != Path(sys.executable).resolve():
             raise ContainmentUnavailable(
