@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- bundle cache GC can evict unused published bundles under pressure, never
+  evicts in-use or pinned identities, and fails closed when safe reclamation
+  cannot free enough space (`mncs-fabric cache status|gc`);
 - 0.2.0a19 advertises `service_capabilities` including last-known status,
   explicit `fleet.refresh`, detached execution, and a scheduled work queue so
   clients can detect a stale running controller without trusting package
