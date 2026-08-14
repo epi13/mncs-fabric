@@ -528,7 +528,17 @@ class ControllerService:
     def rendezvous_ready(self) -> bool:
         return self._rendezvous is not None and self._rendezvous_server is not None
 
-    def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+    def _worker_backend_status(
+        self, *, refresh: bool = False
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        """Project last-known worker state, optionally probing remotes first.
+
+        Status, fleet list, and other read operations must not refresh. Worker
+        endpoints default to one concurrent connection, so a live describe
+        during inference can stall or mark a busy worker unavailable. Active
+        probing is ``fleet.refresh``.
+        """
+
         if self._worker_client is not None:
             self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
@@ -536,14 +546,18 @@ class ControllerService:
         elif self._worker_client is None:
             workers = self._rendezvous.states() if self._rendezvous is not None else []
         else:
-            try:
-                self._worker_client.refresh_workers()
-            except Exception as exc:
-                self._worker_registry_report = {
-                    **(self._worker_registry_report or {}),
-                    "refresh_error": str(exc),
-                }
-            workers = [dict(worker) for worker in self._worker_client.workers()]
+            if refresh:
+                try:
+                    self._worker_client.refresh_workers()
+                except Exception as exc:
+                    self._worker_registry_report = {
+                        **(self._worker_registry_report or {}),
+                        "refresh_error": str(exc),
+                    }
+            workers = [
+                dict(worker)
+                for worker in self._worker_client.workers(apply_lease=refresh)
+            ]
         return self._apply_capability_inventory(
             self._apply_membership_precedence([dict(worker) for worker in workers])
         ), self._worker_registry_report
@@ -715,7 +729,11 @@ class ControllerService:
             "worker_rendezvous": "RUNNING" if self.rendezvous_ready else "CONFIGURED" if self._rendezvous is not None else "PLANNED",
             "consumer_transport": "LOCAL_UNIX_SOCKET" if os.name == "posix" else "PLANNED_WINDOWS_LOCAL_TRANSPORT",
             "claim_boundary": "controller health is independent from worker availability and consumer connection",
-            "fleet": {"workers": workers, "registry": registry},
+            "fleet": {
+                "workers": workers,
+                "registry": registry,
+                "observation_mode": "last-known",
+            },
             "service_features": service_features,
         }
 
@@ -775,6 +793,15 @@ class ControllerService:
                 payload = self.doctor()
             elif operation == "fleet.list":
                 payload = {"workers": self._worker_backend_status()[0] if self.worker_backend_enabled else self.lifecycle.memberships()}
+            elif operation == "fleet.refresh":
+                payload = {
+                    "workers": (
+                        self._worker_backend_status(refresh=True)[0]
+                        if self.worker_backend_enabled
+                        else self.lifecycle.memberships()
+                    ),
+                    "observation_mode": "probed",
+                }
             elif operation in {"fleet.status", "worker.status", "worker.observations"}:
                 worker_id = str(args.get("worker_id"))
                 if self.worker_backend_enabled:

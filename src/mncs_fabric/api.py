@@ -370,6 +370,8 @@ class FabricClient:
         return self.network.refresh_remote(worker_id)
 
     def refresh_workers(self) -> list[dict[str, Any]]:
+        if self._service_transport is not None:
+            return list(self._service_payload("fleet.refresh").get("workers", []))
         self._require_embedded("worker refresh")
         return self.network.refresh_all()
 
@@ -571,11 +573,18 @@ class FabricClient:
         self,
         *,
         capability_max_age_seconds: float = MAX_CAPABILITY_AGE_SECONDS,
+        apply_lease: bool = True,
     ) -> list[dict[str, Any]]:
         if self._service_transport is not None:
             return list(self._service_payload("fleet.list").get("workers", []))
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
-        remote = [{**self.network.worker_state(worker_id), "source": "remote"} for worker_id in sorted(self.remote_configs)]
+        remote = [
+            {
+                **self.network.worker_state(worker_id, apply_lease=apply_lease),
+                "source": "remote",
+            }
+            for worker_id in sorted(self.remote_configs)
+        ]
         known_unregistered = [
             {
                 **entry,

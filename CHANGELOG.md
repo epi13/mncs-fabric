@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- `controller.status`, `fleet.list`, and other service reads now project
+  last-known worker state without calling `refresh_workers()`; live describe
+  probes are explicit through `fleet.refresh` so a busy worker no longer
+  stalls unrelated persistent clients;
 - required Bubblewrap mode now fails closed with `CONTAINMENT_UNAVAILABLE` when
   this process cannot create a user namespace, instead of reporting a generic
   `FAIL` from a nested sandbox or kernel restriction;

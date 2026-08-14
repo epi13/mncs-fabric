@@ -186,7 +186,7 @@ mncs-fabric enrollment approve|deny REQUEST_ID --admin-socket STATE/controller-a
 mncs-fabric enrollment issue JOIN.json --ca ca.pem --ca-key ca.key \
   --controller-certificate controller.pem --trust-state trust.jsonl \
   --output CREDENTIALS.json --offline-state STATE/lifecycle.jsonl
-mncs-fabric fleet list|status WORKER_ID|doctor
+mncs-fabric fleet list|refresh|status WORKER_ID|doctor
 mncs-fabric worker revoke WORKER_ID --reason REASON
 mncs-fabric controller status|doctor
 mncs-fabric controller service run
@@ -195,8 +195,14 @@ mncs-fabric controller service run
 The controller service is a foreground persistent transport runtime.
 When started with `--registry`, the registry is controller-owned runtime
 configuration: consumers never load it or receive its trust references. The
-controller performs authenticated worker description refreshes and accepts
-validated execution requests over the consumer socket.
+controller accepts validated execution requests over the consumer socket.
+`controller.status` and `fleet.list` are last-known read models; they do not
+probe workers. Authenticated worker description refresh is explicit:
+
+```bash
+mncs-fabric controller status --socket STATE/controller.sock
+# or, from a consumer: FabricClient.refresh_workers() → fleet.refresh
+```
 
 ```bash
 mncs-fabric controller service run --state STATE/lifecycle.jsonl

@@ -323,14 +323,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
-    fleet_list = fleet_sub.add_parser("list", help="list fleet members")
+    fleet_list = fleet_sub.add_parser("list", help="list last-known fleet members")
     fleet_list.add_argument("--json", action="store_true")
+    fleet_refresh = fleet_sub.add_parser("refresh", help="probe registered workers and update last-known state")
+    fleet_refresh.add_argument("--json", action="store_true")
     fleet_status = fleet_sub.add_parser("status", help="show one member and current presence")
     fleet_status.add_argument("worker_id")
     fleet_status.add_argument("--json", action="store_true")
     fleet_doctor = fleet_sub.add_parser("doctor", help="verify lifecycle durability and status")
     fleet_doctor.add_argument("--json", action="store_true")
-    for fleet_command in (fleet_list, fleet_status, fleet_doctor):
+    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor):
         fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
         fleet_command.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
         fleet_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
@@ -602,6 +604,12 @@ def main(argv: list[str] | None = None) -> int:
                 client = FabricClient.connect(args.socket)
                 if args.fleet_command == "list":
                     result = {"outcome": "PASS", "workers": client.fleet()}
+                elif args.fleet_command == "refresh":
+                    result = {
+                        "outcome": "PASS",
+                        "observation_mode": "probed",
+                        "workers": client.refresh_workers(),
+                    }
                 elif args.fleet_command == "status":
                     result = client.fleet_status(args.worker_id)
                 elif args.fleet_command == "doctor":
@@ -611,6 +619,8 @@ def main(argv: list[str] | None = None) -> int:
                 client.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
+            if args.fleet_command == "refresh":
+                raise SystemExit("fleet refresh requires --socket to the persistent controller")
             lifecycle = LifecycleStore(args.state)
             if args.fleet_command == "list":
                 result = {"outcome": "PASS", "workers": lifecycle.memberships()}

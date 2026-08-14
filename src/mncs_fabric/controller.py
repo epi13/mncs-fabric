@@ -269,13 +269,18 @@ class NetworkController(LocalController):
             return self._set_remote_state(worker_id, description=None, state="UNKNOWN", failure="worker description is stale")
         return self._set_remote_state(worker_id, description=description, state="AVAILABLE")
 
-    def worker_state(self, worker_id: str) -> dict[str, Any]:
+    def worker_state(self, worker_id: str, *, apply_lease: bool = True) -> dict[str, Any]:
         if worker_id not in self.remote_workers:
             raise ProtocolError(f"worker is not registered: {worker_id}")
         _, slot = self.remote_workers[worker_id]
         description = self.remote_descriptions.get(worker_id)
         liveness = validate_liveness(self.remote_liveness[worker_id], expected_worker_id=worker_id)
-        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": liveness["state"] if liveness_is_fresh(liveness) else (liveness["state"] if liveness["state"] != "AVAILABLE" else "UNKNOWN"), "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None, "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None, "runtime_capability_observation": dict(slot.runtime_capability_observation) if slot.runtime_capability_observation else None, "runtime_capability_observation_identity": slot.runtime_capability_observation.get("runtime_capability_observation_identity") if slot.runtime_capability_observation else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
+        fresh = liveness_is_fresh(liveness)
+        if apply_lease and not fresh and liveness["state"] == "AVAILABLE":
+            availability = "UNKNOWN"
+        else:
+            availability = liveness["state"]
+        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": availability, "liveness_fresh": fresh, "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None, "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None, "runtime_capability_observation": dict(slot.runtime_capability_observation) if slot.runtime_capability_observation else None, "runtime_capability_observation_identity": slot.runtime_capability_observation.get("runtime_capability_observation_identity") if slot.runtime_capability_observation else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
 
     def refresh_all(self) -> list[dict[str, Any]]:
         states = []
