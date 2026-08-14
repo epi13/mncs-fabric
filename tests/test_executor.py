@@ -104,6 +104,17 @@ class ExecutorTests(unittest.TestCase):
 
     @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap is not installed")
     def test_bubblewrap_confines_filesystem_and_offline_network(self):
+        provider = BubblewrapProvider()
+        if not provider.user_namespace_available():
+            record = self._run(
+                'print("must not run")\n',
+                containment_mode="required",
+                containment_provider=provider,
+            )
+            self.assertEqual(record["outcome"], "UNKNOWN", record.get("detail"))
+            self.assertEqual(record["termination_reason"], "CONTAINMENT_UNAVAILABLE")
+            self.assertIn("user namespace", record["detail"] or "")
+            return
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         parent = Path(temporary.name)

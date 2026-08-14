@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- required Bubblewrap mode now fails closed with `CONTAINMENT_UNAVAILABLE` when
+  this process cannot create a user namespace, instead of reporting a generic
+  `FAIL` from a nested sandbox or kernel restriction;
+- the containment test still enforces filesystem and offline-network isolation
+  wherever user namespaces are available; and
+- Windows job cancellation uses `taskkill /T` so aborted inference does not
+  routinely leave a detached child tree.
+
 ## 0.2.0a18 - reusable deployment, containment, and durable lookup
 
 - replace consumer-specific controller identity/state paths with Fabric-owned,
