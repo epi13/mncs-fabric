@@ -142,6 +142,16 @@ class TLSNetworkTransport:
         connect_timeout = self.connect_timeout if timeout is None else min(self.connect_timeout, timeout)
         control_timeout = self.control_timeout if timeout is None else min(self.control_timeout, timeout)
         response_timeout = control_timeout
+        if message["message_type"] in {
+            "worker.inventory.request",
+            "worker.maintenance.request",
+            "worker.certify.request",
+            "worker.management.request",
+        }:
+            # Management probes collect host inventory and may run certification.
+            # An explicit timeout extends the control bound instead of being
+            # capped by the registry's short describe timeout.
+            response_timeout = max(control_timeout, 90.0 if timeout is None else timeout)
         if message["message_type"] == "dispatch.request":
             plan = message["payload"]["job_plan"]
             response_timeout = max(

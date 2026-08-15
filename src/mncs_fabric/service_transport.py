@@ -34,6 +34,7 @@ SERVICE_RESPONSE_SCHEMA = "mncs-fabric.service-response.v0.1"
 SERVICE_EVENT_SCHEMA = "mncs-fabric.controller-service.v0.1"
 SERVICE_MAX_FRAME_BYTES = 4 * 1024 * 1024
 SERVICE_REQUEST_TTL_SECONDS = 30.0
+SERVICE_MAX_TIMEOUT_SECONDS = 120.0
 SERVICE_MAX_CONNECTIONS = 32
 SERVICE_RESPONSE_RESERVE_SECONDS = 1.0
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -352,7 +353,7 @@ class ServiceClientTransport:
     def __init__(self, socket_path: Path, *, client_identity: str, admin: bool = False, timeout: float = 5.0) -> None:
         if os.name != "posix" or not hasattr(socket, "AF_UNIX"):
             raise ProtocolError("local service transport is not implemented on this platform")
-        if not 0 < timeout <= 30:
+        if not 0 < timeout <= SERVICE_MAX_TIMEOUT_SECONDS:
             raise ValidationError("service timeout is outside the bounded range")
         self.socket_path = Path(socket_path).expanduser()
         self.client_identity = _bounded_identity(client_identity, "client_identity")
@@ -369,7 +370,7 @@ class ServiceClientTransport:
         if operation not in _OPERATIONS:
             raise ProtocolError("service operation is unsupported")
         wait = self.timeout if timeout is None else float(timeout)
-        if not 0 < wait <= SERVICE_REQUEST_TTL_SECONDS:
+        if not 0 < wait <= SERVICE_MAX_TIMEOUT_SECONDS:
             raise ValidationError("service timeout is outside the bounded range")
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(seconds=wait)).isoformat().replace("+00:00", "Z")
@@ -388,7 +389,7 @@ class ServiceClientTransport:
 
         request = _validate_request(request)
         wait = self.timeout if timeout is None else float(timeout)
-        if not 0 < wait <= SERVICE_REQUEST_TTL_SECONDS:
+        if not 0 < wait <= SERVICE_MAX_TIMEOUT_SECONDS:
             raise ValidationError("service timeout is outside the bounded range")
         deadline = time.monotonic() + wait
         try:

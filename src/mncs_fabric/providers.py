@@ -229,7 +229,22 @@ def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any])
         return _skipped(action, "fabric worker package update requires an explicit operator apply of a pinned version", "HUMAN_REQUIRED")
     if desired in {None, "present", "supported-current", "mncs-supported"}:
         return _skipped(action, "fabric worker update needs an explicit version pin", "VERSION_CONFLICT")
+    from .supervisor import inspect_supervisor, write_upgrade_request
+
+    observed = inspect_supervisor(worker_id=str(inventory.get("worker_identity") or "local-worker"))
+    write_upgrade_request(source=str(desired), version=str(desired))
     pip = shutil.which("pip") or shutil.which("pip3")
+    if observed.get("kind") == "systemd-user":
+        started = run_argv(["systemctl", "--user", "start", "mncs-fabric-worker-upgrade.service"], timeout=30.0)
+        if started["returncode"] == 0:
+            return action_result(
+                action=action,
+                disposition="PASS",
+                detail=f"asked systemd-user upgrade unit to activate {desired}; worker restart required",
+                changed=True,
+                restart_required=True,
+                rollback={"capability": "partial", "previous_version": current},
+            )
     if not pip:
         return _skipped(action, "pip is not available in the worker environment", "PACKAGE_FAILURE")
     probed = run_argv([pip, "install", "--upgrade", f"mncs-fabric=={desired}"], timeout=120.0)

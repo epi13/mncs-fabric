@@ -83,7 +83,7 @@ class LocalController:
     def _worker_transport(self, worker_id: str) -> EnvelopeTransport:
         return self._local_transport(worker_id)
 
-    def inventory_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None, timeout: float | None = None) -> dict[str, Any]:
+    def inventory_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None, timeout: float | None = 90.0) -> dict[str, Any]:
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
         request = request_id or "inventory-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "scope": "current-worker-inventory"})[7:]
@@ -138,7 +138,7 @@ class LocalController:
         self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="quarantine", reason=reason)
         return self.fleet_manager.quarantine(worker_id, reason=reason)
 
-    def maintenance_via(self, transport: EnvelopeTransport, *, worker_id: str, actions: list[dict[str, Any]], mode: str = "apply", force: bool = False, timeout: float | None = None) -> list[dict[str, Any]]:
+    def maintenance_via(self, transport: EnvelopeTransport, *, worker_id: str, actions: list[dict[str, Any]], mode: str = "apply", force: bool = False, timeout: float | None = 90.0) -> list[dict[str, Any]]:
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
         checked = [validate_action(item) for item in actions]
@@ -163,7 +163,7 @@ class LocalController:
             raise ProtocolError("worker maintenance results are invalid")
         return [dict(item) for item in results if isinstance(item, dict)]
 
-    def certify_via(self, transport: EnvelopeTransport, *, worker_id: str, profiles: list[str], timeout: float | None = None) -> dict[str, Any]:
+    def certify_via(self, transport: EnvelopeTransport, *, worker_id: str, profiles: list[str], timeout: float | None = 90.0) -> dict[str, Any]:
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
         request = "certify-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "profiles": profiles})[7:]
@@ -184,7 +184,7 @@ class LocalController:
             raise ProtocolError("worker certify response is invalid")
         return validate_certification(response["payload"].get("certification"), expected_worker_id=worker_id)
 
-    def management_via(self, transport: EnvelopeTransport, *, worker_id: str, command: str, reason: str, timeout: float | None = None) -> dict[str, Any]:
+    def management_via(self, transport: EnvelopeTransport, *, worker_id: str, command: str, reason: str, timeout: float | None = 30.0) -> dict[str, Any]:
         created = utc_now()
         expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
         request = "manage-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "command": command, "reason": reason})[7:]

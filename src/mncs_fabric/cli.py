@@ -670,7 +670,8 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return 0
             if args.admin_socket:
-                admin = FabricAdminClient.connect(args.admin_socket)
+                admin_timeout = 90.0 if args.worker_command in {"certify", "reconcile"} else 30.0
+                admin = FabricAdminClient.connect(args.admin_socket, timeout=admin_timeout)
                 if args.worker_command == "inspect":
                     result = admin.inspect_worker(args.worker_id)
                 elif args.worker_command == "plan":

@@ -26,6 +26,16 @@ mutual-TLS protocol as `worker.describe`.
 
 ## What is functioning
 
+Physical deployments observed in 0.2.0a22:
+
+- Linux `fabric-worker-01` uses systemd-user unit `mncs-fabric-worker.service`
+  under `/home/fabric/mncs-fabric-worker/current` with linger enabled.
+- Windows `collamore02-windows` uses a current-user Scheduled Task
+  `MNCS-Fabric-Worker` plus the existing detached launcher. The task is
+  registered without elevation. Starting it from a non-interactive SSH
+  session is unreliable; AtLogOn and the detached launcher are the
+  supported restart paths.
+
 The following path is implemented and unit-tested in-process and over
 `InProcessTransport`:
 

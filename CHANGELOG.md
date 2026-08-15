@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- close the live fleet-management loop: upgrade the persistent controller
+  and both physical workers to a management-capable Fabric, add a
+  supervisor abstraction (systemd-user plus current-user Windows
+  Scheduled Task), recover QUARANTINED nodes after a later CERTIFIED
+  result, and give management/certify probes a longer transport bound
+  than the 5s describe timeout;
+- classify worker package versions as current / upgradeable /
+  bootstrap-required / unsupported so one-release-behind nodes can be
+  upgraded without a new identity;
+- treat GitHub AUTH_FAILURE and missing git-on-PATH as capability skips
+  rather than hard certification failures.
+
+## 0.2.0a21 - desired-state fleet management
+
 - add a first-class desired-state fleet-management plane: worker inventory,
   reusable profiles, typed maintenance actions, drain/resume/quarantine,
   capability-aware certification, and append-only maintenance receipts

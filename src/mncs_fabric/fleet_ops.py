@@ -87,10 +87,10 @@ class FleetManager:
 
     def resume(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
         current = self.store.ensure(worker_id)
-        if current["state"] == "QUARANTINED":
-            raise ProtocolError("quarantined workers cannot resume to READY without certification")
         if current["certification_status"] == "FAILED":
             raise ProtocolError("a worker that failed certification cannot resume to READY")
+        if current["state"] == "QUARANTINED" and current["certification_status"] != "CERTIFIED":
+            raise ProtocolError("quarantined workers cannot resume to READY without a passing certification")
         status = current["certification_status"] if current["certification_status"] != "NOT_RUN" else "UNKNOWN"
         return self.store.set_state(worker_id, state="READY", reason=reason, certification_status=status)
 
