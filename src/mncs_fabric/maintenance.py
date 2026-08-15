@@ -332,7 +332,13 @@ def bind_certification(receipt: Mapping[str, Any], certification_identity: str, 
     return attach_identity(payload, "receipt_identity")
 
 
-def operational_knowledge(inventory: Mapping[str, Any], receipt: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+def operational_knowledge(
+    inventory: Mapping[str, Any],
+    receipt: Mapping[str, Any] | None = None,
+    *,
+    transaction: Mapping[str, Any] | None = None,
+    rollout: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     """Return Commons-shaped companions only for reusable operational discoveries."""
 
     records: list[dict[str, Any]] = []
@@ -386,6 +392,49 @@ def operational_knowledge(inventory: Mapping[str, Any], receipt: Mapping[str, An
                 summary=f"Maintenance {receipt.get('failure_class')} on {receipt.get('worker_identity')}",
                 rationale="Preserve the failing layer so later agents do not retry a known unsafe path blindly.",
                 evidence=[receipt.get("receipt_identity")],
+            )
+        )
+    if transaction and transaction.get("state") in {"FAILED", "QUARANTINED"}:
+        observation = str(transaction.get("reason") or "")
+        kind = "Failed Approach"
+        if "version" in observation.lower():
+            summary = f"Unexpected reconnect version on {transaction.get('worker_identity')}"
+        elif "corrupt" in observation.lower() or "digest" in observation.lower():
+            summary = f"Artifact corruption on {transaction.get('worker_identity')}"
+        elif "rollback" in observation.lower():
+            summary = f"Rollback failure on {transaction.get('worker_identity')}"
+        else:
+            summary = f"Update transaction {transaction.get('state')} on {transaction.get('worker_identity')}"
+        records.append(
+            _knowledge(
+                kind=kind,
+                summary=summary,
+                rationale=observation or "Preserve the failed update transaction as typed evidence.",
+                evidence=[transaction.get("transaction_identity")],
+            )
+        )
+    if rollout and rollout.get("canary_status") == "CANARY_FAILED":
+        records.append(
+            _knowledge(
+                kind="Failed Approach",
+                summary=f"Rollout stopped after canary failure: {rollout.get('reason')}",
+                rationale="stop_on_failure must not mutate the remainder after a canary fails post-restart READY checks.",
+                evidence=[rollout.get("rollout_identity")],
+            )
+        )
+    platform = str((inventory.get("identity") or {}).get("platform") or "")
+    supervisor = None
+    for service in inventory.get("services", []):
+        if service.get("name") == "fabric-worker":
+            supervisor = service
+            break
+    if platform == "windows" and supervisor and supervisor.get("manager") not in {"windows-scheduled-task", "windows-service"}:
+        records.append(
+            _knowledge(
+                kind="Finding",
+                summary=f"Windows worker {inventory.get('worker_identity')} has unsupported persistence {supervisor.get('manager')}",
+                rationale="Windows workers require a scheduled-task or service supervisor; other mechanisms are not a Fabric restart contract.",
+                evidence=[inventory.get("inventory_identity")],
             )
         )
     return records

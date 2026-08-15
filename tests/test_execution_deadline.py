@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from mncs_fabric.api import FabricClient
 from mncs_fabric.errors import ProtocolError, TransportTimeoutError
@@ -100,8 +101,16 @@ class PersistentExecutionDeadlineTests(unittest.TestCase):
                 ("execution.status", {"work_id": "sha256:" + "c" * 64, "state": "RUNNING"}),
             ]
         )
-        with self.assertRaisesRegex(
-            TransportTimeoutError,
-            r"work_id=sha256:c{64} last_state=RUNNING",
+        # Windows timer resolution can be ~15ms, so a 10ms wall-clock deadline
+        # may never expire and the loop issues a third status poll. Drive the
+        # clock so two polls then timeout is deterministic.
+        times = iter([0.0, 0.0, 0.02])
+        with patch("mncs_fabric.api.time.monotonic", side_effect=lambda: next(times, 1.0)), patch(
+            "mncs_fabric.api.time.sleep",
+            return_value=None,
         ):
-            client._wait_for_detached_execution({"plan": {"timeout_seconds": 90}}, 0.01)
+            with self.assertRaisesRegex(
+                TransportTimeoutError,
+                r"work_id=sha256:c{64} last_state=RUNNING",
+            ):
+                client._wait_for_detached_execution({"plan": {"timeout_seconds": 90}}, 0.01)

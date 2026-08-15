@@ -329,6 +329,18 @@ def resolve_upgrade_source(desired: str, *, stage_dir: Path | None = None) -> Pa
     if desired and Path(desired).exists():
         return Path(desired)
     directory = Path(stage_dir or default_stage_dir())
+    from .package_artifact import read_artifact_descriptor, staged_artifact_path
+
+    descriptor = read_artifact_descriptor(directory)
+    if descriptor is not None and desired in {
+        descriptor["version"],
+        descriptor["digest"],
+        descriptor["artifact_identity"],
+        descriptor.get("filename"),
+    }:
+        addressed = staged_artifact_path(directory, descriptor)
+        if addressed.is_file():
+            return addressed
     candidates = [
         directory / f"mncs-fabric-{desired}.tar.gz",
         directory / f"mncs_fabric-{desired}.tar.gz",

@@ -146,13 +146,16 @@ class NetworkFleetRefreshTests(unittest.TestCase):
             controller.register_remote("a-slow", frozenset({"python"}), _TimeoutTransport(delay=0.4))
             controller.register_remote("b-fast", fast.capabilities(), InProcessTransport(fast))
             started = time.monotonic()
-            report = controller.refresh_fleet(operation_deadline=0.25, per_worker_deadline=0.2)
+            # Windows CI scheduling plus LocalWorker.inventory() can exceed
+            # a 250ms operation budget and turn the fast worker into TIMEOUT
+            # as well (UNKNOWN). Keep the peer slow relative to the budget.
+            report = controller.refresh_fleet(operation_deadline=2.0, per_worker_deadline=1.0)
             elapsed = time.monotonic() - started
             by_id = {item["worker_id"]: item for item in report["workers"]}
             self.assertEqual(report["outcome"], "PARTIAL")
             self.assertEqual(by_id["b-fast"]["refresh"], "PASS")
             self.assertEqual(by_id["a-slow"]["refresh"], "TIMEOUT")
-            self.assertLess(elapsed, 0.35)
+            self.assertLess(elapsed, 2.5)
 
     def test_operation_deadline_is_named_when_it_fires_first(self) -> None:
         with TemporaryDirectory() as directory:

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from datetime import datetime, time, timezone
 from typing import Any, Mapping
-from zoneinfo import ZoneInfo
 
 from .errors import ValidationError
 
@@ -29,16 +28,30 @@ def _parse_clock(value: object, field: str) -> time:
     return parsed
 
 
+def _timezone(name: str):
+    """Resolve a timezone without requiring tzdata for UTC.
+
+    Windows CI images often lack the IANA database. UTC is a first-class
+    datetime timezone and must not depend on ZoneInfo/tzdata.
+    """
+
+    if name.upper() == "UTC":
+        return timezone.utc
+    try:
+        from zoneinfo import ZoneInfo
+
+        return ZoneInfo(name)
+    except Exception as exc:
+        raise ValidationError("availability timezone is unknown") from exc
+
+
 def validate_availability_policy(value: object) -> dict[str, Any]:
     if not isinstance(value, Mapping) or value.get("schema_version") != AVAILABILITY_POLICY_SCHEMA:
         raise ValidationError("availability policy schema is unsupported")
     timezone_name = value.get("timezone", "UTC")
     if not isinstance(timezone_name, str) or not timezone_name:
         raise ValidationError("availability timezone is invalid")
-    try:
-        ZoneInfo(timezone_name)
-    except Exception as exc:
-        raise ValidationError("availability timezone is unknown") from exc
+    _timezone(timezone_name)
     workers = value.get("workers")
     if not isinstance(workers, dict):
         raise ValidationError("availability policy workers must be an object")
@@ -116,7 +129,7 @@ def evaluate_availability(
     allowed = spec.get("allowed_workload_classes") or []
     if workload_class and allowed and workload_class not in allowed:
         return {"eligible": False, "reason": "WORKLOAD_CLASS_DENIED", "worker_id": worker_id}
-    zone = ZoneInfo(checked["timezone"])
+    zone = _timezone(checked["timezone"])
     current = (now or datetime.now(timezone.utc)).astimezone(zone)
     weekday = _DAYS[current.weekday()]
     clock = time(current.hour, current.minute)
