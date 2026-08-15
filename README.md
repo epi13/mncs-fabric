@@ -24,7 +24,7 @@ Loaded-model and worker-tool attributes are factual generic capability observati
 The persistent client can submit a bounded archive and job to one exact current
 target with no fallback, returning identity-addressed admission and execution
 evidence. Fabric does not choose tools, resident models, semantic routes, or result
-acceptance; Local Harness and other consumers own those policies. See
+acceptance; MNCS Harness and other consumers own those policies. See
 [`docs/TARGET_EXECUTION.md`](docs/TARGET_EXECUTION.md).
 
 `FabricClient.submit_execution()` persists a detached workload before returning.
@@ -382,7 +382,7 @@ consumers to assemble private transport, trust, or receipt internals.
 Fabric is intended to become persistent authenticated compute infrastructure.
 The current controller runtime foundation owns durable lifecycle state and can
 be supervised independently of consumers, while `FabricClient` remains the
-ordinary consumer boundary. Local Harness, Forge, and MNCS Control retain
+ordinary consumer boundary. MNCS Harness, Forge, and MNCS Control retain
 semantic model, residency, task, tool, workspace, verification, and escalation
 policy; they do not own worker presence or Fabric process lifetime.
 

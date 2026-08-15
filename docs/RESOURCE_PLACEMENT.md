@@ -96,7 +96,7 @@ CPU/offload observations informed this boundary, but its vision-specific
 runtime remains outside Fabric.
 
 The first three-physical-node cohort comprised the Fedora controller/local
-worker, `fabric-worker-01`, and `collamore02-windows`. One identical portable
+worker, `fabric-worker-01`, and `worker-01-windows`. One identical portable
 bundle produced the same declared result artifact on all three nodes and
 reconciled PASS. This is operator-controlled heterogeneous development
 evidence, not a four-node Fedora milestone, independent evaluation, or

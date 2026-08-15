@@ -27,7 +27,7 @@ Implemented through `0.2.0a18`:
   authorization without registry editing; and
 - an idempotent Fedora user-service install/update helper.
 
-The controller runtime owns this state independently of Local Harness or any
+The controller runtime owns this state independently of MNCS Harness or any
 other consumer process. `FabricClient` remains the ordinary consumer boundary
 and retains embedded/in-process compatibility. Commissioning is an explicit
 operator-controlled file handoff, not an online bootstrap listener; TrustStore
@@ -52,12 +52,12 @@ The design preserves the existing authority boundaries:
 - authentication is not attestation;
 - capability observation is not semantic routing;
 - Fabric does not grant remote shell or ambient workspace authority; and
-- Local Harness or another consumer remains responsible for model choice, agent
+- MNCS Harness or another consumer remains responsible for model choice, agent
   policy, tool meaning, task decomposition, and semantic routing.
 
 MNCS Fabric is intended to become persistent authenticated compute
 infrastructure. A configured controller owns fleet lifecycle and worker
-presence; Local Harness, Forge, MNCS Control, and other consumers connect through
+presence; MNCS Harness, Forge, MNCS Control, and other consumers connect through
 `FabricClient` and do not own the controller or worker process lifetime.
 
 ## Motivation
@@ -80,7 +80,7 @@ new machine currently tends to involve some combination of:
 7. starting or supervising the worker;
 8. adding the endpoint and trust references to the controller registry;
 9. refreshing worker facts and testing connectivity; and
-10. configuring a consumer such as Local Harness to use the registry.
+10. configuring a consumer such as MNCS Harness to use the registry.
 
 That process is acceptable for proving the transport, but it does not scale to a
 household lab, a heterogeneous test cohort, or a future group of machines that
@@ -694,7 +694,7 @@ Those facts remain observations. Fabric does not infer that a discovered GPU is
 usable without the corresponding runtime evidence, that an installed model is
 semantically appropriate for a task, or that a tool should be invoked.
 
-A consumer such as Local Harness can react to the refreshed fleet through
+A consumer such as MNCS Harness can react to the refreshed fleet through
 `FabricClient` while preserving the current authority split:
 
 ```text
@@ -733,7 +733,7 @@ mncs-fabric worker service stop
 mncs-fabric worker uninstall
 ```
 
-A future Local Harness fleet view can remain consumer-facing:
+A future MNCS Harness fleet view can remain consumer-facing:
 
 ```bash
 elh fabric workers
