@@ -14,7 +14,7 @@
       "paused": false,
       "allowed_workload_classes": ["python", "inference", "eval"]
     },
-    "collamore02-windows": {
+    "worker-01-windows": {
       "windows": [
         {
           "days": ["mon", "tue", "wed", "thu", "fri"],

@@ -214,7 +214,7 @@ instead `TRANSPORT_TIMEOUT`. Framing uses one monotonic total deadline, so parti
 bytes cannot keep a socket alive indefinitely.
 
 Fabric does not interpret Commons records or invoke Commons tools. A consumer such
-as Local Harness may place a model through Fabric, execute a controller-owned
+as MNCS Harness may place a model through Fabric, execute a controller-owned
 Commons operation under its own policy, and submit the next model turn through
 Fabric. Fabric carries the invocation and opaque consumer provenance while remaining
 neutral about the tool meaning, authorization, and truth of translated evidence.

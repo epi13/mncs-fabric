@@ -4,7 +4,7 @@
 
 MNCS Fabric already reports provider-neutral worker capabilities and resource state while
 leaving semantic model choice, task decomposition, and agent policy to the consumer.
-As Local Harness evolves from a single preferred resident model toward measured
+As MNCS Harness evolves from a single preferred resident model toward measured
 working sets and session-affine routing, Fabric may need to carry a richer set of
 **factual provider observations** without becoming a model scheduler or inference
 runtime.
@@ -155,7 +155,7 @@ Speculative warming is a consumer/provider policy, not a Fabric scheduling primi
 Picchio's documented experiments are a useful warning that prefetch can make constrained
 systems slower by competing with the useful working set.
 
-If Local Harness later asks a provider to warm a model, Fabric may transport that bounded
+If MNCS Harness later asks a provider to warm a model, Fabric may transport that bounded
 operation and record observations such as bytes, duration, resulting loaded state, and
 subsequent use. Fabric should not autonomously initiate, repeat, cancel, or prioritize
 model warming.
