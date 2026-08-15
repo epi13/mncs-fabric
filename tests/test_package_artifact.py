@@ -224,3 +224,24 @@ class PackageArtifactTests(unittest.TestCase):
             previous = retain_previous_artifact(stage)
             self.assertIn(previous["rollback_capability"], {"exact", "partial"})
             self.assertTrue((stage / "previous").exists() or previous["previous_artifact_identity"] is None)
+
+    def test_gc_keeps_current_and_previous_and_removes_unreferenced(self) -> None:
+        from mncs_fabric.package_artifact import gc_package_artifacts
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            keep = root / "keep.tar.gz"
+            keep.write_bytes(b"keep-bytes")
+            junk = root / "junk.tar.gz"
+            junk.write_bytes(b"junk-bytes")
+            described = describe_package_artifact(keep, version="0.2.0a26")
+            write_verified_artifact(root, described, keep.read_bytes())
+            leftover = root / "orphan.tar.gz"
+            leftover.write_bytes(b"orphan")
+            (root / "stale.part").write_bytes(b"partial")
+            result = gc_package_artifacts(root)
+            self.assertFalse(leftover.exists())
+            self.assertFalse((root / "stale.part").exists())
+            self.assertTrue((root / "artifact.json").is_file())
+            self.assertTrue(any(path.name.endswith(".tar.gz") and path.is_file() for path in root.iterdir()))
+            self.assertIn(described["artifact_identity"], result["retained_identities"])

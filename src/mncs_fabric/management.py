@@ -198,6 +198,15 @@ class ManagementStore:
         self.ledger.append(record_type, payload)
         return payload
 
+    def worker_ids(self) -> list[str]:
+        found: set[str] = set()
+        for entry in self.ledger.all_records():
+            record = entry["record"]
+            worker_id = record.get("worker_identity") or record.get("worker_id")
+            if isinstance(worker_id, str) and worker_id:
+                found.add(worker_id)
+        return sorted(found)
+
     def latest(self, record_type: str, worker_id: str, identity_field: str = "worker_identity") -> dict[str, Any] | None:
         latest = None
         for entry in self.ledger.all_records():

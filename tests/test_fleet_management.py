@@ -91,6 +91,20 @@ class FleetManagementTests(unittest.TestCase):
                 self.assertNotEqual(resumed.get("state"), "READY")
                 self.assertFalse(worker.accepts_work())
 
+    def test_certify_uses_the_inventory_the_worker_actually_certified(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            worker = LocalWorker("fleet-worker", bundle, root / "worker.jsonl")
+            controller = LocalController("fleet-controller", root / "controller.jsonl")
+            controller.register(worker)
+            certified = controller.certify_worker("fleet-worker", profiles=["mncs-linux-worker"])
+            health = certified["certification"]
+            self.assertEqual(health["inventory_identity"], certified["conformance"]["inventory_identity"])
+            if health["disposition"] == "CERTIFIED" and not certified["conformance"]["blocking_failures"]:
+                self.assertEqual(certified["management"]["state"], "READY")
+
     def test_network_controller_uses_same_typed_messages(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

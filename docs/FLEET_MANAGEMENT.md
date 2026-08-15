@@ -50,10 +50,23 @@ inspect → desired state → plan → drain → apply typed actions
   → VERSION_VERIFYING → CERTIFYING → READY
 ```
 
-This closure pass is **implemented + unit-tested**. It is not live-tested on
-the physical fleet until GitHub Actions is green and a24/a25 is installed.
+This closure pass is **implemented + unit-tested + CI-tested**.
 
-Live processes remain on **0.2.0a23** until those gates pass.
+Live claim levels as of the a25 canary:
+
+| Capability | Unit | CI | Live Linux | Live Windows | Reboot |
+| --- | --- | --- | --- | --- | --- |
+| READY invariant | yes | yes | a26 required after first a25 certify race | not yet | no |
+| Artifact transfer | yes | yes | pending first a25-to-a25 Fabric transfer | not yet | no |
+| Package activation | yes | yes | a23→a25 bootstrap exception | not yet | no |
+| Restart / reconnect | yes | yes | PID 257275→275899, identity preserved | not yet | no |
+| Version verification | yes | yes | observed 0.2.0a25 after reconnect | not yet | no |
+| Rollback | yes | yes | not physically exercised | not yet | no |
+| Canary barrier | yes | yes | not live-orchestrated | not yet | no |
+| Controller update | partial | n/a | local venv + systemd restart a23→a25 | n/a | no |
+
+The a23→a25 hop is a **BOOTSTRAP EXCEPTION**. After both ends speak a25,
+ordinary package deployment is intended to use `worker.package-artifact.*`.
 
 Live CLI against the current process:
 

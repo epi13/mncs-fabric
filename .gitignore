@@ -15,3 +15,4 @@ Thumbs.db
 .mncs-fabric/
 .mncs-forge/
 workspace/
+.joern-agent/

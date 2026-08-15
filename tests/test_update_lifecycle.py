@@ -14,6 +14,8 @@ from mncs_fabric.update_lifecycle import (
     validate_update_transaction,
     version_matches_expected,
 )
+from mncs_fabric.fleet_ops import FleetManager
+from mncs_fabric.management import ManagementStore
 from mncs_fabric.rollout import build_rollout_plan, canary_succeeded, execute_rollout, select_canaries, validate_rollout
 
 
@@ -208,3 +210,25 @@ class UpdateLifecycleTests(unittest.TestCase):
         self.assertEqual(calls, ["a", "b"])
         self.assertEqual(result["state"], "FAILED")
         self.assertEqual(result["canary_status"], "CANARY_FAILED")
+
+    def test_controller_restart_recovers_unresolved_transactions_without_reapplying(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            txn = build_update_transaction(
+                worker_id="w1",
+                state="DISCONNECT_EXPECTED",
+                expected_version="0.2.0a26",
+                previous_version="0.2.0a25",
+                artifact_identity=None,
+                previous_artifact_identity=None,
+                deadline=reconnect_deadline(seconds=30),
+                reason="authorized restart",
+            )
+            manager.store.record("management.update-transaction", txn)
+            recovered = manager.recover_unresolved_updates()
+            self.assertEqual(len(recovered["unresolved"]), 1)
+            self.assertEqual(recovered["unresolved"][0]["action"], "resume_observation")
+            self.assertEqual(recovered["unresolved"][0]["state"], "DISCONNECT_EXPECTED")
