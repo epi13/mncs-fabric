@@ -83,6 +83,16 @@ worker liveness without converting a stale claim into current availability.
 `collections.py` owns generic work-item and collection completeness; consumer
 projects retain partition meaning and semantic aggregation.
 
+`inventory.py`, `desired_state.py`, `management.py`, `providers.py`,
+`maintenance.py`, `certify.py`, and `fleet_ops.py` own the management plane.
+Inventory is a worker-observed companion to `worker-description.v0.2`. Desired
+state is operator policy composed from reusable profiles. Providers execute
+typed actions on the worker without a shell. Certification is
+capability-aware and does not treat installer exit codes as success.
+Management state is distinct from liveness; the scheduler and the worker both
+refuse ordinary work while a node is draining, in maintenance, degraded, or
+quarantined. See [Fleet management](docs/FLEET_MANAGEMENT.md).
+
 `lifecycle.py` owns the additive `mncs-fabric.*.v0.1` commissioning contracts:
 single-use enrollment authorization, bounded bootstrap request, immutable
 approval/denial/expiry decision, fleet membership/revocation, and authenticated

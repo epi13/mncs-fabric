@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.desired-state.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "profiles", "profile_identities", "requirements", "supported_current", "policy", "captured_at", "claim_boundary", "desired_state_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.desired-state.v0.1"},
+    "worker_identity": {"type": "string"},
+    "profiles": {"type": "array", "items": {"type": "string"}},
+    "profile_identities": {"type": "array", "items": {"type": "string"}},
+    "requirements": {"type": "array"},
+    "supported_current": {"type": "object"},
+    "policy": {"type": "object"},
+    "captured_at": {"type": "string"},
+    "claim_boundary": {"type": "string"},
+    "desired_state_identity": {"type": "string"}
+  }
+}

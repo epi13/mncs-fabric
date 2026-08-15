@@ -49,11 +49,16 @@ _OPERATIONS = {
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
     "enrollment.expire", "enrollment.submit", "worker.revoke",
+    "worker.inspect", "worker.plan", "worker.reconcile", "worker.certify",
+    "worker.drain", "worker.resume", "worker.quarantine",
+    "fleet.inspect", "fleet.plan", "fleet.reconcile", "fleet.certify",
 }
 _ADMIN_OPERATIONS = {
     "fleet.doctor", "enrollment.create", "enrollment.list",
     "enrollment.pending", "enrollment.inspect", "enrollment.approve",
     "enrollment.deny", "enrollment.expire", "enrollment.submit", "worker.revoke",
+    "worker.reconcile", "worker.certify", "worker.drain", "worker.resume",
+    "worker.quarantine", "fleet.reconcile", "fleet.certify",
 }
 
 

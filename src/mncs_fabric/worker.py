@@ -21,6 +21,10 @@ from .store import FabricLedger
 from .receipts import build_execution_receipt
 from .worker_state import build_worker_description
 from .runtime import build_runtime_binding, build_runtime_capability_binding, build_runtime_profile, validate_runtime_capability_observation, validate_runtime_observation
+from .inventory import collect_worker_inventory
+from .providers import apply_action, validate_action
+from .certify import certify_inventory
+from .management import build_management_state, can_transition, validate_management_state
 
 
 class LocalWorker:
@@ -51,6 +55,7 @@ class LocalWorker:
         # process. Capture it once so repeated descriptions do not rotate the
         # profile identity merely because contact time changed.
         self._runtime_profile = build_runtime_profile(self.worker_id)
+        self._management_state = build_management_state(worker_id=self.worker_id, state="READY", reason="worker start", certification_status="UNKNOWN")
 
     def node(self) -> dict[str, Any]:
         return collect_node_capabilities(self.worker_id)
@@ -73,6 +78,21 @@ class LocalWorker:
         node = self.node()
         snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
         return build_worker_description(worker_id=self.worker_id, node=node, resource_snapshot=snapshot, runtime_profile=self.runtime_profile())
+
+    def inventory(self) -> dict[str, Any]:
+        node = self.node()
+        snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
+        return collect_worker_inventory(
+            self.worker_id,
+            resource_snapshot=snapshot,
+            active_jobs=0,
+        )
+
+    def management_state(self) -> dict[str, Any]:
+        return dict(self._management_state)
+
+    def accepts_work(self) -> bool:
+        return self._management_state["state"] in {"READY", "BUSY"}
 
     def announcement(self, controller_id: str) -> dict[str, Any]:
         created = utc_now()
@@ -102,10 +122,80 @@ class LocalWorker:
             description = self.description()
             self.ledger.append("protocol.description", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "description": description})
             return self._response(message, "worker.describe.result", {"description": description})
+        if message["message_type"] == "worker.inventory.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("inventory is bound to a different worker")
+            inventory = self.inventory()
+            self.ledger.append("protocol.inventory", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "inventory": inventory})
+            return self._response(message, "worker.inventory.result", {"inventory": inventory})
+        if message["message_type"] == "worker.maintenance.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("maintenance is bound to a different worker")
+            inventory = self.inventory()
+            results = []
+            if message["payload"]["mode"] == "apply":
+                for action in message["payload"]["actions"]:
+                    results.append(apply_action(validate_action(action), inventory))
+            else:
+                for action in message["payload"]["actions"]:
+                    checked = validate_action(action)
+                    results.append(
+                        {
+                            "action": checked["action"],
+                            "target": checked["target"],
+                            "provider": checked["provider"],
+                            "disposition": "SKIPPED",
+                            "failure_class": None,
+                            "detail": "plan only",
+                            "changed": False,
+                            "restart_required": False,
+                            "rollback": {"capability": checked["rollback"]},
+                            "stdout": "",
+                            "stderr": "",
+                        }
+                    )
+            self.ledger.append("protocol.maintenance", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "results": results})
+            return self._response(message, "worker.maintenance.result", {"results": results})
+        if message["message_type"] == "worker.certify.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("certification is bound to a different worker")
+            certification = certify_inventory(self.inventory(), profiles=list(message["payload"]["profiles"]))
+            self.ledger.append("protocol.certification", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "certification": certification})
+            return self._response(message, "worker.certify.result", {"certification": certification})
+        if message["message_type"] == "worker.management.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("management is bound to a different worker")
+            command = message["payload"]["command"]
+            reason = message["payload"]["reason"]
+            current = self._management_state
+            if command == "status":
+                state = current
+            else:
+                target = {"drain": "MAINTENANCE" if current["active_jobs"] == 0 else "DRAINING", "resume": "READY", "quarantine": "QUARANTINED"}[command]
+                if command == "resume" and current["certification_status"] == "FAILED":
+                    raise ProtocolError("a worker that failed certification cannot resume to READY")
+                if not can_transition(current["state"], target):
+                    raise ProtocolError(f"management transition {current['state']} -> {target} is not allowed")
+                state = build_management_state(
+                    worker_id=self.worker_id,
+                    state=target,
+                    reason=reason,
+                    active_jobs=current["active_jobs"],
+                    certification_status=current["certification_status"] if command != "resume" or current["certification_status"] != "NOT_RUN" else "UNKNOWN",
+                    last_inventory_identity=current["last_inventory_identity"],
+                    last_plan_identity=current["last_plan_identity"],
+                    last_receipt_identity=current["last_receipt_identity"],
+                    last_certification_identity=current["last_certification_identity"],
+                )
+                self._management_state = validate_management_state(state)
+            self.ledger.append("protocol.management", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "state": state})
+            return self._response(message, "worker.management.result", {"state": state})
         if message["message_type"] != "dispatch.request":
             raise ProtocolError("worker accepts dispatch.request messages only")
         if message["worker_id"] != self.worker_id:
             raise ProtocolError("dispatch is bound to a different worker")
+        if not self.accepts_work():
+            return self._response(message, "dispatch.ack", {"disposition": "UNKNOWN", "reason": "WORKER_MAINTENANCE", "management_state": self._management_state["state"]})
         request_id = message["request_id"]
         payload = message["payload"]
         challenge = payload.get("execution_challenge")

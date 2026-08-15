@@ -654,6 +654,43 @@ class ControllerService:
             worker.update(project_runtime_identity(worker))
         return workers
 
+    def _fleet_backend(self) -> Any:
+        if self._worker_client is None or not hasattr(self._worker_client, "inspect_worker"):
+            raise ProtocolError("persistent fleet-management backend is not configured")
+        return self._worker_client
+
+    def _fleet_worker_op(self, method: str, worker_id: str, **kwargs: Any) -> dict[str, Any]:
+        if not worker_id:
+            raise ValidationError("worker_id is required")
+        backend = self._fleet_backend()
+        call = getattr(backend, method)
+        filtered = {key: value for key, value in kwargs.items() if value is not None}
+        result = call(worker_id, **filtered)
+        return dict(result) if isinstance(result, dict) else {"result": result}
+
+    def _fleet_collection_op(self, method: str, args: Mapping[str, Any], **kwargs: Any) -> dict[str, Any]:
+        workers, _registry = self._worker_backend_status(refresh=False)
+        wanted = args.get("worker_id")
+        platform = args.get("platform")
+        profile = args.get("profile")
+        selected = []
+        for worker in workers:
+            worker_id = str(worker.get("worker_id") or "")
+            if wanted and worker_id != wanted:
+                continue
+            if platform and str(worker.get("os") or worker.get("platform") or "").lower() != str(platform).lower():
+                continue
+            if profile and profile not in (worker.get("profiles") or []):
+                continue
+            selected.append(worker_id)
+        results = []
+        for worker_id in selected:
+            try:
+                results.append(self._fleet_worker_op(method, worker_id, **kwargs))
+            except (FabricError, OSError, TimeoutError) as exc:
+                results.append({"worker_id": worker_id, "disposition": "UNKNOWN", "error": str(exc)})
+        return {"workers": results, "count": len(results)}
+
     def _refresh_fleet(self, request: Mapping[str, Any], args: Mapping[str, Any]) -> dict[str, Any]:
         from .fleet_refresh import (
             annotate_refresh,
@@ -1249,6 +1286,40 @@ class ControllerService:
                     "observations": self._capability_observations(worker_id, limit=int(args.get("limit", 1000))),
                     "fleet_authority": "persistent-controller",
                 }
+            elif operation == "worker.inspect":
+                payload = self._fleet_worker_op("inspect_worker", str(args.get("worker_id", "")))
+            elif operation == "worker.plan":
+                payload = self._fleet_worker_op(
+                    "plan_worker",
+                    str(args.get("worker_id", "")),
+                    profiles=args.get("profiles"),
+                    classes=args.get("classes"),
+                )
+            elif operation == "worker.reconcile":
+                payload = self._fleet_worker_op(
+                    "reconcile_worker",
+                    str(args.get("worker_id", "")),
+                    apply=bool(args.get("apply", False)),
+                    profiles=args.get("profiles"),
+                    classes=args.get("classes"),
+                    force=bool(args.get("force", False)),
+                )
+            elif operation == "worker.certify":
+                payload = self._fleet_worker_op("certify_worker", str(args.get("worker_id", "")), profiles=args.get("profiles"))
+            elif operation == "worker.drain":
+                payload = self._fleet_worker_op("drain_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator drain")))
+            elif operation == "worker.resume":
+                payload = self._fleet_worker_op("resume_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator resume")))
+            elif operation == "worker.quarantine":
+                payload = self._fleet_worker_op("quarantine_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator quarantine")))
+            elif operation == "fleet.inspect":
+                payload = self._fleet_collection_op("inspect_worker", args)
+            elif operation == "fleet.plan":
+                payload = self._fleet_collection_op("plan_worker", args)
+            elif operation == "fleet.reconcile":
+                payload = self._fleet_collection_op("reconcile_worker", args, apply=bool(args.get("apply", False)))
+            elif operation == "fleet.certify":
+                payload = self._fleet_collection_op("certify_worker", args)
             else:
                 return _response(request, self.config.controller_id, "FAIL", error={"code": "UNKNOWN_OPERATION", "message": "service operation is unsupported"})
         except (FabricError, ValueError) as exc:

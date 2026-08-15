@@ -1,5 +1,18 @@
 # Roadmap
 
+## Completed in 0.2.0a21 — desired-state fleet management
+
+- [x] worker-observed inventory that discovers service/install type instead of assuming systemd;
+- [x] reusable host-agnostic worker profiles and desired-state diffs;
+- [x] typed maintenance actions, plan-only and explicit apply, drain/resume/quarantine;
+- [x] capability-aware certification with a failing-layer result;
+- [x] scheduler and worker refuse ordinary work during maintenance or after failed certification;
+- [x] append-only maintenance receipts and unusual-discovery Commons companions.
+
+Still planned on this plane: canary orchestration, controller self-update apply,
+Windows service adapters, privileged package install under an explicit operator
+policy, and physical multi-host reconcile evidence.
+
 ## Completed in 0.2.0a13
 
 - Versioned operator-owned persistent worker registry with reference validation,

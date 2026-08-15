@@ -40,6 +40,19 @@ report to an enrolled logical worker; it is not attestation or independent
 observation. The controller keeps every description/resource snapshot as
 immutable history and expires availability after a bounded lease.
 
+The management plane adds worker inventory, desired-state documents, typed
+maintenance actions, and certification. These travel on the existing enrolled
+mTLS protocol. Desired state is not a shell script: unknown action types and
+arbitrary command strings are rejected. Privilege-bearing package and OS
+updates are classified and skipped rather than executed with a sudo password
+or an unrestricted root session. Receipts redact tokens and private-key
+material. A malicious or mistaken desired-state document can cause skipped or
+failed actions and bad operator conclusions; it cannot grant a general remote
+shell. Worker-reported inventory remains unattested. Self-update stages a
+versioned package in the worker interpreter and relies on an existing
+supervisor to restart; the applying process is not instructed to kill itself.
+Controller self-update is not auto-applied.
+
 Worker capability observations add consumer-normalized model/runtime/tool/MCP/service
 facts. Fabric binds them to exactly one registered worker, rejects unsupported or
 oversized metadata, and retains history in its append-only ledger. Freshness and

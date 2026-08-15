@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- add a first-class desired-state fleet-management plane: worker inventory,
+  reusable profiles, typed maintenance actions, drain/resume/quarantine,
+  capability-aware certification, and append-only maintenance receipts
+  (`mncs-fabric worker inspect|plan|reconcile|certify|drain` and
+  `mncs-fabric fleet inspect|plan|reconcile|certify`);
+- discover how Ollama and other services are actually installed instead of
+  assuming `systemd` `*.service` units, and refuse to auto-apply privilege
+  or OS-class mutations;
+- keep management state separate from liveness so a worker in maintenance or
+  a failed certification cannot receive ordinary work;
+- emit Commons-shaped operational companions only for unusual discoveries,
+  without importing Commons or flooding routine success.
+
+## 0.2.0a21 - classified fleet refresh
+
 - `fleet.refresh` answers within the 30s service-frame TTL with classified
   per-worker results instead of letting sequential worker probes expire the
   persistent request as an ambiguous `UNKNOWN` timeout;

@@ -33,3 +33,9 @@ Snapshots are observations, not RAM/VRAM reservations.
 
 There is no unauthenticated discovery, broadcast, filesystem inspection,
 remote shell, or general administration operation.
+
+Management state is a separate, controller-owned lifecycle
+(`READY`/`BUSY`/`DRAINING`/`MAINTENANCE`/`VERIFYING`/`DEGRADED`/`QUARANTINED`).
+It does not replace liveness. A `TIMEOUT` refresh is still not unavailability.
+A quarantined or maintenance worker is not schedulable even if liveness is
+`AVAILABLE`. See [Fleet management](FLEET_MANAGEMENT.md).

@@ -46,6 +46,11 @@ PUBLIC_FEATURES = {
     "placement_evidence": True,
     "sequential_cpu_offload_evidence": True,
     "remote_worker_description": True,
+    "worker_inventory": True,
+    "desired_state_reconciliation": True,
+    "worker_certification": True,
+    "fleet_management": True,
+    "typed_maintenance_actions": True,
     "remote_resource_refresh": True,
     "worker_liveness": True,
     "execution_collections": True,
@@ -230,6 +235,11 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
         "worker_tool_capability_observations": bool(worker_backend),
         "resumable_service_bundle_transfer": True,
         "scheduled_work_queue": True,
+        "worker_inventory": True,
+        "desired_state_reconciliation": True,
+        "worker_certification": True,
+        "fleet_management": True,
+        "typed_maintenance_actions": True,
     }
 
 
@@ -257,6 +267,10 @@ def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bo
         "schedule.pause": True,
         "schedule.resume": True,
         "schedule.policy": True,
+        "worker.inspect": True,
+        "worker.plan": True,
+        "fleet.inspect": True,
+        "fleet.plan": True,
     }
     value = {
         "schema_version": SERVICE_CAPABILITIES_SCHEMA,
