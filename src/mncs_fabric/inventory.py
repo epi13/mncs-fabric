@@ -241,40 +241,120 @@ def _tool_record(*, name: str, present: bool, path: str | None, version: str | N
     }
 
 
+def _windows_registry_path(scope: str) -> str | None:
+    """Read the durable user or machine PATH. Process PATH may be stale."""
+
+    if os.name != "nt":
+        return None
+    try:
+        import winreg
+    except ImportError:
+        return None
+    roots = {
+        "user": (winreg.HKEY_CURRENT_USER, r"Environment"),
+        "machine": (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+    }
+    if scope not in roots:
+        return None
+    hive, key_path = roots[scope]
+    try:
+        with winreg.OpenKey(hive, key_path) as key:
+            value, _kind = winreg.QueryValueEx(key, "Path")
+    except OSError:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value
+
+
+def discover_search_path() -> dict[str, Any]:
+    """Discover the effective executable search path without host hard-coding.
+
+    Distinguishes the worker process PATH from durable user/machine PATH so
+    a scheduled-task environment that predates a tool install can still
+    observe well-known and registry-published locations.
+    """
+
+    process = str(os.environ.get("PATH") or "")
+    user = _windows_registry_path("user") if os.name == "nt" else None
+    machine = _windows_registry_path("machine") if os.name == "nt" else None
+    local_app = os.environ.get("LOCALAPPDATA")
+    program_files = os.environ.get("ProgramFiles")
+    program_files_x86 = os.environ.get("ProgramFiles(x86)")
+    home = str(Path.home())
+    extras: list[str] = []
+    if os.name == "nt":
+        roots = [item for item in (program_files, program_files_x86, local_app, home) if item]
+        layouts = (
+            ("Git", "cmd"),
+            ("GitHub CLI",),
+            ("Ollama",),
+        )
+        for root in roots:
+            for parts in layouts:
+                candidate = Path(root)
+                if root == local_app or root == home:
+                    if root == home:
+                        candidate = Path(root) / "AppData" / "Local" / "Programs"
+                    else:
+                        candidate = Path(root) / "Programs"
+                candidate = candidate.joinpath(*parts)
+                if candidate.is_dir():
+                    extras.append(str(candidate))
+    seen: list[str] = []
+    for part in [*process.split(os.pathsep), *(user or "").split(os.pathsep), *(machine or "").split(os.pathsep), *extras]:
+        cleaned = part.strip().strip('"')
+        if cleaned and cleaned not in seen:
+            seen.append(cleaned)
+    return {
+        "process": process,
+        "user": user,
+        "machine": machine,
+        "extra": extras,
+        "effective": os.pathsep.join(seen),
+        "process_stale_vs_user": bool(user and user not in process),
+        "process_stale_vs_machine": bool(machine and machine not in process),
+    }
+
+
 def _windows_extra_paths(name: str) -> list[str]:
     if os.name != "nt":
         return []
-    home = Path.home()
-    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
-    candidates = {
-        "git": [
-            program_files / "Git" / "cmd" / "git.exe",
-            home / "AppData" / "Local" / "Programs" / "Git" / "cmd" / "git.exe",
-        ],
-        "gh": [
-            program_files / "GitHub CLI" / "gh.exe",
-            home / "AppData" / "Local" / "Programs" / "GitHub CLI" / "gh.exe",
-        ],
-        "ollama": [
-            program_files / "Ollama" / "ollama.exe",
-            home / "AppData" / "Local" / "Programs" / "Ollama" / "ollama.exe",
-        ],
-    }
-    return [str(path) for path in candidates.get(name, []) if path.is_file()]
+    discovered = discover_search_path()
+    suffix = {
+        "git": "git.exe",
+        "gh": "gh.exe",
+        "ollama": "ollama.exe",
+    }.get(name)
+    if suffix is None:
+        return []
+    found: list[str] = []
+    for directory in discovered["effective"].split(os.pathsep):
+        candidate = Path(directory) / suffix
+        if candidate.is_file():
+            found.append(str(candidate))
+    return found
 
 
 def _probe_tool(name: str, version_args: tuple[str, ...]) -> dict[str, Any]:
+    search = discover_search_path()
     if name == "python":
         path = shutil.which("python") or shutil.which("python3") or sys.executable
+        source = "process-path" if shutil.which("python") or shutil.which("python3") else "interpreter"
     else:
-        path = shutil.which(name) or next(iter(_windows_extra_paths(name)), None)
+        path = shutil.which(name, path=search["effective"]) or shutil.which(name)
+        source = "effective-search-path" if path and path == shutil.which(name, path=search["effective"]) else "process-path"
+        if path is None:
+            extras = _windows_extra_paths(name)
+            path = extras[0] if extras else None
+            source = "environment-discovery" if path else "absent"
     if not path:
-        return _tool_record(name=name, present=False, path=None, version=None, detail=None)
+        return _tool_record(name=name, present=False, path=None, version=None, detail="search-path-miss")
     if not version_args:
-        return _tool_record(name=name, present=True, path=path, version=None, detail="present-unversioned")
+        return _tool_record(name=name, present=True, path=path, version=None, detail=source)
     result = run_argv([path, *version_args])
     version = first_line(result["stdout"]) or first_line(result["stderr"])
-    detail = None
+    detail = source
     if result["timed_out"]:
         detail = "version-probe-timeout"
     elif result["returncode"] not in {0, None} and version is None:

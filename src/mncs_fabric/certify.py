@@ -266,6 +266,54 @@ def _certify_harness(inventory: Mapping[str, Any]) -> dict[str, Any]:
     return _layer("harness", "SKIP", "local harness package is not importable on this worker", applicable=False)
 
 
+def certification_evidence(
+    certification: Mapping[str, Any],
+    certified_inventory: Mapping[str, Any],
+    *,
+    expected_worker_id: str | None = None,
+) -> dict[str, Any]:
+    """Bind a certification to the inventory the worker actually certified."""
+
+    checked_inventory = validate_worker_inventory(certified_inventory, expected_worker_id=expected_worker_id)
+    checked = validate_certification(certification, expected_worker_id=expected_worker_id)
+    if checked["inventory_identity"] != checked_inventory["inventory_identity"]:
+        raise ValidationError("certification is bound to a different inventory than the certified inventory")
+    if checked["worker_identity"] != checked_inventory["worker_identity"]:
+        raise ValidationError("certification worker identity does not match the certified inventory")
+    return {"certification": checked, "certified_inventory": checked_inventory}
+
+
+def normalize_certification_evidence(
+    value: object,
+    *,
+    fallback_inventory: Mapping[str, Any] | None = None,
+    expected_worker_id: str | None = None,
+) -> dict[str, Any]:
+    """Accept a typed evidence object or a bare certification.
+
+    A bare certification may use ``fallback_inventory`` only when that
+    inventory is the exact identity the certification already bound.
+    Mismatched inspect/certify snapshots fail closed.
+    """
+
+    if not isinstance(value, dict):
+        raise ValidationError("certification evidence must be an object")
+    if "certification" in value:
+        inventory = value.get("certified_inventory", value.get("inventory"))
+        if inventory is None:
+            inventory = fallback_inventory
+        if inventory is None:
+            raise ValidationError("certification evidence is missing the certified inventory")
+        return certification_evidence(
+            value["certification"],
+            inventory,
+            expected_worker_id=expected_worker_id,
+        )
+    if fallback_inventory is None:
+        raise ValidationError("certification evidence is missing the certified inventory")
+    return certification_evidence(value, fallback_inventory, expected_worker_id=expected_worker_id)
+
+
 def validate_certification(value: object, *, expected_worker_id: str | None = None) -> dict[str, Any]:
     if not isinstance(value, dict) or value.get("schema_version") != CERTIFICATION_SCHEMA:
         raise ValidationError("unsupported certification schema")

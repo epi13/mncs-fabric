@@ -11,6 +11,7 @@ from mncs_fabric.inventory import (
     INVENTORY_SCHEMA,
     build_worker_inventory,
     collect_worker_inventory,
+    discover_search_path,
     discover_service,
     redact_text,
     validate_worker_inventory,
@@ -98,6 +99,16 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(checked["identity"]["platform"], checked["identity"]["os"])
         self.assertTrue(any(item["name"] == "python" and item["present"] for item in checked["tools"]))
         self.assertTrue(any(item["name"] == "ollama" for item in checked["runtimes"]))
+
+    def test_search_path_discovery_is_generic(self) -> None:
+        discovered = discover_search_path()
+        self.assertIn("process", discovered)
+        self.assertIn("effective", discovered)
+        self.assertTrue(discovered["effective"])
+        from pathlib import Path as _Path
+
+        for item in discovered.get("extra") or []:
+            self.assertTrue(_Path(item).is_dir(), item)
 
     def test_inventory_identity_rejects_tampering(self) -> None:
         inventory = sample_inventory()
