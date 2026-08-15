@@ -52,21 +52,25 @@ inspect → desired state → plan → drain → apply typed actions
 
 This closure pass is **implemented + unit-tested + CI-tested**.
 
-Live claim levels as of the a25 canary:
+Live claim levels after the a23→a25 bootstrap exception and Fabric-native a25→a27 proof:
 
 | Capability | Unit | CI | Live Linux | Live Windows | Reboot |
 | --- | --- | --- | --- | --- | --- |
-| READY invariant | yes | yes | a26 required after first a25 certify race | not yet | no |
-| Artifact transfer | yes | yes | pending first a25-to-a25 Fabric transfer | not yet | no |
-| Package activation | yes | yes | a23→a25 bootstrap exception | not yet | no |
-| Restart / reconnect | yes | yes | PID 257275→275899, identity preserved | not yet | no |
-| Version verification | yes | yes | observed 0.2.0a25 after reconnect | not yet | no |
-| Rollback | yes | yes | not physically exercised | not yet | no |
-| Canary barrier | yes | yes | not live-orchestrated | not yet | no |
-| Controller update | partial | n/a | local venv + systemd restart a23→a25 | n/a | no |
+| READY invariant | yes | yes | READY on a27 | DEGRADED (blocking `tool:git`) | no |
+| Artifact transfer | yes | yes | controller→worker mTLS PASS | controller→worker mTLS PASS | no |
+| Package activation | yes | yes | Fabric reconcile `--force` a27 | bootstrap exception + watch recover | no |
+| Restart / reconnect | yes | yes | PID 257275→275899→280312 | process recycled; identity preserved | no |
+| Version verification | yes | yes | observed 0.2.0a27 | observed 0.2.0a27 | no |
+| Rollback | yes | yes | not physically exercised | not physically exercised | no |
+| Canary barrier | yes | yes | plan-only live; not mutating | would be first canary (DEGRADED) | no |
+| Controller update | partial | n/a | local venv + systemd a23→a27 | n/a | no |
 
-The a23→a25 hop is a **BOOTSTRAP EXCEPTION**. After both ends speak a25,
-ordinary package deployment is intended to use `worker.package-artifact.*`.
+The a23→a25 hop is a **BOOTSTRAP EXCEPTION**. After both ends spoke a25,
+a27 was transferred and staged by `worker.artifact.stage` over mTLS with no
+SSH. Linux apply/restart after that hop was controller-native.
+
+Windows Git is **not installed** (not a stale PATH). That remains blocking
+nonconformance. Package deploy success and scheduler READY are separate.
 
 Live CLI against the current process:
 
