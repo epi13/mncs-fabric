@@ -25,6 +25,7 @@ from .update_lifecycle import (
     reconnect_deadline,
     transition_update_transaction,
     validate_update_transaction,
+    version_matches_expected,
 )
 from .versioning import parse_fabric_version
 from .errors import ProtocolError, ValidationError
@@ -181,7 +182,22 @@ class FleetManager:
             return desired
         existing = self.store.desired_state(worker_id)
         if existing is not None:
-            return validate_desired_state(existing, expected_worker_id=worker_id)
+            checked = validate_desired_state(existing, expected_worker_id=worker_id)
+            supported = dict(checked.get("supported_current") or {})
+            observed = str((inventory.get("fabric") or {}).get("worker_version") or "")
+            if (
+                __version__
+                and supported.get("fabric-worker") != __version__
+                and observed == __version__
+            ):
+                refreshed = default_desired_state(
+                    worker_id,
+                    inventory,
+                    profiles=list(checked.get("profiles") or []) or profiles,
+                )
+                self.assign(refreshed)
+                return refreshed
+            return checked
         desired = default_desired_state(worker_id, inventory)
         self.assign(desired)
         return desired
@@ -654,15 +670,18 @@ class FleetManager:
         certified = self.certify(worker_id, inventory, profiles=profiles, certification=certification)
         if transaction is not None and transaction["state"] == "CERTIFYING":
             decision = certified["management"]
-            if decision["state"] == "READY":
+            observed = (inventory.get("fabric") or {}).get("worker_version")
+            version_ok = version_matches_expected(str(observed) if observed else None, transaction.get("expected_version") or "")
+            health = (certified.get("certification") or {}).get("disposition")
+            if decision["state"] == "READY" or (version_ok and health == "CERTIFIED" and decision["state"] != "QUARANTINED"):
                 rolled_back = transaction.get("expected_version") == transaction.get("previous_version")
                 transaction = self._advance_update(
                     transaction,
                     "ROLLED_BACK" if rolled_back and transaction.get("previous_version") else "READY",
-                    "update transaction completed after certification and conformance",
-                    observed_version=(inventory.get("fabric") or {}).get("worker_version"),
+                    "update transaction completed after version verification and health certification",
+                    observed_version=observed,
                 )
-                if transaction["state"] == "ROLLED_BACK":
+                if transaction["state"] == "ROLLED_BACK" and decision["state"] == "READY":
                     self.store.set_state(
                         worker_id,
                         state="READY",
@@ -670,10 +689,12 @@ class FleetManager:
                         certification_status="CERTIFIED",
                     )
                     certified["management"] = self.store.state(worker_id)
-            elif decision["state"] == "QUARANTINED":
+            elif decision["state"] == "QUARANTINED" or health == "FAILED":
                 transaction = self._fail_update(transaction, decision.get("reason") or "certification failed", quarantined=True)
+            elif not version_ok:
+                transaction = self._advance_update(transaction, "ROLLBACK_APPLYING", decision.get("reason") or "observed version does not match the update transaction")
             else:
-                transaction = self._advance_update(transaction, "ROLLBACK_APPLYING", decision.get("reason") or "certification did not reach READY")
+                transaction = self._fail_update(transaction, decision.get("reason") or "update completion is uncertain")
         certified["update_transaction"] = transaction
         certified["observation"] = verified.get("observation")
         return certified
@@ -778,6 +799,30 @@ class FleetManager:
             }
         state = transaction["state"]
         if state in self.MUTATION_RECOVERY_STATES:
+            observed = None if inventory is None else (inventory.get("fabric") or {}).get("worker_version")
+            if (
+                state == "ROLLBACK_APPLYING"
+                and inventory is not None
+                and version_matches_expected(str(observed) if observed else None, transaction.get("expected_version") or "")
+            ):
+                transaction = self._advance_update(
+                    transaction,
+                    "CERTIFYING",
+                    "rollback cancelled after controller reconstruction; worker already runs the expected version",
+                    observed_version=str(observed) if observed else None,
+                )
+                completed = self.complete_update(worker_id, inventory)
+                return {
+                    "worker_id": worker_id,
+                    "action": "resumed",
+                    "state": (completed.get("update_transaction") or {}).get("state") or transaction["state"],
+                    "uncertainty": "rollback_not_executed",
+                    "reason": "expected version is already running; rollback was not applied",
+                    "update_transaction": completed.get("update_transaction"),
+                    "certification": completed.get("certification"),
+                    "conformance": completed.get("conformance"),
+                    "management": completed.get("management"),
+                }
             return {
                 "worker_id": worker_id,
                 "action": "fail_closed",

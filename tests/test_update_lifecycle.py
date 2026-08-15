@@ -276,6 +276,35 @@ class UpdateLifecycleTests(unittest.TestCase):
             self.assertEqual(recovered["unresolved"][0]["action"], "resume_observation")
             self.assertEqual(recovered["unresolved"][0]["state"], "DISCONNECT_EXPECTED")
 
+    def test_matching_version_does_not_rollback_on_scheduler_degraded(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from mncs_fabric.certify import certify_inventory
+        from tests.test_inventory import sample_inventory
+
+        inventory = sample_inventory(harness="0.1.0")
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            txn = build_update_transaction(
+                worker_id="worker-a",
+                state="CERTIFYING",
+                expected_version="0.2.0a21",
+                previous_version="0.2.0a20",
+                artifact_identity=None,
+                previous_artifact_identity=None,
+                deadline=reconnect_deadline(seconds=30),
+                reason="certify after reconnect",
+            )
+            manager.store.record("management.update-transaction", txn)
+            completed = manager.complete_update(
+                "worker-a",
+                inventory,
+                certification=certify_inventory(inventory, profiles=["mncs-linux-worker"]),
+            )
+            self.assertEqual(completed["update_transaction"]["state"], "READY")
+            self.assertNotEqual(completed["update_transaction"]["state"], "ROLLBACK_APPLYING")
+
     def test_controller_restart_resumes_observation_without_reapplying(self) -> None:
         import tempfile
         from pathlib import Path
