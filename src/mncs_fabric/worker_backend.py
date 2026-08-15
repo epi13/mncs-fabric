@@ -22,7 +22,8 @@ class WorkerBackend(Protocol):
     observed availability. Backends that omit it already return last-known
     state as they define it.
 
-    ``refresh_workers()`` is the explicit probe.
+    ``refresh_workers()`` is the explicit probe. ``refresh_fleet()`` is the
+    classified, deadline-aware probe when the backend implements it.
     """
 
     def workers(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]: ...

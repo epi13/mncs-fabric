@@ -21,6 +21,7 @@ PUBLIC_FEATURES = {
     # features so consumers do not infer dispatch support from the latter.
     "persistent_fleet_read": True,
     "persistent_fleet_refresh": True,
+    "classified_fleet_refresh": True,
     "last_known_fleet_status": True,
     "persistent_service_execution": False,
     "persistent_detached_execution": False,
@@ -215,6 +216,7 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
     return {
         "persistent_fleet_read": True,
         "persistent_fleet_refresh": True,
+        "classified_fleet_refresh": True,
         "last_known_fleet_status": True,
         "persistent_service_execution": bool(worker_backend),
         "persistent_detached_execution": bool(worker_backend),

@@ -611,6 +611,8 @@ class ControllerService:
         is the observation authority.  Keeping these projections separate is
         important, but consumers need both in one fleet response.
         """
+        from .fleet_refresh import project_runtime_identity
+
         for worker in workers:
             worker_id = str(worker.get("worker_id") or "")
             observation = self._latest_capability_observation(worker_id) if worker_id else None
@@ -649,7 +651,159 @@ class ControllerService:
                 and entry["attributes"].get("loaded") is True
                 and entry.get("name")
             ]
+            worker.update(project_runtime_identity(worker))
         return workers
+
+    def _refresh_fleet(self, request: Mapping[str, Any], args: Mapping[str, Any]) -> dict[str, Any]:
+        from .fleet_refresh import (
+            annotate_refresh,
+            build_refresh_report,
+            merge_refresh_into_workers,
+            operation_deadline_seconds,
+            remaining_request_seconds,
+            select_refresh_targets,
+        )
+
+        remaining = remaining_request_seconds(request)
+        operation_budget = operation_deadline_seconds(remaining)
+        if args.get("operation_deadline_seconds") is not None:
+            try:
+                requested = float(args["operation_deadline_seconds"])
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("operation_deadline_seconds is invalid") from exc
+            if requested <= 0:
+                raise ValidationError("operation_deadline_seconds must be positive")
+            operation_budget = min(operation_budget, requested)
+        per_worker_budget = None
+        if args.get("per_worker_deadline_seconds") is not None:
+            try:
+                per_worker_budget = float(args["per_worker_deadline_seconds"])
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("per_worker_deadline_seconds is invalid") from exc
+            if per_worker_budget <= 0:
+                raise ValidationError("per_worker_deadline_seconds must be positive")
+        worker_ids = select_refresh_targets(args)
+        if not self.worker_backend_enabled:
+            workers = self.lifecycle.memberships()
+            if worker_ids is not None:
+                wanted = set(worker_ids)
+                workers = [worker for worker in workers if worker.get("worker_id") in wanted]
+            report = build_refresh_report(
+                [annotate_refresh(worker, status="UNKNOWN", diagnostic="persistent worker backend is not configured") for worker in workers],
+                observation_mode="membership",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        elif self.rendezvous_ready and self._worker_client is None:
+            workers = self._rendezvous.states() if self._rendezvous is not None else []
+            report = build_refresh_report(
+                [
+                    annotate_refresh(
+                        worker,
+                        status="UNKNOWN",
+                        diagnostic="rendezvous workers expose last-known presence; describe refresh requires the direct worker backend",
+                    )
+                    for worker in workers
+                ],
+                observation_mode="rendezvous-last-known",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        elif self._worker_client is not None:
+            from .worker_backend import list_backend_workers
+
+            fleet_refresh = getattr(self._worker_client, "refresh_fleet", None)
+            if callable(fleet_refresh):
+                report = dict(
+                    fleet_refresh(
+                        worker_ids=worker_ids,
+                        operation_deadline=operation_budget,
+                        per_worker_deadline=per_worker_budget,
+                    )
+                )
+            else:
+                report = self._refresh_workers_fallback(
+                    operation_budget=operation_budget,
+                    remaining=remaining,
+                )
+        else:
+            report = build_refresh_report(
+                [],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        projected, _registry = self._worker_backend_status(refresh=False)
+        if worker_ids is not None:
+            wanted = set(worker_ids)
+            projected = [worker for worker in projected if worker.get("worker_id") in wanted]
+        report["workers"] = merge_refresh_into_workers(projected, report.get("workers") or [])
+        report["observation_mode"] = "probed"
+        report["service_deadline_seconds"] = remaining
+        report["operation_deadline_seconds"] = operation_budget
+        return report
+
+    def _refresh_workers_fallback(
+        self, *, operation_budget: float, remaining: float
+    ) -> dict[str, Any]:
+        from threading import Thread
+
+        from .fleet_refresh import annotate_refresh, build_refresh_report
+        from .worker_backend import list_backend_workers
+
+        refresher = getattr(self._worker_client, "refresh_workers", None)
+        if not callable(refresher):
+            return build_refresh_report(
+                [],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        box: dict[str, Any] = {}
+
+        def run() -> None:
+            try:
+                refresher()
+                box["error"] = None
+            except Exception as exc:
+                box["error"] = exc
+
+        thread = Thread(target=run, daemon=True, name="mncs-fabric-refresh-fallback")
+        thread.start()
+        thread.join(timeout=max(0.0, operation_budget))
+        probed = list_backend_workers(self._worker_client, apply_lease=False)
+        if thread.is_alive():
+            return build_refresh_report(
+                [
+                    annotate_refresh(
+                        worker,
+                        status="TIMEOUT",
+                        deadline_fired="operation",
+                        diagnostic="legacy refresh_workers exceeded the fleet refresh operation deadline",
+                    )
+                    for worker in probed
+                ],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        if box.get("error") is not None:
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "refresh_error": str(box["error"]),
+            }
+            return build_refresh_report(
+                [annotate_refresh(worker, status="UNKNOWN", diagnostic=str(box["error"])) for worker in probed],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        return build_refresh_report(
+            [annotate_refresh(worker, status="PASS") for worker in probed],
+            observation_mode="probed",
+            service_deadline_seconds=remaining,
+            operation_deadline_seconds_value=operation_budget,
+        )
 
     def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1000:
@@ -838,14 +992,7 @@ class ControllerService:
             elif operation == "fleet.list":
                 payload = {"workers": self._worker_backend_status()[0] if self.worker_backend_enabled else self.lifecycle.memberships()}
             elif operation == "fleet.refresh":
-                payload = {
-                    "workers": (
-                        self._worker_backend_status(refresh=True)[0]
-                        if self.worker_backend_enabled
-                        else self.lifecycle.memberships()
-                    ),
-                    "observation_mode": "probed",
-                }
+                payload = self._refresh_fleet(request, args)
             elif operation in {"fleet.status", "worker.status", "worker.observations"}:
                 worker_id = str(args.get("worker_id"))
                 if self.worker_backend_enabled:

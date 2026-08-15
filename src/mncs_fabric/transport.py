@@ -78,7 +78,8 @@ class InProcessTransport:
     def __init__(self, worker: object) -> None:
         self.worker = worker
 
-    def request(self, envelope: dict[str, object]) -> dict[str, object]:
+    def request(self, envelope: dict[str, object], *, timeout: float | None = None) -> dict[str, object]:
+        del timeout
         validate_envelope(envelope)
         response = self.worker.handle(envelope)  # type: ignore[attr-defined]
         return validate_envelope(response)
@@ -132,26 +133,32 @@ class TLSNetworkTransport:
         context.load_cert_chain(certfile=str(client_cert), keyfile=str(client_key))
         self.context = context
 
-    def request(self, envelope: dict[str, object]) -> dict[str, object]:
+    def request(self, envelope: dict[str, object], *, timeout: float | None = None) -> dict[str, object]:
         message = validate_envelope(envelope)
         if message["worker_id"] != self.expected_worker_id:
             raise ProtocolError("transport request is bound to a different worker")
-        response_timeout = self.control_timeout
+        if timeout is not None and timeout <= 0:
+            raise TransportTimeoutError("Fabric request deadline has already expired")
+        connect_timeout = self.connect_timeout if timeout is None else min(self.connect_timeout, timeout)
+        control_timeout = self.control_timeout if timeout is None else min(self.control_timeout, timeout)
+        response_timeout = control_timeout
         if message["message_type"] == "dispatch.request":
             plan = message["payload"]["job_plan"]
             response_timeout = max(
-                self.control_timeout,
+                control_timeout,
                 float(plan["timeout_seconds"]) + self.execution_timeout_overhead,
             )
+            if timeout is not None:
+                response_timeout = min(response_timeout, timeout)
         phase = "connect"
-        phase_timeout = self.connect_timeout
+        phase_timeout = connect_timeout
         try:
             with socket.create_connection(
-                (self.host, self.port), timeout=self.connect_timeout
+                (self.host, self.port), timeout=connect_timeout
             ) as raw:
                 phase = "TLS handshake"
-                phase_timeout = self.control_timeout
-                raw.settimeout(self.control_timeout)
+                phase_timeout = control_timeout
+                raw.settimeout(control_timeout)
                 with self.context.wrap_socket(raw, server_hostname=self.host) as stream:
                     peer = stream.getpeercert(binary_form=True)
                     if not peer:
@@ -160,7 +167,7 @@ class TLSNetworkTransport:
                         "worker", self.expected_worker_id, certificate_fingerprint(peer)
                     )
                     phase = "request send"
-                    phase_timeout = self.control_timeout
+                    phase_timeout = control_timeout
                     send_frame(stream, message, max_frame_bytes=self.max_frame_bytes)
                     phase = (
                         "execution response"
@@ -175,7 +182,7 @@ class TLSNetworkTransport:
                             deadline=time.monotonic() + response_timeout,
                         )
                     )
-                    stream.settimeout(min(self.control_timeout, 0.2))
+                    stream.settimeout(min(control_timeout, 0.2))
                     try:
                         extra = stream.recv(1)
                     except socket.timeout:

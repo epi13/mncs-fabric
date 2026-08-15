@@ -5,11 +5,23 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, wait
 from typing import Any
 
 from .canonical import sha256_identity, verify_identity
 from .challenges import bind_challenge_to_receipt
 from .errors import ProtocolError, TransportTimeoutError
+from .fleet_refresh import (
+    DEFAULT_PER_WORKER_DEADLINE_SECONDS,
+    MAX_CONCURRENT_REFRESHES,
+    MIN_WORKER_DEADLINE_SECONDS,
+    annotate_refresh,
+    build_refresh_generation,
+    build_refresh_report,
+    per_worker_deadline_seconds,
+    project_runtime_identity,
+)
 from .models import validate_job_plan
 from .node import utc_now
 from .protocol import dispatch_request_identity, make_envelope, validate_envelope
@@ -211,7 +223,7 @@ class NetworkController(LocalController):
         self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=checked))
         self.ledger.append("runtime.capability-observation", checked)
 
-    def describe_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None) -> dict[str, Any]:
+    def describe_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None, timeout: float | None = None) -> dict[str, Any]:
         """Request one authenticated, bounded worker description."""
 
         created = utc_now()
@@ -220,56 +232,86 @@ class NetworkController(LocalController):
         scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.describe.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request, "scope": "current-worker-description"})
         envelope = make_envelope("worker.describe.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request, job_id="worker-description", nonce="describe-" + sha256_identity({"request": request, "worker": worker_id})[7:55], payload={"description_request_identity": scope_identity}, created_at=created, expires_at=expires)
         self.ledger.append("worker.description.request", envelope)
-        response = validate_envelope(transport.request(envelope))
+        response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout))
         if response.get("message_type") != "worker.describe.result" or response.get("worker_id") != worker_id or response.get("controller_id") != self.controller_id:
             raise ProtocolError("worker description response identity is invalid")
         description = validate_worker_description(response["payload"].get("description"), expected_worker_id=worker_id)
         self.ledger.append("worker.description", description)
         return description
 
+    @staticmethod
+    def _transport_request(transport: EnvelopeTransport, envelope: dict[str, Any], *, timeout: float | None) -> dict[str, Any]:
+        if timeout is None:
+            return transport.request(envelope)
+        try:
+            return transport.request(envelope, timeout=timeout)
+        except TypeError:
+            return transport.request(envelope)
+
     def _set_remote_state(self, worker_id: str, *, description: dict[str, Any] | None, state: str, failure: str | None = None) -> dict[str, Any]:
         if worker_id not in self.remote_workers:
             raise ProtocolError(f"worker is not registered: {worker_id}")
-        transport, slot = self.remote_workers[worker_id]
-        liveness = build_liveness_observation(worker_id=worker_id, state=state, observed_at=utc_now(), description_identity=description.get("description_identity") if description else (self.remote_liveness.get(worker_id, {}).get("description_identity")), lease_seconds=DESCRIPTION_LEASE_SECONDS, last_failure=failure)
-        self.remote_liveness[worker_id] = liveness
-        if description is not None:
-            self.remote_descriptions[worker_id] = description
-            node = description["node"]
-            from .node import capability_names
-            snapshot = description["resource_snapshot"]
-            current_runtime = self.runtime_observations.get(worker_id)
-            current_capability = self.runtime_capability_observations.get(worker_id)
-            profile = description.get("runtime_profile")
-            if current_runtime is not None and (not isinstance(profile, dict) or current_runtime.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
-                self.runtime_observations.pop(worker_id, None)
-                current_runtime = None
-            if current_capability is not None and (not isinstance(profile, dict) or current_capability.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
-                self.runtime_capability_observations.pop(worker_id, None)
-                current_capability = None
-            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime, runtime_capability_observation=current_capability)
-            self.remote_workers[worker_id] = (transport, slot)
-            self.ledger.append("worker.state", {"worker_id": worker_id, "description": description, "liveness": liveness})
-        else:
-            slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation)
-            self.remote_workers[worker_id] = (transport, slot)
-            self.ledger.append("worker.liveness", liveness)
-        return self.worker_state(worker_id)
+        with self._remote_lock:
+            transport, slot = self.remote_workers[worker_id]
+            liveness = build_liveness_observation(worker_id=worker_id, state=state, observed_at=utc_now(), description_identity=description.get("description_identity") if description else (self.remote_liveness.get(worker_id, {}).get("description_identity")), lease_seconds=DESCRIPTION_LEASE_SECONDS, last_failure=failure)
+            self.remote_liveness[worker_id] = liveness
+            if description is not None:
+                self.remote_descriptions[worker_id] = description
+                node = description["node"]
+                from .node import capability_names
+                snapshot = description["resource_snapshot"]
+                current_runtime = self.runtime_observations.get(worker_id)
+                current_capability = self.runtime_capability_observations.get(worker_id)
+                profile = description.get("runtime_profile")
+                if current_runtime is not None and (not isinstance(profile, dict) or current_runtime.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
+                    self.runtime_observations.pop(worker_id, None)
+                    current_runtime = None
+                if current_capability is not None and (not isinstance(profile, dict) or current_capability.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
+                    self.runtime_capability_observations.pop(worker_id, None)
+                    current_capability = None
+                slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime, runtime_capability_observation=current_capability)
+                self.remote_workers[worker_id] = (transport, slot)
+                self.ledger.append("worker.state", {"worker_id": worker_id, "description": description, "liveness": liveness})
+            else:
+                slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation)
+                self.remote_workers[worker_id] = (transport, slot)
+                self.ledger.append("worker.liveness", liveness)
+            return self._worker_state_unlocked(worker_id, apply_lease=False)
 
-    def refresh_remote(self, worker_id: str) -> dict[str, Any]:
+    def refresh_remote(self, worker_id: str, *, deadline_seconds: float | None = None) -> dict[str, Any]:
+        result, error = self._probe_remote(worker_id, deadline_seconds=deadline_seconds)
+        if error is not None:
+            raise error
+        return result
+
+    def _probe_remote(
+        self, worker_id: str, *, deadline_seconds: float | None = None
+    ) -> tuple[dict[str, Any], BaseException | None]:
         if worker_id not in self.remote_workers:
             raise ProtocolError(f"worker is not registered: {worker_id}")
         transport, _ = self.remote_workers[worker_id]
         try:
-            description = self.describe_via(transport, worker_id=worker_id)
+            description = self.describe_via(transport, worker_id=worker_id, timeout=deadline_seconds)
+        except TransportTimeoutError as exc:
+            return annotate_refresh(
+                self.worker_state(worker_id, apply_lease=False),
+                status="TIMEOUT",
+                deadline_fired="worker",
+                diagnostic=str(exc),
+            ), exc
         except (ProtocolError, OSError, TimeoutError) as exc:
-            self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
-            raise
+            state = self._set_remote_state(worker_id, description=None, state="UNAVAILABLE", failure=str(exc))
+            return annotate_refresh(state, status="UNAVAILABLE", diagnostic=str(exc)), exc
         if not worker_description_is_fresh(description):
-            return self._set_remote_state(worker_id, description=None, state="UNKNOWN", failure="worker description is stale")
-        return self._set_remote_state(worker_id, description=description, state="AVAILABLE")
+            state = self._set_remote_state(worker_id, description=None, state="UNKNOWN", failure="worker description is stale")
+            return annotate_refresh(state, status="UNKNOWN", diagnostic="worker description is stale"), None
+        return annotate_refresh(self._set_remote_state(worker_id, description=description, state="AVAILABLE"), status="PASS"), None
 
     def worker_state(self, worker_id: str, *, apply_lease: bool = True) -> dict[str, Any]:
+        with self._remote_lock:
+            return self._worker_state_unlocked(worker_id, apply_lease=apply_lease)
+
+    def _worker_state_unlocked(self, worker_id: str, *, apply_lease: bool = True) -> dict[str, Any]:
         if worker_id not in self.remote_workers:
             raise ProtocolError(f"worker is not registered: {worker_id}")
         _, slot = self.remote_workers[worker_id]
@@ -280,16 +322,204 @@ class NetworkController(LocalController):
             availability = "UNKNOWN"
         else:
             availability = liveness["state"]
-        return {"worker_id": worker_id, "transport": "tls-mutual-authenticated", "observation_source": "worker-observed" if description else "operator-declared", "availability": availability, "liveness_fresh": fresh, "last_observed_at": liveness["observed_at"], "liveness_identity": liveness["liveness_identity"], "description_identity": description.get("description_identity") if description else None, "description": dict(description) if description else None, "node_record_identity": description.get("node", {}).get("record_id") if description else None, "capabilities": sorted(slot.capabilities), "resource_snapshot": slot.resource_snapshot, "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None, "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None, "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None, "runtime_capability_observation": dict(slot.runtime_capability_observation) if slot.runtime_capability_observation else None, "runtime_capability_observation_identity": slot.runtime_capability_observation.get("runtime_capability_observation_identity") if slot.runtime_capability_observation else None, "concurrency_limit": slot.concurrency_limit, "available": slot.available}
+        state = {
+            "worker_id": worker_id,
+            "transport": "tls-mutual-authenticated",
+            "observation_source": "worker-observed" if description else "operator-declared",
+            "availability": availability,
+            "liveness_fresh": fresh,
+            "last_observed_at": liveness["observed_at"],
+            "liveness_identity": liveness["liveness_identity"],
+            "description_identity": description.get("description_identity") if description else None,
+            "description": dict(description) if description else None,
+            "node_record_identity": description.get("node", {}).get("record_id") if description else None,
+            "capabilities": sorted(slot.capabilities),
+            "resource_snapshot": slot.resource_snapshot,
+            "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None,
+            "runtime_observation": dict(slot.runtime_observation) if slot.runtime_observation else None,
+            "runtime_observation_identity": slot.runtime_observation.get("runtime_observation_identity") if slot.runtime_observation else None,
+            "runtime_capability_observation": dict(slot.runtime_capability_observation) if slot.runtime_capability_observation else None,
+            "runtime_capability_observation_identity": slot.runtime_capability_observation.get("runtime_capability_observation_identity") if slot.runtime_capability_observation else None,
+            "concurrency_limit": slot.concurrency_limit,
+            "available": slot.available,
+        }
+        state.update(project_runtime_identity(state))
+        return state
 
-    def refresh_all(self) -> list[dict[str, Any]]:
-        states = []
-        for worker_id in sorted(self.remote_workers):
-            try:
-                states.append(self.refresh_remote(worker_id))
-            except (ProtocolError, OSError, TimeoutError):
-                states.append(self.worker_state(worker_id))
-        return states
+    def _worker_control_timeout(self, worker_id: str) -> float:
+        transport, _ = self.remote_workers[worker_id]
+        configured = getattr(transport, "control_timeout", None)
+        if configured is None:
+            configured = getattr(transport, "timeout", DEFAULT_PER_WORKER_DEADLINE_SECONDS)
+        try:
+            value = float(configured)
+        except (TypeError, ValueError):
+            return DEFAULT_PER_WORKER_DEADLINE_SECONDS
+        return value if value > 0 else DEFAULT_PER_WORKER_DEADLINE_SECONDS
+
+    def refresh_all(
+        self,
+        *,
+        worker_ids: list[str] | None = None,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> list[dict[str, Any]]:
+        return list(
+            self.refresh_fleet(
+                worker_ids=worker_ids,
+                operation_deadline=operation_deadline,
+                per_worker_deadline=per_worker_deadline,
+            ).get("workers", [])
+        )
+
+    def refresh_fleet(
+        self,
+        *,
+        worker_ids: list[str] | None = None,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> dict[str, Any]:
+        started = time.monotonic()
+        started_at = utc_now()
+        requested = list(worker_ids) if worker_ids is not None else sorted(self.remote_workers)
+        targets = [worker_id for worker_id in requested if worker_id in self.remote_workers]
+        unknown = [worker_id for worker_id in requested if worker_id not in self.remote_workers]
+        generation = build_refresh_generation(targets + unknown, started_at=started_at)
+        generation_id = str(generation["refresh_generation"])
+        results: dict[str, dict[str, Any]] = {}
+
+        def remaining_operation() -> float | None:
+            if operation_deadline is None:
+                return None
+            return float(operation_deadline) - (time.monotonic() - started)
+
+        def timeout_state(worker_id: str, owner: str, diagnostic: str) -> dict[str, Any]:
+            return annotate_refresh(
+                self.worker_state(worker_id, apply_lease=False),
+                status="TIMEOUT",
+                deadline_fired=owner,
+                diagnostic=diagnostic,
+                refresh_generation=generation_id,
+            )
+
+        for worker_id in unknown:
+            results[worker_id] = annotate_refresh(
+                {
+                    "worker_id": worker_id,
+                    "availability": "UNKNOWN",
+                    "available": False,
+                    "observation_source": "operator-declared",
+                },
+                status="UNKNOWN",
+                diagnostic="worker is not registered",
+                refresh_generation=generation_id,
+            )
+
+        pending: dict[Any, str] = {}
+        workers = min(MAX_CONCURRENT_REFRESHES, max(1, len(targets))) if targets else 1
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            for worker_id in targets:
+                remaining = remaining_operation()
+                if remaining is not None and remaining < MIN_WORKER_DEADLINE_SECONDS:
+                    results[worker_id] = timeout_state(
+                        worker_id, "operation", "fleet refresh operation deadline expired before probe"
+                    )
+                    continue
+                configured = per_worker_deadline if per_worker_deadline is not None else self._worker_control_timeout(worker_id)
+                budget = per_worker_deadline_seconds(remaining_operation=remaining, configured=configured)
+                if budget < MIN_WORKER_DEADLINE_SECONDS:
+                    results[worker_id] = timeout_state(
+                        worker_id, "operation", "remaining refresh budget is below the per-worker bound"
+                    )
+                    continue
+                pending[pool.submit(self._probe_remote, worker_id, deadline_seconds=budget)] = worker_id
+            wait_for = remaining_operation()
+            if pending:
+                wait(pending, timeout=None if wait_for is None else max(0.0, wait_for))
+            for future, worker_id in pending.items():
+                if future.done():
+                    try:
+                        probed, _error = future.result()
+                        result = dict(probed)
+                    except Exception as exc:
+                        result = timeout_state(worker_id, "worker", str(exc))
+                    result["refresh_generation"] = generation_id
+                    results[worker_id] = result
+                else:
+                    results[worker_id] = timeout_state(
+                        worker_id, "operation", "worker probe exceeded the fleet refresh operation deadline"
+                    )
+
+        ordered = [results[worker_id] for worker_id in sorted(results)]
+        return build_refresh_report(
+            ordered,
+            observation_mode="probed",
+            generation=generation,
+            operation_deadline_seconds_value=operation_deadline,
+            per_worker_deadline_seconds_value=per_worker_deadline,
+        )
+
+    def restore_last_known(self) -> dict[str, Any]:
+        """Rebuild in-memory last-known observations from the controller ledger."""
+
+        latest_state: dict[str, dict[str, Any]] = {}
+        for entry in self.ledger.all_records(record_type="worker.state"):
+            record = entry["record"]
+            worker_id = record.get("worker_id")
+            if isinstance(worker_id, str) and worker_id in self.remote_workers:
+                latest_state[worker_id] = record
+        latest_liveness: dict[str, dict[str, Any]] = {}
+        for entry in self.ledger.all_records(record_type="worker.liveness"):
+            record = entry["record"]
+            worker_id = record.get("worker_identity") or record.get("worker_id")
+            if isinstance(worker_id, str) and worker_id in self.remote_workers:
+                latest_liveness[worker_id] = record
+        restored = 0
+        with self._remote_lock:
+            for worker_id in self.remote_workers:
+                record = latest_state.get(worker_id)
+                description = None
+                liveness = None
+                if record is not None:
+                    raw_description = record.get("description")
+                    raw_liveness = record.get("liveness")
+                    if isinstance(raw_description, dict):
+                        try:
+                            description = validate_worker_description(raw_description, expected_worker_id=worker_id)
+                        except Exception:
+                            description = None
+                    if isinstance(raw_liveness, dict):
+                        try:
+                            liveness = validate_liveness(raw_liveness, expected_worker_id=worker_id)
+                        except Exception:
+                            liveness = None
+                if liveness is None and worker_id in latest_liveness:
+                    try:
+                        liveness = validate_liveness(latest_liveness[worker_id], expected_worker_id=worker_id)
+                    except Exception:
+                        liveness = None
+                if description is None and liveness is None:
+                    continue
+                transport, slot = self.remote_workers[worker_id]
+                if description is not None:
+                    self.remote_descriptions[worker_id] = description
+                    from .node import capability_names
+                    snapshot = description["resource_snapshot"]
+                    slot = WorkerSlot(
+                        worker_id=slot.worker_id,
+                        capabilities=frozenset(capability_names(description["node"])),
+                        active=slot.active,
+                        concurrency_limit=slot.concurrency_limit,
+                        available=True,
+                        resource_snapshot=snapshot,
+                        runtime_observation=slot.runtime_observation,
+                        runtime_capability_observation=slot.runtime_capability_observation,
+                    )
+                    self.remote_workers[worker_id] = (transport, slot)
+                if liveness is not None:
+                    self.remote_liveness[worker_id] = liveness
+                restored += 1
+        return {"restored_workers": restored, "known_workers": sorted(self.remote_workers)}
 
     def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)

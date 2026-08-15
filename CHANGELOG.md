@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- `fleet.refresh` answers within the 30s service-frame TTL with classified
+  per-worker results instead of letting sequential worker probes expire the
+  persistent request as an ambiguous `UNKNOWN` timeout;
+- worker probes run concurrently with an explicit per-worker deadline, so one
+  slow or unreachable worker cannot discard another worker's completed
+  observation;
+- a worker `TIMEOUT` retains last-known availability and is distinct from
+  `UNAVAILABLE` (unreachable) and from `STALE` capability inventory;
+- fleet projections expose `worker_service_version` and
+  `description_captured_at` so an operator can verify the process serving a
+  worker after an in-place upgrade;
+- controller restart restores last-known worker descriptions from the network
+  ledger so refresh can resume against retained observations;
 - persistent `FabricClient.execute()` no longer holds the 30s service-frame
   TTL open for jobs whose plan timeout exceeds that bound; those jobs submit
   as detached work and poll `execution.status`/`execution.result` until the

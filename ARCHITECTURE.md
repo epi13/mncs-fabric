@@ -38,7 +38,12 @@ The persistent controller service treats `controller.status` and `fleet.list`
 as last-known read models. They do not describe workers. `fleet.refresh` is
 the explicit probe. Worker endpoints default to one concurrent connection, so
 an implicit describe during inference can stall unrelated clients or mark a
-busy worker unavailable.
+busy worker unavailable. Fleet refresh therefore uses composable deadlines:
+the 30s service-frame TTL is the control-plane answer bound, each worker has
+its own probe deadline, and probes run concurrently. A slow worker is
+classified `TIMEOUT` and retains last-known availability instead of expiring
+the service request as `UNKNOWN`. Worker reachability, capability-inventory
+freshness, and model inventory are distinct observations.
 
 Running-service capabilities are advertised in `service_capabilities`, not
 only the package version. A newer source talking to an older controller must
@@ -206,7 +211,9 @@ This is execution durability, not semantic task acceptance or Commons authority.
 
 Transport timeouts have distinct scopes. Connection establishment, TLS handshake,
 worker description refresh, control messages, and listener idle periods use short
-operator bounds. Only a validated `dispatch.request` widens its response deadline,
+operator bounds. Persistent `fleet.refresh` never borrows the service-frame TTL
+as the worker probe budget; it derives an operation deadline from the remaining
+request TTL, then a per-worker deadline from that remainder. Only a validated `dispatch.request` widens its response deadline,
 using the declared job `timeout_seconds` plus a small bounded protocol overhead.
 The job executor retains its own deadline and emits an execution record terminated
 with `TIMEOUT`; failure to receive any complete result by the network deadline is

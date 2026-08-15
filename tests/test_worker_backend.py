@@ -61,6 +61,7 @@ class WorkerBackendContractTests(unittest.TestCase):
                 self.assertEqual(status["fleet"]["workers"][0]["worker_id"], "legacy-backend")
                 self.assertTrue(status["service_features"]["last_known_fleet_status"])
                 self.assertTrue(status["service_features"]["persistent_fleet_refresh"])
+                self.assertTrue(status["service_features"]["classified_fleet_refresh"])
                 self.assertTrue(status["service_capabilities"]["operations"]["fleet.refresh"])
             finally:
                 service.request_stop()
