@@ -298,6 +298,18 @@ inspected without executing package code and must match
 bytes remain content-addressed; that provenance gap is recorded, not
 invented.
 
+Staged bytes remain content-addressed (`{digest}.whl` / `{digest}.tar.gz`).
+Apply copies a digest-named wheel to the descriptor or PEP 427 filename
+in the same directory before `pip install`. Filenames stay untrusted;
+digest and metadata checks still bind the bytes. A digest-named sdist is
+already pip-installable and is left in place.
+
+Missing `local-harness` is advisory. It is recorded as `SKIPPED` /
+`PRIVILEGE_REQUIRED` and does not FAIL the receipt or roll back a Fabric
+package apply. The controller keeps that verify off the worker apply list
+so pre-0.2.0a30 workers do not treat `tool not present` as a blocking
+class A failure.
+
 The worker verifies the digest before apply and returns `restart_required`
 **before** the process exits.
 

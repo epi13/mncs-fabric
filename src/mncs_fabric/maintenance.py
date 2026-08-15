@@ -14,6 +14,7 @@ from .desired_state import diff_desired_state, validate_desired_state
 from .errors import ValidationError
 from .inventory import validate_worker_inventory
 from .node import utc_now
+from .conformance import ADVISORY_PACKAGES
 from .providers import apply_action, plan_action_from_change, rollback_action, validate_action
 
 PLAN_SCHEMA = "mncs-fabric.maintenance-plan.v0.1"
@@ -94,6 +95,25 @@ def _check(name: str, passed: bool, failure_class: str | None, detail: str) -> d
         "failure_class": failure_class if not passed else None,
         "detail": detail[:256],
     }
+
+
+def partition_apply_actions(actions: Iterable[Mapping[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split worker-applied actions from advisory-only verifies.
+
+    Missing local-harness must stay visible, but it must not be sent to a
+    worker apply that would FAIL and roll back a Fabric package update.
+    Pre-0.2.0a30 workers treat that verify as a blocking VALIDATION_FAILURE.
+    """
+
+    applied: list[dict[str, Any]] = []
+    advisory: list[dict[str, Any]] = []
+    for action in actions:
+        item = dict(action)
+        if item.get("target") in ADVISORY_PACKAGES and item.get("action") in {"inspect", "verify"}:
+            advisory.append(item)
+        else:
+            applied.append(item)
+    return applied, advisory
 
 
 def build_maintenance_plan(
@@ -213,6 +233,8 @@ def apply_maintenance_plan(
         result = apply_action(action, checked_inventory)
         results.append(result)
         if result["disposition"] == "FAIL":
+            if result.get("target") in ADVISORY_PACKAGES:
+                continue
             failed = True
             failure_class = result.get("failure_class") or "VALIDATION_FAILURE"
             break
@@ -300,11 +322,15 @@ def complete_receipt(
     final_management_state: str = "READY",
 ) -> dict[str, Any]:
     if disposition is None:
+        blocking_failures = [
+            item for item in results
+            if item.get("disposition") == "FAIL" and item.get("target") not in ADVISORY_PACKAGES
+        ]
         if not results and not plan.get("actions"):
             disposition = "NO_CHANGES"
-        elif any(item.get("disposition") == "FAIL" for item in results):
+        elif blocking_failures:
             disposition = "FAIL"
-            failure_class = next(item.get("failure_class") for item in results if item.get("disposition") == "FAIL")
+            failure_class = blocking_failures[0].get("failure_class") or "VALIDATION_FAILURE"
         elif results and all(item.get("disposition") == "SKIPPED" for item in results):
             disposition = "UNKNOWN" if any(item.get("failure_class") for item in results) else "PASS"
         else:

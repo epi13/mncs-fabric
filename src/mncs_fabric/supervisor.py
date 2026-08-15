@@ -368,10 +368,57 @@ def apply_staged_from_disk() -> dict[str, Any]:
     return apply_staged_upgrade(python=sys.executable, source=str(source), previous=request.get("previous_version"))
 
 
+def _looks_like_pip_installable_name(name: str) -> bool:
+    """Return whether pip will accept this basename as a local archive."""
+
+    if name.endswith((".tar.gz", ".tgz")):
+        return True
+    if not name.endswith(".whl"):
+        return False
+    # PEP 427: {distribution}-{version}(-{build})?-{python}-{abi}-{platform}.whl
+    return len(name[:-4].split("-")) >= 5
+
+
+def installable_upgrade_source(source: str) -> Path:
+    """Return a pip-installable path for a staged Fabric artifact.
+
+    Content-addressed staging stores ``{digest}.whl``. pip rejects that
+    filename. Copy the verified bytes to the descriptor/PEP 427 name in
+    the same directory so apply stays local and digest-bound.
+    """
+
+    path = Path(source)
+    if not path.exists() or _looks_like_pip_installable_name(path.name):
+        return path
+    from .package_artifact import inspect_package_metadata, read_artifact_descriptor
+
+    filename = None
+    descriptor = read_artifact_descriptor(path.parent)
+    candidate = str((descriptor or {}).get("filename") or "")
+    if candidate and Path(candidate).name == candidate and _looks_like_pip_installable_name(candidate):
+        filename = candidate
+    if filename is None and path.name.endswith(".whl"):
+        try:
+            meta = inspect_package_metadata(path)
+        except Exception:
+            meta = {}
+        package = str(meta.get("package") or "").replace("-", "_")
+        version = str(meta.get("version") or "")
+        if package and version:
+            filename = f"{package}-{version}-py3-none-any.whl"
+    if filename is None or filename == path.name:
+        return path
+    dest = path.with_name(filename)
+    if not dest.exists() or dest.stat().st_size != path.stat().st_size:
+        shutil.copy2(path, dest)
+    return dest
+
+
 def apply_staged_upgrade(*, python: str, source: str, previous: str | None) -> dict[str, Any]:
     if not Path(source).exists():
         return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": f"upgrade source does not exist: {source}"}
-    probed = run_argv([python, "-m", "pip", "install", "--disable-pip-version-check", "--upgrade", source], timeout=180.0)
+    installable = installable_upgrade_source(source)
+    probed = run_argv([python, "-m", "pip", "install", "--disable-pip-version-check", "--upgrade", str(installable)], timeout=180.0)
     if probed["returncode"] != 0:
         return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": "pip install of staged Fabric source failed", "stdout": probed["stdout"], "stderr": probed["stderr"], "rollback": {"capability": "partial", "previous_version": previous}}
     return {

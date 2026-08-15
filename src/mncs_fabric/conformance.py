@@ -31,9 +31,12 @@ REQUIREMENT_STATUSES = frozenset({
 })
 
 # Privilege-gated or one-time-human items stay visible as nonconformance
-# without making the existing fleet unschedulable.
-_ADVISORY_PACKAGES = frozenset({"local-harness"})
-_ADVISORY_TOOLS = frozenset({"gh"})
+# without making the existing fleet unschedulable.  Missing advisory
+# packages must not FAIL a Fabric package apply or trigger rollback.
+ADVISORY_PACKAGES = frozenset({"local-harness"})
+ADVISORY_TOOLS = frozenset({"gh"})
+_ADVISORY_PACKAGES = ADVISORY_PACKAGES
+_ADVISORY_TOOLS = ADVISORY_TOOLS
 _BUILD_ONLY_TOOLS = frozenset({"gcc", "rustc", "cargo", "joern", "forge"})
 
 

@@ -11,7 +11,7 @@ class RuntimeIdentityTests(unittest.TestCase):
         identity = collect_runtime_identity(role="controller")
         self.assertEqual(identity["package"], "mncs-fabric")
         self.assertEqual(identity["version"], __version__)
-        self.assertEqual(__version__, "0.2.0a29")
+        self.assertEqual(__version__, "0.2.0a30")
         self.assertIn("source_commit", identity)
         self.assertIn("artifact_digest", identity)
         self.assertIn("build_identity", identity)
