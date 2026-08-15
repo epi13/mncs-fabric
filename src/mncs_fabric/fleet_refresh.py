@@ -103,6 +103,13 @@ def project_runtime_identity(worker: Mapping[str, Any]) -> dict[str, Any]:
         projected["worker_service_version"] = version
     if captured:
         projected["description_captured_at"] = captured
+    identity = worker.get("runtime_identity") or description.get("runtime_identity")
+    if isinstance(identity, dict):
+        projected["runtime_identity"] = dict(identity)
+        if identity.get("source_commit"):
+            projected["worker_source_commit"] = identity.get("source_commit")
+        if identity.get("artifact_digest"):
+            projected["worker_artifact_digest"] = identity.get("artifact_digest")
     return projected
 
 
