@@ -78,13 +78,18 @@ class FleetManagementTests(unittest.TestCase):
             self.assertEqual(result[0]["disposition"], "UNKNOWN")
             certified = controller.certify_worker("fleet-worker", profiles=["mncs-linux-worker"])
             health = certified.get("certification") or certified
-            if health["disposition"] == "CERTIFIED" and not (certified.get("conformance") or {}).get("blocking_failures"):
+            management = (certified.get("management") or {})
+            if health["disposition"] == "FAILED":
+                with self.assertRaises(Exception):
+                    controller.fleet_manager.resume("fleet-worker")
+                self.assertFalse(worker.accepts_work())
+            elif management.get("state") == "READY":
                 controller.resume_worker("fleet-worker", reason="test resume")
                 self.assertTrue(worker.accepts_work())
             else:
-                with self.assertRaises(Exception):
-                    if health["disposition"] == "FAILED":
-                        controller.fleet_manager.resume("fleet-worker")
+                resumed = controller.resume_worker("fleet-worker", reason="test resume")
+                self.assertNotEqual(resumed.get("state"), "READY")
+                self.assertFalse(worker.accepts_work())
 
     def test_network_controller_uses_same_typed_messages(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

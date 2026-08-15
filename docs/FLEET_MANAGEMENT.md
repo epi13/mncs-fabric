@@ -37,11 +37,23 @@ Physical deployments observed in 0.2.0a22:
   supported restart paths.
 
 The following path is implemented and unit-tested in-process and over
-`InProcessTransport`:
+`InProcessTransport`. Classifications:
 
 ```text
-inspect → desired state → plan → drain → apply typed actions → certify → READY or QUARANTINE
+implemented / unit-tested / CI-tested / integration-tested / live-tested
 ```
+
+```text
+inspect → desired state → plan → drain → apply typed actions
+  → UPDATE_PLANNED → DRAINING → UPDATE_APPLYING → UPDATE_APPLIED
+  → RESTART_PENDING → DISCONNECT_EXPECTED → RECONNECTING
+  → VERSION_VERIFYING → CERTIFYING → READY
+```
+
+This closure pass is **implemented + unit-tested**. It is not live-tested on
+the physical fleet until GitHub Actions is green and a24/a25 is installed.
+
+Live processes remain on **0.2.0a23** until those gates pass.
 
 Live CLI against the current process:
 
@@ -157,6 +169,28 @@ are recorded as nonconformance but are advisory for scheduling.
 
 Claim boundary: health is not conformance; conformance is not attestation.
 
+## READY invariant
+
+`READY` is a single predicate (`evaluate_ready`). Certify, reconcile, resume,
+quarantine recovery, and rollout all use it. A worker is READY only when:
+
+```text
+current health result = CERTIFIED
+AND current desired-state conformance has no blocking failure
+AND certification and conformance are bound to the current inventory identity
+AND conformance is bound to the current desired_state_identity
+AND no unresolved update/restart transaction makes the worker unverified
+AND management policy allows READY
+```
+
+Missing evidence is `VERIFYING` (or `DEGRADED` / `MAINTENANCE` as
+appropriate), never READY. Legacy a23 ledgers that have a certification but
+no conformance record cannot become READY until conformance is evaluated
+against the current desired state.
+
+`resume` does not promote a previously certified worker to READY. It
+re-evaluates the predicate.
+
 ## Certification
 
 Certification tests layers the node actually has. A build node is not failed
@@ -170,10 +204,24 @@ Inference generate is model-agnostic: first discovered local model, prompt
 
 ## Rollback
 
-Rollback capability is explicit per action: `full`, `partial`, `unsupported`,
-`manual`. Fabric package updates record the previous version and can attempt
-a pinned `pip install` restore. Most tooling installs are `unsupported` or
-`privilege`. Rollback failure quarantines the worker.
+Rollback capability is explicit per action: `exact`, `partial`, `unsupported`,
+`manual`. Do not call Fabric package rollback `full`.
+
+When a content-addressed artifact is staged, the previous descriptor and
+bytes are retained under `stage/previous/` if they exist. The update
+transaction records FROM version/artifact and TO version/artifact.
+
+If the previously running version predates content-addressed storage:
+
+```text
+previous artifact identity = UNKNOWN / unavailable
+rollback capability = partial
+```
+
+Exact rollback is proven in-process: restore retained bytes, restart,
+reconnect, observe the previous version, certify, conform, READY. A missing
+or corrupt previous artifact is `ROLLBACK_FAILURE` and quarantines the
+worker. That path is unit-tested, not live-tested.
 
 ## Security and privilege
 
@@ -195,11 +243,46 @@ inspect/plan/reconcile/certify is controller-driven.
 A Fabric package update is a class A action bound to a **content-addressed
 artifact** (`digest`, `size`, `package`, `version`). The controller transfers
 those bytes over mTLS (`worker.package-artifact.*`). Filenames are not
-trusted. The worker verifies the digest before apply and returns
-`restart_required` **before** the process exits.
+trusted.
 
-The controller records an update transaction in `DISCONNECT_EXPECTED` so the
-authorized restart is not mistaken for an unexplained outage.
+Transfer sessions are identity-bound:
+
+```text
+worker identity + controller identity + artifact identity
++ transfer identity + expected chunk count + expected total bytes
++ digest + expiry
+```
+
+Sequences must satisfy `0 <= sequence < expected_chunk_count`. Out-of-range,
+conflicting duplicate, missing, extra, expired, oversized, malformed
+base64, digest/size mismatch, mid-transfer identity switch, and a second
+active offer are rejected. Temporary `.part` files are not valid staged
+artifacts until digest verification succeeds.
+
+When the archive is a recognizable wheel or sdist, package metadata is
+inspected without executing package code and must match
+`package == mncs-fabric` and `version == descriptor.version`. Unrecognized
+bytes remain content-addressed; that provenance gap is recorded, not
+invented.
+
+The worker verifies the digest before apply and returns `restart_required`
+**before** the process exits.
+
+The update transaction begins before mutation and advances as evidence is
+obtained:
+
+```text
+UPDATE_PLANNED → DRAINING → UPDATE_APPLYING → UPDATE_APPLIED
+→ RESTART_PENDING → DISCONNECT_EXPECTED → RECONNECTING
+→ VERSION_VERIFYING → CERTIFYING → READY
+```
+
+Failure paths are explicit (`ROLLBACK_APPLYING`, `FAILED`, `QUARANTINED`,
+`ROLLED_BACK`). Transitions are evidence-backed. The controller can answer
+whether a disconnect was expected, whether the same enrolled worker
+reconnected before the deadline, and which version came back. A reconnect
+with the old or malformed version fails `VERSION_VERIFYING` and does not
+become READY.
 
 Linux uses `mncs-fabric-worker-upgrade.service` (no `ProtectHome`) to rewrite
 the worker venv, then `systemctl --user restart mncs-fabric-worker.service`.
@@ -228,9 +311,19 @@ Availability windows remain operator policy in `availability.py`. Maintenance
 should be requested when the worker is idle or explicitly drained. Fabric does
 not hard-code a person's calendar.
 
-Canary rollout is represented as sequential per-worker reconcile with
-`stop_on_failure` left to the operator/CLI loop. A built-in multi-worker
-orchestrator is not claimed in this version.
+Canary success requires post-restart READY, not a successful apply.
+`restart_required=True` or any of `MAINTENANCE`, `DISCONNECT_EXPECTED`,
+`RECONNECTING`, `VERSION_VERIFYING`, `CERTIFYING`, `DEGRADED`,
+`QUARANTINED` is not a successful canary.
+
+Statuses: `CANARY_PENDING`, `CANARY_SUCCEEDED`, `CANARY_FAILED`,
+`ROLLOUT_CONTINUING`, `ROLLOUT_STOPPED`. With `stop_on_failure=true`,
+worker #2 is not reconciled until worker #1 is confirmed READY. A failed
+canary mutates nothing in the remainder. `stop_on_failure=false` may
+continue and is recorded as `FAILED` if any worker failed.
+
+This orchestrator is unit-tested. It is not live-tested on the physical
+fleet in this closure pass.
 
 ## Bootstrapping (unavoidable one-time)
 

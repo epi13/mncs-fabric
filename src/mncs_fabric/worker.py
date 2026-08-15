@@ -30,7 +30,7 @@ from .management import build_management_state, can_transition, validate_managem
 class LocalWorker:
     """A worker callable in-process; no unauthenticated listener is created."""
 
-    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained") -> None:
+    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained", stage_dir: Path | None = None) -> None:
         if not worker_id or concurrency_limit < 1:
             raise ValueError("worker_id and a positive concurrency limit are required")
         self.worker_id = worker_id
@@ -39,10 +39,11 @@ class LocalWorker:
         self.concurrency_limit = concurrency_limit
         self.bundle_cache = BundleCache(Path(bundle_cache_root)) if bundle_cache_root is not None else None
         self.containment_mode = containment_mode
+        self.stage_dir = Path(stage_dir) if stage_dir is not None else None
         self._replay_lock = Lock()
         self._dispatch_by_request: dict[str, dict[str, Any]] = {}
         self._result_by_request: dict[str, dict[str, Any]] = {}
-        self._artifact_session: dict[str, Any] | None = None
+        self._artifact_session = None
         for entry in self.ledger.all_records():
             record = entry["record"]
             request = record.get("request_id")
@@ -168,7 +169,7 @@ class LocalWorker:
         if message["message_type"] == "worker.package-artifact.request":
             if message["worker_id"] != self.worker_id:
                 raise ProtocolError("package artifact transfer is bound to a different worker")
-            result = self._accept_package_artifact(message["payload"])
+            result = self._accept_package_artifact(message["payload"], controller_id=message["controller_id"])
             self.ledger.append("protocol.package-artifact", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "result": result})
             return self._response(message, "worker.package-artifact.result", result)
         if message["message_type"] == "worker.management.request":
@@ -324,15 +325,15 @@ class LocalWorker:
         except (ProtocolError, StorageError, OSError, ValueError) as exc:
             return self._bundle_response(message, "FAIL" if isinstance(exc, ProtocolError) else "UNKNOWN", str(exc))
 
-    def _accept_package_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
-        import base64
-
+    def _accept_package_artifact(self, payload: dict[str, Any], *, controller_id: str) -> dict[str, Any]:
         from .package_artifact import (
+            ArtifactTransferSession,
             MAX_ARTIFACT_BYTES,
-            staged_artifact_path,
+            chunk_bounds,
+            decode_chunk_data,
+            transfer_deadline,
             validate_package_artifact,
-            verify_package_artifact,
-            write_artifact_descriptor,
+            write_verified_artifact,
         )
         from .supervisor import default_stage_dir
 
@@ -341,34 +342,56 @@ class LocalWorker:
             artifact = validate_package_artifact(payload["artifact"])
             if int(payload["total_bytes"]) != artifact["size_bytes"] or artifact["size_bytes"] > MAX_ARTIFACT_BYTES:
                 raise ProtocolError("package artifact offer size does not match the descriptor")
-            self._artifact_session = {"artifact": artifact, "chunks": {}, "total_bytes": artifact["size_bytes"]}
+            chunk_count = payload.get("chunk_count")
+            if chunk_count is None:
+                _, chunk_count = chunk_bounds(artifact["size_bytes"])
+            transfer_identity = payload.get("transfer_identity") or payload.get("artifact_request_identity")
+            expires_at = payload.get("expires_at") or transfer_deadline()
+            session = ArtifactTransferSession(
+                worker_identity=self.worker_id,
+                controller_identity=controller_id,
+                artifact=artifact,
+                transfer_identity=str(transfer_identity),
+                expected_chunk_count=int(chunk_count),
+                expected_total_bytes=artifact["size_bytes"],
+                expires_at=str(expires_at),
+            )
+            current = self._artifact_session
+            if current is not None and not current.is_expired():
+                if current.same_offer(
+                    worker_identity=self.worker_id,
+                    controller_identity=controller_id,
+                    artifact_identity=artifact["artifact_identity"],
+                    transfer_identity=session.transfer_identity,
+                ):
+                    return {"disposition": "PASS", "detail": f"accepted offer {artifact['artifact_identity']}"}
+                return {"disposition": "FAIL", "detail": "package artifact offer rejected; an active transfer session already exists"}
+            self._artifact_session = session
             return {"disposition": "PASS", "detail": f"accepted offer {artifact['artifact_identity']}"}
-        if self._artifact_session is None:
+        session = self._artifact_session
+        if session is None:
             raise ProtocolError("package artifact chunk/commit has no open offer")
-        if mode == "chunk":
-            data = base64.b64decode(payload["data"], validate=True)
-            self._artifact_session["chunks"][int(payload["sequence"])] = data
-            received = sum(len(item) for item in self._artifact_session["chunks"].values())
-            if received > self._artifact_session["total_bytes"]:
-                raise ProtocolError("package artifact transfer exceeded the offered size")
-            return {"disposition": "PASS", "detail": f"accepted chunk {payload['sequence']}"}
-        ordered = [self._artifact_session["chunks"][index] for index in sorted(self._artifact_session["chunks"])]
-        blob = b"".join(ordered)
-        artifact = self._artifact_session["artifact"]
-        if len(blob) != artifact["size_bytes"]:
-            raise ProtocolError("package artifact commit size does not match the descriptor")
-        stage = default_stage_dir()
-        target = staged_artifact_path(stage, artifact)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_suffix(target.suffix + ".part")
-        temporary.write_bytes(blob)
         try:
-            verify_package_artifact(temporary, artifact)
-            temporary.replace(target)
+            if payload.get("artifact") is not None:
+                offered = validate_package_artifact(payload["artifact"])
+                if offered["artifact_identity"] != session.artifact["artifact_identity"]:
+                    raise ProtocolError("package artifact identity cannot change mid-transfer")
+            if mode == "chunk":
+                session.accept_chunk(
+                    sequence=int(payload["sequence"]),
+                    data=decode_chunk_data(payload.get("data")),
+                    transfer_identity=payload.get("transfer_identity"),
+                )
+                return {"disposition": "PASS", "detail": f"accepted chunk {payload['sequence']}"}
+            blob = session.assembled_bytes(transfer_identity=payload.get("transfer_identity"))
+            stage = self.stage_dir or default_stage_dir()
+            target = write_verified_artifact(stage, session.artifact, blob)
         except Exception:
-            temporary.unlink(missing_ok=True)
+            if session is self._artifact_session:
+                session.clear()
+                self._artifact_session = None
             raise
-        write_artifact_descriptor(stage, artifact)
+        artifact = session.artifact
         self._artifact_session = None
         return {"disposition": "PASS", "detail": f"staged {artifact['digest']} as {target}", "staged_path": str(target), "artifact_identity": artifact["artifact_identity"]}
 

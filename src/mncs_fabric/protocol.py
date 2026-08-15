@@ -310,8 +310,12 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             validate_package_artifact(value["artifact"])
             if not isinstance(value.get("total_bytes"), int) or not 1 <= value["total_bytes"] <= MAX_ARTIFACT_BYTES:
                 raise ProtocolError("package artifact size is invalid")
+            if "chunk_count" in value and (not isinstance(value["chunk_count"], int) or isinstance(value["chunk_count"], bool) or not 1 <= value["chunk_count"] <= 512):
+                raise ProtocolError("package artifact chunk count is invalid")
+            if "transfer_identity" in value and not is_sha256_identity(value.get("transfer_identity")):
+                raise ProtocolError("package artifact transfer identity is invalid")
         elif value["mode"] == "chunk":
-            if not isinstance(value.get("sequence"), int) or value["sequence"] < 0 or not isinstance(value.get("data"), str):
+            if not isinstance(value.get("sequence"), int) or isinstance(value.get("sequence"), bool) or value["sequence"] < 0 or not isinstance(value.get("data"), str):
                 raise ProtocolError("package artifact chunk is invalid")
             try:
                 decoded = base64.b64decode(value["data"], validate=True)

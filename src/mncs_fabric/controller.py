@@ -100,14 +100,14 @@ class LocalController:
     def transfer_package_artifact(self, worker_id: str, path: Path, *, version: str, source: str = "operator-staged") -> dict[str, Any]:
         import base64
 
-        from .package_artifact import MAX_CHUNK_BYTES, chunk_bounds, describe_package_artifact
+        from .package_artifact import MAX_CHUNK_BYTES, build_transfer_identity, chunk_bounds, describe_package_artifact, transfer_deadline
 
         artifact = describe_package_artifact(Path(path), version=version, source=source)
         raw = Path(path).read_bytes()
         chunk_bytes, chunk_count = chunk_bounds(len(raw))
         transport = self._worker_transport(worker_id)
         created = utc_now()
-        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+        expires = transfer_deadline(seconds=300.0)
 
         def _send(payload: dict[str, Any]) -> dict[str, Any]:
             request = "artifact-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "mode": payload["mode"], "digest": artifact["digest"]})[7:40]
@@ -120,15 +120,35 @@ class LocalController:
                 raise ProtocolError("package artifact response identity is invalid")
             return response["payload"]
 
-        offered = _send({"mode": "offer", "artifact": artifact, "total_bytes": artifact["size_bytes"], "chunk_bytes": chunk_bytes, "chunk_count": chunk_count})
+        transfer_identity = build_transfer_identity(
+            worker_identity=worker_id,
+            controller_identity=self.controller_id,
+            artifact_identity=artifact["artifact_identity"],
+            expected_chunk_count=chunk_count,
+            expected_total_bytes=artifact["size_bytes"],
+        )
+        offered = _send({
+            "mode": "offer",
+            "artifact": artifact,
+            "total_bytes": artifact["size_bytes"],
+            "chunk_bytes": chunk_bytes,
+            "chunk_count": chunk_count,
+            "transfer_identity": transfer_identity,
+            "expires_at": expires,
+        })
         if offered.get("disposition") != "PASS":
             return offered
         for sequence in range(chunk_count):
             piece = raw[sequence * MAX_CHUNK_BYTES:(sequence + 1) * MAX_CHUNK_BYTES]
-            chunked = _send({"mode": "chunk", "sequence": sequence, "data": base64.b64encode(piece).decode("ascii")})
+            chunked = _send({
+                "mode": "chunk",
+                "sequence": sequence,
+                "data": base64.b64encode(piece).decode("ascii"),
+                "transfer_identity": transfer_identity,
+            })
             if chunked.get("disposition") != "PASS":
                 return chunked
-        committed = _send({"mode": "commit"})
+        committed = _send({"mode": "commit", "transfer_identity": transfer_identity})
         self.ledger.append("package.artifact.transfer", {"worker_id": worker_id, "artifact": artifact, "result": committed})
         return {"artifact": artifact, "result": committed}
 
@@ -166,8 +186,16 @@ class LocalController:
         return self.fleet_manager.drain(worker_id, reason=reason)
 
     def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
-        self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="resume", reason=reason)
-        return self.fleet_manager.resume(worker_id, reason=reason)
+        result = self.fleet_manager.resume(worker_id, reason=reason)
+        state = result.get("state")
+        if state == "READY":
+            command = "resume"
+        elif state == "QUARANTINED":
+            command = "quarantine"
+        else:
+            command = "drain"
+        self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command=command, reason=result.get("reason") or reason)
+        return result
 
     def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
         self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="quarantine", reason=reason)

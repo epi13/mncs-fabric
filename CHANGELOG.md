@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- close the 0.2.0a24 fleet-autonomy architecture before live canary:
+  GitHub Actions portability (UTC without tzdata, host-reachable fixture
+  paths, drain/resume READY predicate, fleet-refresh deadlines);
+- make READY a single `evaluate_ready` invariant bound to current
+  inventory, desired-state identity, certification, conformance, and any
+  unresolved update transaction;
+- walk Fabric updates through the full transaction
+  (`UPDATE_PLANNED` … `DISCONNECT_EXPECTED` … `VERSION_VERIFYING` …
+  `CERTIFYING` → `READY`) with evidence-backed reconnect observation;
+- require post-restart READY before a canary proceeds; stop the remainder
+  when `stop_on_failure` is set;
+- bind artifact transfer sessions to worker/controller/artifact/transfer
+  identity, expected sequences, digest, size, and expiry;
+- retain the previous content-addressed artifact for exact rollback and
+  quarantine when that artifact is missing or corrupt;
+- inspect wheel/sdist metadata without executing package code.
+
+## 0.2.0a24 - fleet autonomy architecture
+
 - separate health certification from desired-state conformance so a
   required missing Git (or other blocking profile requirement) can no
   longer yield CERTIFIED READY;

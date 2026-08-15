@@ -8,6 +8,7 @@ instead of assuming systemd.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable, Mapping
 
 import shutil
@@ -262,24 +263,32 @@ def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any])
             "HUMAN_REQUIRED",
         )
     from .errors import ValidationError as ArtifactValidationError
-    from .package_artifact import read_artifact_descriptor, verify_package_artifact
+    from .package_artifact import (
+        read_artifact_descriptor,
+        read_previous_artifact,
+        verify_package_artifact,
+        verify_package_metadata,
+    )
 
     descriptor = read_artifact_descriptor(source.parent)
     if descriptor is not None:
         try:
             verify_package_artifact(source, descriptor)
+            verify_package_metadata(source, descriptor)
         except ArtifactValidationError as exc:
             return action_result(action=action, disposition="FAIL", failure_class="PACKAGE_FAILURE", detail=str(exc), changed=False)
         if desired not in {descriptor["version"], descriptor["digest"], descriptor["artifact_identity"]} and desired != str(source):
             return action_result(action=action, disposition="FAIL", failure_class="VERSION_CONFLICT", detail=f"staged artifact version {descriptor['version']} does not match desired {desired}", changed=False)
+    previous = read_previous_artifact(source.parent)
     observed = inspect_supervisor(worker_id=str(inventory.get("worker_identity") or "local-worker"))
     write_upgrade_request(source=str(source), version=str(descriptor["version"] if descriptor else desired))
     rollback_meta = {
-        "capability": "partial",
-        "previous_version": current,
+        "capability": previous.get("rollback_capability") or "partial",
+        "previous_version": previous.get("previous_version") or current,
         "artifact_identity": descriptor.get("artifact_identity") if descriptor else None,
-        "previous_artifact_identity": None,
-        "previous_artifact_path": None,
+        "previous_artifact_identity": previous.get("previous_artifact_identity"),
+        "previous_artifact_path": previous.get("previous_artifact_path"),
+        "reason": previous.get("reason"),
     }
     python = observed.get("python_executable") or inventory.get("fabric", {}).get("python_executable") or sys.executable
     if observed.get("kind") == "systemd-user":
@@ -442,9 +451,22 @@ def rollback_action(result: Mapping[str, Any], inventory: Mapping[str, Any]) -> 
     previous_path = rollback.get("previous_artifact_path")
     previous = rollback.get("previous_version")
     if result.get("provider") == "package.fabric" and previous_path:
+        from .package_artifact import read_artifact_descriptor, verify_package_artifact
         from .supervisor import apply_staged_upgrade
 
-        restored = apply_staged_upgrade(python=sys.executable, source=str(previous_path), previous=None)
+        path = Path(str(previous_path))
+        if not path.is_file():
+            return {"disposition": "FAIL", "failure_class": "ROLLBACK_FAILURE", "detail": "previous artifact is missing"}
+        descriptor = read_artifact_descriptor(path.parent)
+        try:
+            if descriptor is not None:
+                verify_package_artifact(path, descriptor)
+            else:
+                if path.stat().st_size < 1:
+                    raise OSError("empty previous artifact")
+        except Exception as exc:
+            return {"disposition": "FAIL", "failure_class": "ROLLBACK_FAILURE", "detail": f"previous artifact is corrupt: {exc}"}
+        restored = apply_staged_upgrade(python=sys.executable, source=str(path), previous=None)
         if restored.get("disposition") == "PASS":
             return {"disposition": "PASS", "failure_class": None, "detail": f"restored previous artifact {previous_path}", "restart_required": True}
         return {"disposition": "FAIL", "failure_class": "ROLLBACK_FAILURE", "detail": str(restored.get("detail") or "previous artifact restore failed")}

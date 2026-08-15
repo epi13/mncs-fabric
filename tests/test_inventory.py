@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import shutil
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +19,11 @@ from mncs_fabric.worker import LocalWorker
 
 
 def sample_inventory(worker_id: str = "worker-a", *, ollama_manager: str = "process", models: list | None = None, harness: str | None = None, git=True):
+    # Health certification actually executes advertised python/git. Fixtures
+    # must use host-reachable paths so Windows CI is not failed by /usr/bin/*.
+    python = sys.executable
+    git_path = shutil.which("git") if git else None
+    git_present = bool(git and git_path)
     return build_worker_inventory(
         worker_id=worker_id,
         identity={
@@ -41,12 +48,12 @@ def sample_inventory(worker_id: str = "worker-a", *, ollama_manager: str = "proc
             "protocol_version": "mncs-fabric.protocol.v0.1",
             "harness_version": harness,
             "agent_version": "0.2.0a21",
-            "python_executable": "/usr/bin/python3",
+            "python_executable": python,
         },
         tools=[
-            {"name": "git", "present": git, "path": "/usr/bin/git" if git else None, "version": "git version 2.45.0" if git else None, "detail": None},
+            {"name": "git", "present": git_present, "path": git_path if git_present else None, "version": "git version 2.45.0" if git_present else None, "detail": None},
             {"name": "gh", "present": True, "path": "/usr/bin/gh", "version": "gh 2.50.0", "detail": None},
-            {"name": "python", "present": True, "path": "/usr/bin/python3", "version": "3.13.0", "detail": "CPython"},
+            {"name": "python", "present": True, "path": python, "version": "3.13.0", "detail": "CPython"},
         ],
         runtimes=[
             {

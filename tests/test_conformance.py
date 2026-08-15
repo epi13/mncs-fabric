@@ -19,7 +19,7 @@ class ConformanceTests(unittest.TestCase):
         self.assertEqual(health["disposition"], "CERTIFIED")
         repo = next(layer for layer in health["layers"] if layer["name"] == "repository_access")
         self.assertFalse(repo["applicable"])
-        decision = decide_ready_state(health, conformance)
+        decision = decide_ready_state(health, conformance, inventory=inventory, desired=desired)
         self.assertEqual(decision["state"], "DEGRADED")
         self.assertEqual(decision["certification_status"], "CERTIFIED")
 
@@ -53,7 +53,7 @@ class ConformanceTests(unittest.TestCase):
         self.assertFalse(gh["blocking"])
         self.assertNotIn("tool:gh", conformance["blocking_failures"])
         health = certify_inventory(rebuilt, profiles=["mncs-linux-worker"])
-        decision = decide_ready_state(health, conformance)
+        decision = decide_ready_state(health, conformance, inventory=rebuilt, desired=desired)
         self.assertEqual(decision["state"], "READY")
 
     def test_build_profile_missing_joern_and_forge_blocks_ready(self) -> None:
@@ -64,7 +64,7 @@ class ConformanceTests(unittest.TestCase):
         self.assertTrue(any(item.startswith("tool:joern") or item.startswith("tool:forge") for item in conformance["blocking_failures"]))
         health = certify_inventory(inventory, profiles=["mncs-linux-worker", "mncs-build-worker"])
         self.assertEqual(health["disposition"], "CERTIFIED")
-        decision = decide_ready_state(health, conformance)
+        decision = decide_ready_state(health, conformance, inventory=inventory, desired=desired)
         self.assertEqual(decision["state"], "DEGRADED")
 
     def test_inference_profile_without_ollama_is_health_failure(self) -> None:
@@ -95,7 +95,7 @@ class ConformanceTests(unittest.TestCase):
         self.assertEqual(health["disposition"], "FAILED")
         desired = resolve_desired_state(worker_id="worker-a", profiles=["mncs-inference-worker"], supported_current={"fabric-worker": "0.2.0a21"})
         conformance = evaluate_conformance(desired, rebuilt)
-        decision = decide_ready_state(health, conformance)
+        decision = decide_ready_state(health, conformance, inventory=rebuilt, desired=desired)
         self.assertEqual(decision["state"], "QUARANTINED")
 
     def test_optional_capability_missing_does_not_fail_health(self) -> None:

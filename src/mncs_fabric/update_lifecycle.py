@@ -26,6 +26,7 @@ UPDATE_STATES = (
     "RECONNECTING",
     "VERSION_VERIFYING",
     "CERTIFYING",
+    "ROLLBACK_APPLYING",
     "READY",
     "ROLLED_BACK",
     "FAILED",
@@ -39,13 +40,25 @@ _TRANSITIONS = {
     "RESTART_PENDING": {"DISCONNECT_EXPECTED", "FAILED"},
     "DISCONNECT_EXPECTED": {"RECONNECTING", "FAILED", "QUARANTINED"},
     "RECONNECTING": {"VERSION_VERIFYING", "FAILED", "QUARANTINED"},
-    "VERSION_VERIFYING": {"CERTIFYING", "ROLLED_BACK", "FAILED", "QUARANTINED"},
-    "CERTIFYING": {"READY", "ROLLED_BACK", "FAILED", "QUARANTINED"},
+    "VERSION_VERIFYING": {"CERTIFYING", "ROLLBACK_APPLYING", "ROLLED_BACK", "FAILED", "QUARANTINED"},
+    "CERTIFYING": {"READY", "ROLLBACK_APPLYING", "ROLLED_BACK", "FAILED", "QUARANTINED"},
+    "ROLLBACK_APPLYING": {"RESTART_PENDING", "FAILED", "QUARANTINED"},
     "READY": set(),
     "ROLLED_BACK": {"READY", "QUARANTINED"},
     "FAILED": {"QUARANTINED", "UPDATE_PLANNED"},
     "QUARANTINED": {"UPDATE_PLANNED"},
 }
+RECONNECT_OBSERVATIONS = frozenset({
+    "AWAITING_DISCONNECT",
+    "EXPECTED_DISCONNECT",
+    "AWAITING_RECONNECT",
+    "RECONNECTED",
+    "DEADLINE_EXPIRED",
+    "WRONG_IDENTITY",
+    "WRONG_VERSION",
+    "STILL_CONNECTED",
+    "MALFORMED_VERSION",
+})
 DEFAULT_RECONNECT_SECONDS = 120.0
 MAX_RECONNECT_SECONDS = 600.0
 
@@ -169,3 +182,127 @@ def version_matches_expected(observed: str | None, expected: str) -> bool:
     left = parse_fabric_version(observed)
     right = parse_fabric_version(expected)
     return left is not None and right is not None and left == right
+
+
+def deadline_expired(transaction: Mapping[str, Any], *, now: str | None = None) -> bool:
+    checked = validate_update_transaction(transaction)
+    stamp = now or utc_now()
+    return stamp > checked["deadline"]
+
+
+def observe_reconnect(
+    transaction: Mapping[str, Any],
+    *,
+    connected: bool,
+    seen_disconnect: bool,
+    observed_worker_id: str | None = None,
+    observed_version: str | None = None,
+    observed_artifact_identity: str | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
+    """Classify reconnect evidence without sleeping or mutating ledgers."""
+
+    checked = validate_update_transaction(transaction)
+    expired = deadline_expired(checked, now=now)
+    state = checked["state"]
+    observation = "AWAITING_DISCONNECT"
+    next_state = state
+    reason = "no reconnect observation yet"
+    if state == "DISCONNECT_EXPECTED":
+        if expired and connected and not seen_disconnect:
+            observation = "STILL_CONNECTED"
+            next_state = "FAILED"
+            reason = "worker remained connected after an authorized restart deadline"
+        elif expired and not connected:
+            observation = "DEADLINE_EXPIRED"
+            next_state = "FAILED"
+            reason = "worker did not reconnect before the authorized restart deadline"
+        elif not connected:
+            observation = "EXPECTED_DISCONNECT"
+            next_state = "RECONNECTING"
+            reason = "authorized disconnect observed"
+        elif seen_disconnect and connected:
+            observation = "RECONNECTED"
+            next_state = "RECONNECTING"
+            reason = "worker reconnected after the authorized disconnect"
+        else:
+            observation = "AWAITING_DISCONNECT"
+            next_state = "DISCONNECT_EXPECTED"
+            reason = "authorized restart is pending; worker has not yet disconnected"
+    elif state == "RECONNECTING":
+        if expired and not connected:
+            observation = "DEADLINE_EXPIRED"
+            next_state = "FAILED"
+            reason = "worker did not reconnect before the authorized restart deadline"
+        elif not connected:
+            observation = "AWAITING_RECONNECT"
+            next_state = "RECONNECTING"
+            reason = "authorized disconnect observed; waiting for reconnect"
+        elif observed_worker_id and observed_worker_id != checked["worker_identity"]:
+            observation = "WRONG_IDENTITY"
+            next_state = "QUARANTINED"
+            reason = "reconnected worker identity does not match the enrolled worker"
+        else:
+            observation = "RECONNECTED"
+            next_state = "VERSION_VERIFYING"
+            reason = "worker reconnected; version verification is required"
+    elif state == "VERSION_VERIFYING":
+        if observed_worker_id and observed_worker_id != checked["worker_identity"]:
+            observation = "WRONG_IDENTITY"
+            next_state = "QUARANTINED"
+            reason = "reconnected worker identity does not match the enrolled worker"
+        elif observed_version is not None and parse_fabric_version(observed_version) is None:
+            observation = "MALFORMED_VERSION"
+            next_state = "FAILED"
+            reason = "reconnected worker version is malformed"
+        elif not version_matches_expected(observed_version, checked["expected_version"]):
+            observation = "WRONG_VERSION"
+            next_state = "ROLLBACK_APPLYING"
+            reason = (
+                f"reconnected version {observed_version!r} does not match expected "
+                f"{checked['expected_version']!r}"
+            )
+        elif (
+            checked.get("artifact_identity")
+            and observed_artifact_identity
+            and observed_artifact_identity != checked["artifact_identity"]
+        ):
+            observation = "WRONG_VERSION"
+            next_state = "ROLLBACK_APPLYING"
+            reason = "reconnected artifact identity does not match the update transaction"
+        else:
+            observation = "RECONNECTED"
+            next_state = "CERTIFYING"
+            reason = "observed version matches the update transaction"
+    else:
+        reason = f"reconnect observation is not applicable in {state}"
+    return {
+        "observation": observation,
+        "next_state": next_state,
+        "reason": reason,
+        "expired": expired,
+        "connected": bool(connected),
+        "seen_disconnect": bool(seen_disconnect),
+        "observed_version": observed_version,
+        "observed_worker_id": observed_worker_id,
+        "observed_artifact_identity": observed_artifact_identity,
+        "expected_version": checked["expected_version"],
+        "expected_worker_id": checked["worker_identity"],
+        "same_identity": observed_worker_id in {None, checked["worker_identity"]},
+        "version_matched": version_matches_expected(observed_version, checked["expected_version"]),
+    }
+
+
+def planned_update_sequence() -> tuple[str, ...]:
+    return (
+        "UPDATE_PLANNED",
+        "DRAINING",
+        "UPDATE_APPLYING",
+        "UPDATE_APPLIED",
+        "RESTART_PENDING",
+        "DISCONNECT_EXPECTED",
+        "RECONNECTING",
+        "VERSION_VERIFYING",
+        "CERTIFYING",
+        "READY",
+    )
