@@ -239,6 +239,56 @@ def previous_dir(directory: Path) -> Path:
     return Path(directory) / "previous"
 
 
+def gc_package_artifacts(
+    directory: Path,
+    *,
+    retain_identities: set[str] | None = None,
+) -> dict[str, Any]:
+    """Delete unreferenced staged artifacts. Never remove current or previous."""
+
+    directory = Path(directory)
+    retained = set(retain_identities or ())
+    keep_paths: set[Path] = set()
+    current = read_artifact_descriptor(directory)
+    if current is not None:
+        retained.add(current["artifact_identity"])
+        keep_paths.add(staged_artifact_path(directory, current).resolve())
+    previous = read_artifact_descriptor(previous_dir(directory))
+    if previous is not None:
+        retained.add(previous["artifact_identity"])
+        keep_paths.add(staged_artifact_path(previous_dir(directory), previous).resolve())
+    removed: list[str] = []
+    kept: list[str] = []
+    candidates: list[Path] = []
+    if directory.is_dir():
+        candidates.extend(path for path in directory.iterdir() if path.is_file())
+    if previous_dir(directory).is_dir():
+        keep_paths.add(previous_dir(directory).joinpath("artifact.json").resolve())
+    for path in candidates:
+        resolved = path.resolve()
+        if path.name == "artifact.json":
+            kept.append(str(path))
+            continue
+        if path.name.endswith(".part"):
+            path.unlink(missing_ok=True)
+            removed.append(str(path))
+            continue
+        if resolved in keep_paths:
+            kept.append(str(path))
+            continue
+        if path.name.endswith((".whl", ".tar.gz", ".tgz")):
+            path.unlink(missing_ok=True)
+            removed.append(str(path))
+        else:
+            kept.append(str(path))
+    return {
+        "removed": removed,
+        "kept": kept,
+        "retained_identities": sorted(retained),
+        "claim_boundary": "stage-directory GC; ledger identities are not deleted",
+    }
+
+
 def retain_previous_artifact(directory: Path) -> dict[str, Any]:
     """Keep the last known-good staged artifact for exact rollback."""
 

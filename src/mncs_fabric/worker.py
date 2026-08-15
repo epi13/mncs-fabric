@@ -163,9 +163,10 @@ class LocalWorker:
         if message["message_type"] == "worker.certify.request":
             if message["worker_id"] != self.worker_id:
                 raise ProtocolError("certification is bound to a different worker")
-            certification = certify_inventory(self.inventory(), profiles=list(message["payload"]["profiles"]))
-            self.ledger.append("protocol.certification", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "certification": certification})
-            return self._response(message, "worker.certify.result", {"certification": certification})
+            inventory = self.inventory()
+            certification = certify_inventory(inventory, profiles=list(message["payload"]["profiles"]))
+            self.ledger.append("protocol.certification", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "certification": certification, "inventory_identity": inventory.get("inventory_identity")})
+            return self._response(message, "worker.certify.result", {"certification": certification, "inventory": inventory})
         if message["message_type"] == "worker.package-artifact.request":
             if message["worker_id"] != self.worker_id:
                 raise ProtocolError("package artifact transfer is bound to a different worker")

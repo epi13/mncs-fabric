@@ -293,10 +293,13 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
             raise ProtocolError("worker certify profiles are invalid")
     elif message_type == "worker.certify.result":
         from .certify import validate_certification
+        from .inventory import validate_worker_inventory
         required = {"certification"}
-        if set(value) != required:
+        if not required <= set(value) or set(value) - {"certification", "inventory"}:
             raise ProtocolError("worker certify result fields are invalid")
         validate_certification(value.get("certification"))
+        if "inventory" in value:
+            validate_worker_inventory(value.get("inventory"))
     elif message_type == "worker.package-artifact.request":
         from .package_artifact import MAX_ARTIFACT_BYTES, MAX_CHUNK_BYTES, validate_package_artifact
         required = {"artifact_request_identity", "mode"}

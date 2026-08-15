@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- expose `transfer_package_artifact` on the persistent FabricClient
+  backend so `worker.artifact.stage` can reach enrolled mTLS workers;
+- bind certification and conformance to the inventory the worker actually
+  certified, so READY cannot fail closed on two live inventory snapshots;
+- recover unresolved update transactions after controller restart without
+  re-applying packages;
+- garbage-collect unreferenced staged package artifacts while retaining
+  current and previous known-good identities;
+- distinguish rollout `deployment_succeeded` from scheduler READY.
+
 - close the 0.2.0a24 fleet-autonomy architecture before live canary:
   GitHub Actions portability (UTC without tzdata, host-reachable fixture
   paths, drain/resume READY predicate, fleet-refresh deadlines);

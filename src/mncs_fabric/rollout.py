@@ -97,6 +97,24 @@ def validate_rollout(value: object) -> dict[str, Any]:
     return dict(value)
 
 
+def deployment_succeeded(outcome: Mapping[str, Any]) -> bool:
+    """Package deploy/restart/certify completed; scheduler READY is separate."""
+
+    receipt = outcome.get("receipt") or {}
+    certification = outcome.get("certification") or {}
+    transaction = outcome.get("update_transaction") or {}
+    if outcome.get("restart_required"):
+        return False
+    if receipt.get("disposition") == "FAIL":
+        return False
+    if certification and certification.get("disposition") not in {None, "CERTIFIED"}:
+        return False
+    txn_state = transaction.get("state")
+    if txn_state and txn_state not in {"READY", "ROLLED_BACK"}:
+        return False
+    return True
+
+
 def canary_succeeded(outcome: Mapping[str, Any]) -> bool:
     """A canary is successful only after post-restart READY, not after apply."""
 
@@ -149,6 +167,8 @@ def _record_outcome(worker_id: str, outcome: Mapping[str, Any], *, role: str) ->
         "role": role,
         "failed": bool(failed),
         "succeeded": bool(succeeded),
+        "deployment_succeeded": deployment_succeeded(outcome),
+        "scheduler_ready": (outcome.get("management") or {}).get("state") == "READY",
         "canary_status": "CANARY_SUCCEEDED" if succeeded else "CANARY_FAILED" if failed else "CANARY_PENDING",
         "management_state": (outcome.get("management") or {}).get("state"),
         "transaction_state": (outcome.get("update_transaction") or {}).get("state"),

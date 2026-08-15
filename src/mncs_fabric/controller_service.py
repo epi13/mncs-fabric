@@ -1313,7 +1313,11 @@ class ControllerService:
             elif operation == "worker.quarantine":
                 payload = self._fleet_worker_op("quarantine_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator quarantine")))
             elif operation == "worker.artifact.stage":
-                payload = self._fleet_backend().transfer_package_artifact(
+                backend = self._fleet_backend()
+                transfer = getattr(backend, "transfer_package_artifact", None)
+                if transfer is None:
+                    raise ProtocolError("persistent fleet backend cannot transfer package artifacts")
+                payload = transfer(
                     str(args.get("worker_id", "")),
                     Path(str(args.get("source", ""))),
                     version=str(args.get("version", "")),

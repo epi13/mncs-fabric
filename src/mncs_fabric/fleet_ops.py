@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterable, Mapping
 
 from . import __version__
 from .certify import certify_inventory, format_certification, validate_certification
-from .conformance import evaluate_conformance, evaluate_ready, validate_conformance
+from .conformance import UNRESOLVED_UPDATE_STATES, evaluate_conformance, evaluate_ready, validate_conformance
 from .desired_state import default_profiles_for_platform, resolve_desired_state, validate_desired_state
 from .update_lifecycle import (
     build_update_transaction,
@@ -628,3 +628,38 @@ class FleetManager:
         certified["update_transaction"] = transaction
         certified["observation"] = verified.get("observation")
         return certified
+
+    def recover_unresolved_updates(self) -> dict[str, Any]:
+        """Resume ledger-backed update observation after controller restart.
+
+        Does not re-apply packages. Unresolved reconnect/verify/certify
+        transactions are marked for observation resume; apply-phase
+        transactions require an operator decision.
+        """
+
+        recovered: list[dict[str, Any]] = []
+        for worker_id in self.store.worker_ids():
+            transaction = self.store.latest("management.update-transaction", worker_id)
+            if transaction is None or transaction.get("state") not in UNRESOLVED_UPDATE_STATES:
+                continue
+            state = transaction["state"]
+            if state in {"DISCONNECT_EXPECTED", "RECONNECTING", "VERSION_VERIFYING", "CERTIFYING"}:
+                action = "resume_observation"
+            elif state in {"UPDATE_PLANNED", "DRAINING", "UPDATE_APPLYING", "UPDATE_APPLIED", "RESTART_PENDING", "ROLLBACK_APPLYING"}:
+                action = "require_operator"
+            else:
+                action = "require_operator"
+            recovered.append(
+                {
+                    "worker_id": worker_id,
+                    "state": state,
+                    "action": action,
+                    "transaction_identity": transaction.get("transaction_identity"),
+                    "expected_version": transaction.get("expected_version"),
+                    "deadline": transaction.get("deadline"),
+                }
+            )
+        return {
+            "unresolved": recovered,
+            "claim_boundary": "ledger recovery of update transactions; not a second apply and not proof the worker restarted",
+        }

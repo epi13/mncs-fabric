@@ -170,16 +170,18 @@ class LocalController:
 
         def certify(current: dict[str, Any]) -> dict[str, Any]:
             desired = self.fleet_manager.desired_for(worker_id, current, profiles=profiles)
-            return self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
+            certified = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
+            return certified["certification"]
 
         return self.fleet_manager.reconcile(worker_id, inventory, apply_actions, apply=apply, profiles=profiles, classes=classes, force=force, certify=certify)
 
     def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
         transport = self._worker_transport(worker_id)
-        inventory = self.inventory_via(transport, worker_id=worker_id)
-        desired = self.fleet_manager.desired_for(worker_id, inventory, profiles=profiles)
-        certification = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
-        return self.fleet_manager.certify(worker_id, inventory, profiles=profiles, certification=certification)
+        inspected = self.inventory_via(transport, worker_id=worker_id)
+        desired = self.fleet_manager.desired_for(worker_id, inspected, profiles=profiles)
+        certified = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
+        inventory = certified["inventory"] or inspected
+        return self.fleet_manager.certify(worker_id, inventory, profiles=profiles, certification=certified["certification"])
 
     def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
         self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="drain", reason=reason)
@@ -245,7 +247,13 @@ class LocalController:
         response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout) if hasattr(self, "_transport_request") else transport.request(envelope))
         if response.get("message_type") != "worker.certify.result":
             raise ProtocolError("worker certify response is invalid")
-        return validate_certification(response["payload"].get("certification"), expected_worker_id=worker_id)
+        certification = validate_certification(response["payload"].get("certification"), expected_worker_id=worker_id)
+        inventory = None
+        if response["payload"].get("inventory") is not None:
+            from .inventory import validate_worker_inventory
+
+            inventory = validate_worker_inventory(response["payload"]["inventory"], expected_worker_id=worker_id)
+        return {"certification": certification, "inventory": inventory}
 
     def management_via(self, transport: EnvelopeTransport, *, worker_id: str, command: str, reason: str, timeout: float | None = 30.0) -> dict[str, Any]:
         created = utc_now()
@@ -687,6 +695,8 @@ class NetworkController(LocalController):
     def restore_last_known(self) -> dict[str, Any]:
         """Rebuild in-memory last-known observations from the controller ledger."""
 
+        update_recovery = self.fleet_manager.recover_unresolved_updates()
+
         latest_state: dict[str, dict[str, Any]] = {}
         for entry in self.ledger.all_records(record_type="worker.state"):
             record = entry["record"]
@@ -744,7 +754,11 @@ class NetworkController(LocalController):
                 if liveness is not None:
                     self.remote_liveness[worker_id] = liveness
                 restored += 1
-        return {"restored_workers": restored, "known_workers": sorted(self.remote_workers)}
+        return {
+            "restored_workers": restored,
+            "known_workers": sorted(self.remote_workers),
+            "update_recovery": update_recovery,
+        }
 
     def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)

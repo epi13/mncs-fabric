@@ -1232,6 +1232,11 @@ class FabricClient:
             raise ProtocolError("administrative operation requires FabricAdminClient")
         return self._management_controller(worker_id).quarantine_worker(worker_id, reason=reason)
 
+    def transfer_package_artifact(self, worker_id: str, path, *, version: str, source: str = "operator-staged") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).transfer_package_artifact(worker_id, path, version=version, source=source)
+
     def inspect_fleet(self, *, profile: str | None = None, platform: str | None = None, worker_id: str | None = None) -> dict[str, Any]:
         if self._service_transport is not None:
             arguments = {key: value for key, value in {"profile": profile, "platform": platform, "worker_id": worker_id}.items() if value is not None}

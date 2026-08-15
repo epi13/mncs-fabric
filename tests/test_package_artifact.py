@@ -52,6 +52,22 @@ class PackageArtifactTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 validate_package_artifact(tampered)
 
+    def test_fabric_client_backend_exposes_artifact_transfer(self) -> None:
+        from mncs_fabric.api import FabricClient
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            source = root / "mncs-fabric-0.2.0a27.tar.gz"
+            source.write_bytes(b"client-transfer" * 80)
+            worker = LocalWorker("xfer-worker", bundle, root / "worker.jsonl", stage_dir=root / "stage")
+            client = FabricClient("xfer-controller", root / "controller.jsonl")
+            client.local.register(worker)
+            result = client.transfer_package_artifact("xfer-worker", source, version="0.2.0a27")
+            self.assertEqual(result["result"]["disposition"], "PASS")
+            self.assertTrue((root / "stage").exists())
+
     def test_controller_transfers_artifact_over_protocol(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -224,3 +240,24 @@ class PackageArtifactTests(unittest.TestCase):
             previous = retain_previous_artifact(stage)
             self.assertIn(previous["rollback_capability"], {"exact", "partial"})
             self.assertTrue((stage / "previous").exists() or previous["previous_artifact_identity"] is None)
+
+    def test_gc_keeps_current_and_previous_and_removes_unreferenced(self) -> None:
+        from mncs_fabric.package_artifact import gc_package_artifacts
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            keep = root / "keep.tar.gz"
+            keep.write_bytes(b"keep-bytes")
+            junk = root / "junk.tar.gz"
+            junk.write_bytes(b"junk-bytes")
+            described = describe_package_artifact(keep, version="0.2.0a26")
+            write_verified_artifact(root, described, keep.read_bytes())
+            leftover = root / "orphan.tar.gz"
+            leftover.write_bytes(b"orphan")
+            (root / "stale.part").write_bytes(b"partial")
+            result = gc_package_artifacts(root)
+            self.assertFalse(leftover.exists())
+            self.assertFalse((root / "stale.part").exists())
+            self.assertTrue((root / "artifact.json").is_file())
+            self.assertTrue(any(path.name.endswith(".tar.gz") and path.is_file() for path in root.iterdir()))
+            self.assertIn(described["artifact_identity"], result["retained_identities"])
