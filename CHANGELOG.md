@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+## 0.2.0a28 - self-recovering fleet updates
+
+- separate fleet-refresh concurrency unit tests from LocalWorker host
+  inventory time so a slow Windows WMI/tool probe cannot turn PARTIAL
+  into UNKNOWN;
+- wait for TLS listener readiness and keep connect timeout distinct from
+  the job execution deadline, so job-timeout tests do not race
+  `socket.create_connection()`;
+- make the certified-inventory invariant universal: reconcile,
+  post-maintenance verify, certify, update completion, and restart
+  recovery evaluate READY only against the inventory the worker actually
+  certified;
+- resume DISCONNECT_EXPECTED / RECONNECTING / VERSION_VERIFYING /
+  CERTIFYING transactions after controller restart without re-applying
+  packages; mutation-phase states fail closed with explicit uncertainty;
+- resolve `retain_identities` through a content-addressed object index so
+  GC keeps referenced non-current artifacts, not merely a returned list;
+- derive live artifact references from current/previous deployments,
+  unresolved transactions, and persisted rollouts;
+- persist sequential canary rollout progress so a controller restart
+  does not re-mutate a successful canary;
+- discover Windows tools from process PATH plus durable user/machine
+  PATH and environment-relative well-known layouts, without host-specific
+  hard-coded executable paths.
+
+## 0.2.0a27 - live Fabric-native transfer
+
 - expose `transfer_package_artifact` on the persistent FabricClient
   backend so `worker.artifact.stage` can reach enrolled mTLS workers;
 - bind certification and conformance to the inventory the worker actually
