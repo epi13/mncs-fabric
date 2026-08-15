@@ -17,11 +17,18 @@ description/liveness references without exposing controller internals.
 
 Availability is bounded: `AVAILABLE` means recent authenticated contact,
 `UNAVAILABLE` records a failed contact, and `UNKNOWN` means no current contact
-or an expired lease. The default description lease is five minutes. Resource-
+or an expired lease. A refresh `TIMEOUT` is not unavailability: the last-known
+state is retained and the probe is classified separately. Capability inventory
+`STALE` means the worker is reachable (or was) but the model/capability
+observation is older than its lease; it is not a contact failure.
+`worker_service_version` and `description_captured_at` are projected from the
+worker description so an operator can verify the process that answered describe.
+The default description lease is five minutes. Resource-
 Sensitive scheduling refreshes registered remote workers before admission. A
 description older than the five-minute description bound is retained as
 history but cannot restore `AVAILABLE`; it produces `UNKNOWN` until a fresh
-description arrives.
+description arrives. After a controller restart, last-known descriptions are
+restored from the network ledger before the first explicit refresh.
 Snapshots are observations, not RAM/VRAM reservations.
 
 There is no unauthenticated discovery, broadcast, filesystem inspection,

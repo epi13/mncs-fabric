@@ -342,6 +342,7 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_list.add_argument("--json", action="store_true")
     fleet_refresh = fleet_sub.add_parser("refresh", help="probe registered workers and update last-known state")
     fleet_refresh.add_argument("--json", action="store_true")
+    fleet_refresh.add_argument("--worker", dest="worker_id", help="refresh one registered worker")
     fleet_status = fleet_sub.add_parser("status", help="show one member and current presence")
     fleet_status.add_argument("worker_id")
     fleet_status.add_argument("--json", action="store_true")
@@ -628,15 +629,16 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
             if args.socket:
-                client = FabricClient.connect(args.socket)
+                from .service_transport import SERVICE_REQUEST_TTL_SECONDS
+
+                timeout = SERVICE_REQUEST_TTL_SECONDS if args.fleet_command == "refresh" else 5.0
+                client = FabricClient.connect(args.socket, timeout=timeout)
                 if args.fleet_command == "list":
                     result = {"outcome": "PASS", "workers": client.fleet()}
                 elif args.fleet_command == "refresh":
-                    result = {
-                        "outcome": "PASS",
-                        "observation_mode": "probed",
-                        "workers": client.refresh_workers(),
-                    }
+                    result = client.refresh_fleet(
+                        worker_ids=[args.worker_id] if getattr(args, "worker_id", None) else None
+                    )
                 elif args.fleet_command == "status":
                     result = client.fleet_status(args.worker_id)
                 elif args.fleet_command == "doctor":

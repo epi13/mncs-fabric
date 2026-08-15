@@ -63,6 +63,16 @@ route from retained observations whose status is `STALE`, `UNKNOWN`, or `UNAVAIL
 Older consumers remain compatible because the public contract and worker records are
 extended additively. Consumers that require this API should pin `mncs-fabric>=0.2.0a11`.
 
+Classified fleet refresh (added in `0.2.0a20`): `FabricClient.refresh_fleet()`
+returns a payload whose `outcome` may be `PASS`, `PARTIAL`, or `UNKNOWN`. The
+persistent service frame stays `PASS` when the controller answered inside the
+30s control-plane TTL. Per-worker `refresh` is `PASS`, `TIMEOUT`,
+`UNAVAILABLE`, or `UNKNOWN`. `TIMEOUT` retains last-known availability and is
+not a contact failure. Capability inventory `STALE` remains a distinct
+freshness observation. `refresh_workers()` still returns the worker list for
+compatibility. Older controllers without `classified_fleet_refresh` may still
+time out the service request; Control should treat that as `restart_required`.
+
 Timeout migration (added in `0.2.0a12`): `RemoteWorkerConfig.timeout` remains the
 backward-compatible short bound. Consumers may set `connect_timeout`,
 `control_timeout`, and `execution_timeout_overhead` separately. A dispatch response

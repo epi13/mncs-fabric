@@ -354,27 +354,71 @@ class FabricClient:
                 for worker_id, error in sorted(self.registry_errors.items())
             )
             raise ProtocolError(f"worker registry could not be loaded: {detail}")
+        restored = self.network.restore_last_known()
         return {
             "outcome": "PASS" if not self.registry_errors else "UNKNOWN",
             "registry_path": str(Path(path).expanduser()),
             "known_workers": sorted(self.registry_entries),
             "registered_workers": sorted(registered),
+            "restored_workers": restored.get("restored_workers"),
             "errors": dict(sorted(self.registry_errors.items())),
         }
 
     def refresh_worker(self, worker_id: str) -> dict[str, Any]:
         """Refresh one remote worker through authenticated Fabric protocol."""
 
+        if self._service_transport is not None:
+            workers = list(self.refresh_fleet(worker_ids=[worker_id]).get("workers", []))
+            if not workers:
+                raise ProtocolError(f"worker is not registered: {worker_id}")
+            return workers[0]
         self._require_embedded("worker refresh")
         if worker_id not in self.remote_configs:
             raise ProtocolError(f"worker is not registered: {worker_id}")
         return self.network.refresh_remote(worker_id)
 
     def refresh_workers(self) -> list[dict[str, Any]]:
+        return list(self.refresh_fleet().get("workers", []))
+
+    def refresh_fleet(
+        self,
+        *,
+        worker_ids: list[str] | None = None,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> dict[str, Any]:
+        """Probe workers with classified, bounded refresh semantics.
+
+        The service frame remains ``SERVICE_REQUEST_TTL_SECONDS``. Worker
+        probes use a separate per-worker deadline. A slow worker is reported
+        as TIMEOUT with last-known state retained instead of failing the
+        persistent service request.
+        """
+
         if self._service_transport is not None:
-            return list(self._service_payload("fleet.refresh").get("workers", []))
+            arguments: dict[str, Any] = {}
+            if worker_ids:
+                if len(worker_ids) == 1:
+                    arguments["worker_id"] = worker_ids[0]
+                else:
+                    arguments["worker_ids"] = list(worker_ids)
+            if operation_deadline is not None:
+                arguments["operation_deadline_seconds"] = float(operation_deadline)
+            if per_worker_deadline is not None:
+                arguments["per_worker_deadline_seconds"] = float(per_worker_deadline)
+            return dict(
+                self._service_transport.request(
+                    "fleet.refresh",
+                    arguments,
+                    timeout=SERVICE_REQUEST_TTL_SECONDS,
+                )
+            )
         self._require_embedded("worker refresh")
-        return self.network.refresh_all()
+        return self.network.refresh_fleet(
+            worker_ids=worker_ids,
+            operation_deadline=operation_deadline,
+            per_worker_deadline=per_worker_deadline,
+        )
 
     def runtime_profile(self, worker_id: str) -> dict[str, Any]:
         """Return the worker's authenticated/observed runtime profile."""
