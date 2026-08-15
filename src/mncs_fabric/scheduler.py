@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from .errors import ValidationError
+from .management import management_allows_work
 from .models import validate_job_plan
 from .resources import evaluate_placement
 
@@ -20,6 +21,7 @@ class WorkerSlot:
     resource_snapshot: dict[str, object] | None = None
     runtime_observation: dict[str, object] | None = None
     runtime_capability_observation: dict[str, object] | None = None
+    management_state: str | None = None
 
 
 @dataclass(frozen=True)
@@ -39,7 +41,14 @@ def schedule(plan: object, workers: Iterable[WorkerSlot], *, replicas: int = 1, 
         raise ValidationError("replicas must be between 1 and 64")
     required = frozenset(checked["required_capabilities"])
     worker_list = list(workers)
-    eligible = [worker for worker in worker_list if worker.available and worker.active < worker.concurrency_limit and required <= worker.capabilities]
+    eligible = [
+        worker
+        for worker in worker_list
+        if worker.available
+        and worker.active < worker.concurrency_limit
+        and required <= worker.capabilities
+        and management_allows_work(worker.management_state)
+    ]
     eligible.sort(key=lambda worker: worker.worker_id)
     admissions: list[dict[str, object]] = []
     if placement is not None:

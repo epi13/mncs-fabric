@@ -39,6 +39,11 @@ from .worker_state import (
     worker_description_is_fresh,
     validate_worker_description,
 )
+from .certify import validate_certification
+from .fleet_ops import FleetManager
+from .inventory import validate_worker_inventory
+from .management import ManagementStore
+from .providers import validate_action
 
 
 class LocalController:
@@ -48,6 +53,8 @@ class LocalController:
         self.controller_id = controller_id
         self.ledger = FabricLedger(Path(state_path))
         self.workers: dict[str, LocalWorker] = {}
+        management_path = Path(state_path).with_name(Path(state_path).stem + ".management.jsonl")
+        self.fleet_manager = FleetManager(ManagementStore(management_path), controller_id=controller_id)
 
     def register(self, worker: LocalWorker) -> dict[str, Any]:
         if worker.worker_id in self.workers:
@@ -64,8 +71,139 @@ class LocalController:
             worker = self.workers[worker_id]
             snapshot = worker.resource_snapshot()
             description = worker.description()
-            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": True, "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"]})
+            management = self.fleet_manager.status(worker_id)
+            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": worker.accepts_work(), "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"], "management_state": management["management"]["state"], "schedulable": management["schedulable"], "profiles": management["profiles"]})
         return result
+
+    def _local_transport(self, worker_id: str) -> EnvelopeTransport:
+        if worker_id not in self.workers:
+            raise ProtocolError(f"worker is not registered: {worker_id}")
+        return InProcessTransport(self.workers[worker_id])
+
+    def _worker_transport(self, worker_id: str) -> EnvelopeTransport:
+        return self._local_transport(worker_id)
+
+    def inventory_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None, timeout: float | None = None) -> dict[str, Any]:
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+        request = request_id or "inventory-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "scope": "current-worker-inventory"})[7:]
+        scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.inventory.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request, "scope": "current-worker-inventory"})
+        envelope = make_envelope("worker.inventory.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request, job_id="worker-inventory", nonce="inventory-" + sha256_identity({"request": request, "worker": worker_id})[7:55], payload={"inventory_request_identity": scope_identity}, created_at=created, expires_at=expires)
+        self.ledger.append("worker.inventory.request", envelope)
+        response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout) if hasattr(self, "_transport_request") else transport.request(envelope))
+        if response.get("message_type") != "worker.inventory.result" or response.get("worker_id") != worker_id:
+            raise ProtocolError("worker inventory response identity is invalid")
+        inventory = validate_worker_inventory(response["payload"].get("inventory"), expected_worker_id=worker_id)
+        self.ledger.append("worker.inventory", inventory)
+        return inventory
+
+    def inspect_worker(self, worker_id: str) -> dict[str, Any]:
+        inventory = self.inventory_via(self._worker_transport(worker_id), worker_id=worker_id)
+        self.fleet_manager.desired_for(worker_id, inventory)
+        return {"inventory": inventory, "management": self.fleet_manager.status(worker_id)}
+
+    def plan_worker(self, worker_id: str, *, profiles: list[str] | None = None, classes: list[str] | None = None) -> dict[str, Any]:
+        inventory = self.inventory_via(self._worker_transport(worker_id), worker_id=worker_id)
+        return self.fleet_manager.plan(worker_id, inventory, profiles=profiles, classes=classes, active_jobs=0)
+
+    def reconcile_worker(self, worker_id: str, *, apply: bool = False, profiles: list[str] | None = None, classes: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+        transport = self._worker_transport(worker_id)
+        inventory = self.inventory_via(transport, worker_id=worker_id)
+
+        def apply_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+            return self.maintenance_via(transport, worker_id=worker_id, actions=actions, mode="apply")
+
+        def certify(current: dict[str, Any]) -> dict[str, Any]:
+            desired = self.fleet_manager.desired_for(worker_id, current, profiles=profiles)
+            return self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
+
+        return self.fleet_manager.reconcile(worker_id, inventory, apply_actions, apply=apply, profiles=profiles, classes=classes, force=force, certify=certify)
+
+    def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        transport = self._worker_transport(worker_id)
+        inventory = self.inventory_via(transport, worker_id=worker_id)
+        desired = self.fleet_manager.desired_for(worker_id, inventory, profiles=profiles)
+        certification = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
+        return self.fleet_manager.certify(worker_id, inventory, profiles=profiles, certification=certification)
+
+    def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
+        self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="drain", reason=reason)
+        return self.fleet_manager.drain(worker_id, reason=reason)
+
+    def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
+        self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="resume", reason=reason)
+        return self.fleet_manager.resume(worker_id, reason=reason)
+
+    def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
+        self.management_via(self._worker_transport(worker_id), worker_id=worker_id, command="quarantine", reason=reason)
+        return self.fleet_manager.quarantine(worker_id, reason=reason)
+
+    def maintenance_via(self, transport: EnvelopeTransport, *, worker_id: str, actions: list[dict[str, Any]], mode: str = "apply", force: bool = False, timeout: float | None = None) -> list[dict[str, Any]]:
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        checked = [validate_action(item) for item in actions]
+        request = "maintenance-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "actions": checked})[7:]
+        scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.maintenance.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request})
+        envelope = make_envelope(
+            "worker.maintenance.request",
+            controller_id=self.controller_id,
+            worker_id=worker_id,
+            request_id=request,
+            job_id="worker-maintenance",
+            nonce="maintain-" + sha256_identity({"request": request, "worker": worker_id})[7:55],
+            payload={"maintenance_request_identity": scope_identity, "mode": mode, "actions": checked, "force": force},
+            created_at=created,
+            expires_at=expires,
+        )
+        response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout) if hasattr(self, "_transport_request") else transport.request(envelope))
+        if response.get("message_type") != "worker.maintenance.result":
+            raise ProtocolError("worker maintenance response is invalid")
+        results = response["payload"]["results"]
+        if not isinstance(results, list):
+            raise ProtocolError("worker maintenance results are invalid")
+        return [dict(item) for item in results if isinstance(item, dict)]
+
+    def certify_via(self, transport: EnvelopeTransport, *, worker_id: str, profiles: list[str], timeout: float | None = None) -> dict[str, Any]:
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+        request = "certify-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "profiles": profiles})[7:]
+        scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.certify.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request})
+        envelope = make_envelope(
+            "worker.certify.request",
+            controller_id=self.controller_id,
+            worker_id=worker_id,
+            request_id=request,
+            job_id="worker-certify",
+            nonce="certify-" + sha256_identity({"request": request, "worker": worker_id})[7:55],
+            payload={"certify_request_identity": scope_identity, "profiles": profiles},
+            created_at=created,
+            expires_at=expires,
+        )
+        response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout) if hasattr(self, "_transport_request") else transport.request(envelope))
+        if response.get("message_type") != "worker.certify.result":
+            raise ProtocolError("worker certify response is invalid")
+        return validate_certification(response["payload"].get("certification"), expected_worker_id=worker_id)
+
+    def management_via(self, transport: EnvelopeTransport, *, worker_id: str, command: str, reason: str, timeout: float | None = None) -> dict[str, Any]:
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=2)).isoformat().replace("+00:00", "Z")
+        request = "manage-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "command": command, "reason": reason})[7:]
+        scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.management.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request})
+        envelope = make_envelope(
+            "worker.management.request",
+            controller_id=self.controller_id,
+            worker_id=worker_id,
+            request_id=request,
+            job_id="worker-management",
+            nonce="manage-" + sha256_identity({"request": request, "worker": worker_id})[7:55],
+            payload={"management_request_identity": scope_identity, "command": command, "reason": reason},
+            created_at=created,
+            expires_at=expires,
+        )
+        response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout) if hasattr(self, "_transport_request") else transport.request(envelope))
+        if response.get("message_type") != "worker.management.result":
+            raise ProtocolError("worker management response is invalid")
+        return response["payload"]["state"]
 
     def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
@@ -73,7 +211,7 @@ class LocalController:
             raise ProtocolError("controller dispatch requires a matching manifest")
         if placement_request is not None:
             validate_placement_request(placement_request)
-        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
+        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation, management_state=worker.management_state()["state"]) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
         if decision.disposition != "PASS":
             return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": [dict(item) for item in decision.admissions]}]
         outputs = []
@@ -196,6 +334,30 @@ class NetworkController(LocalController):
             validate_resource_snapshot(resource_snapshot)
         self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=worker_id, capabilities=capabilities, concurrency_limit=concurrency_limit, resource_snapshot=resource_snapshot))
         self.remote_liveness[worker_id] = build_liveness_observation(worker_id=worker_id, state="UNKNOWN", observed_at=utc_now(), description_identity=None, lease_seconds=DESCRIPTION_LEASE_SECONDS)
+
+    def _worker_transport(self, worker_id: str) -> EnvelopeTransport:
+        if worker_id in self.remote_workers:
+            return self.remote_workers[worker_id][0]
+        return super()._worker_transport(worker_id)
+
+    def inspect(self) -> list[dict[str, Any]]:
+        result = super().inspect()
+        for worker_id in sorted(self.remote_workers):
+            state = self.worker_state(worker_id, apply_lease=False)
+            management = self.fleet_manager.status(worker_id)
+            result.append({
+                "worker_id": worker_id,
+                "capabilities": state.get("capabilities", []),
+                "available": state.get("available"),
+                "availability": state.get("availability"),
+                "observation_source": state.get("observation_source"),
+                "last_observed_at": state.get("last_observed_at"),
+                "description_identity": state.get("description_identity"),
+                "management_state": management["management"]["state"],
+                "schedulable": management["schedulable"],
+                "profiles": management["profiles"],
+            })
+        return result
 
     def set_runtime_observation(self, worker_id: str, observation: dict[str, Any]) -> None:
         if worker_id not in self.remote_workers:

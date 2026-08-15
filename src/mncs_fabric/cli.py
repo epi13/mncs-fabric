@@ -348,7 +348,18 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_status.add_argument("--json", action="store_true")
     fleet_doctor = fleet_sub.add_parser("doctor", help="verify lifecycle durability and status")
     fleet_doctor.add_argument("--json", action="store_true")
-    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor):
+    fleet_inspect = fleet_sub.add_parser("inspect", help="collect normalized inventory from registered workers")
+    fleet_plan = fleet_sub.add_parser("plan", help="diff desired state for registered workers")
+    fleet_reconcile = fleet_sub.add_parser("reconcile", help="apply typed desired-state reconciliation")
+    fleet_reconcile.add_argument("--apply", action="store_true")
+    fleet_certify = fleet_sub.add_parser("certify", help="run capability-aware certification")
+    for fleet_filter in (fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify):
+        fleet_filter.add_argument("--json", action="store_true")
+        fleet_filter.add_argument("--profile")
+        fleet_filter.add_argument("--os", dest="platform")
+        fleet_filter.add_argument("--worker", dest="worker_id")
+        fleet_filter.add_argument("--class", dest="update_class", action="append", default=[])
+    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor, fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify):
         fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
         fleet_command.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
         fleet_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
@@ -368,6 +379,24 @@ def build_parser() -> argparse.ArgumentParser:
     worker_doctor.add_argument("--json", action="store_true")
     worker_doctor.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
     worker_revoke.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
+    worker_inspect = worker_sub.add_parser("inspect", help="collect normalized worker inventory")
+    worker_plan = worker_sub.add_parser("plan", help="diff this worker against desired state")
+    worker_reconcile = worker_sub.add_parser("reconcile", help="apply typed reconciliation")
+    worker_reconcile.add_argument("--apply", action="store_true")
+    worker_certify = worker_sub.add_parser("certify", help="run capability-aware certification")
+    worker_drain = worker_sub.add_parser("drain", help="stop new work before maintenance")
+    worker_resume = worker_sub.add_parser("resume", help="return a certified worker to READY")
+    worker_quarantine = worker_sub.add_parser("quarantine", help="keep a worker out of production")
+    worker_quarantine.add_argument("--reason", required=True)
+    for managed in (worker_inspect, worker_plan, worker_reconcile, worker_certify, worker_drain, worker_resume, worker_quarantine):
+        managed.add_argument("worker_id", nargs="?", help="registered worker identity; omit with --local")
+        managed.add_argument("--local", action="store_true", help="inspect the current process as a worker")
+        managed.add_argument("--json", action="store_true")
+        managed.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
+        managed.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
+        managed.add_argument("--profile", action="append", default=[])
+        managed.add_argument("--class", dest="update_class", action="append", default=[])
+        managed.add_argument("--label", help="local worker identity when using --local")
 
     controller = sub.add_parser("controller", help="inspect or run the persistent Fabric controller foundation")
     controller.add_argument(
@@ -621,6 +650,61 @@ def main(argv: list[str] | None = None) -> int:
                 result = cache.gc(dry_run=args.dry_run or not args.confirm, confirm=args.confirm)
             write_json(None, result)
             return 0
+        if args.command == "worker" and args.worker_command in {"inspect", "plan", "reconcile", "certify", "drain", "resume", "quarantine"}:
+            if getattr(args, "local", False) or not args.worker_id:
+                label = args.label or args.worker_id or "local-worker"
+                if args.worker_command == "inspect":
+                    result = _SERVICE.inventory(label)
+                elif args.worker_command == "plan":
+                    result = _SERVICE.plan_local(label, profiles=args.profile or None)
+                    if not args.json:
+                        print(_SERVICE.format_plan(result))
+                        return 0
+                elif args.worker_command == "certify":
+                    result = _SERVICE.certify_local(label, profiles=args.profile or None)
+                    if not args.json:
+                        print(_SERVICE.format_certification(result))
+                        return 0 if result["disposition"] == "CERTIFIED" else 1
+                else:
+                    raise SystemExit(f"{args.worker_command} against a live worker requires --socket/--admin-socket and a worker id")
+                write_json(None, result)
+                return 0
+            if args.admin_socket:
+                admin = FabricAdminClient.connect(args.admin_socket)
+                if args.worker_command == "inspect":
+                    result = admin.inspect_worker(args.worker_id)
+                elif args.worker_command == "plan":
+                    result = admin.plan_worker(args.worker_id, profiles=args.profile or None, classes=args.update_class or None)
+                elif args.worker_command == "reconcile":
+                    result = admin.reconcile_worker(args.worker_id, apply=args.apply, profiles=args.profile or None, classes=args.update_class or None)
+                elif args.worker_command == "certify":
+                    result = admin.certify_worker(args.worker_id, profiles=args.profile or None)
+                elif args.worker_command == "drain":
+                    result = admin.drain_worker(args.worker_id)
+                elif args.worker_command == "resume":
+                    result = admin.resume_worker(args.worker_id)
+                else:
+                    result = admin.quarantine_worker(args.worker_id, reason=args.reason)
+                admin.close()
+            elif args.socket:
+                if args.worker_command in {"reconcile", "certify", "drain", "resume", "quarantine"}:
+                    raise SystemExit(f"{args.worker_command} requires --admin-socket")
+                client = FabricClient.connect(args.socket)
+                if args.worker_command == "inspect":
+                    result = client.inspect_worker(args.worker_id)
+                else:
+                    result = client.plan_worker(args.worker_id, profiles=args.profile or None, classes=args.update_class or None)
+                client.close()
+            else:
+                raise SystemExit("worker management requires --local, --socket, or --admin-socket")
+            if not args.json and args.worker_command == "plan" and "actions" in result:
+                print(_SERVICE.format_plan(result))
+                return 0
+            if not args.json and args.worker_command == "certify" and "disposition" in result:
+                print(_SERVICE.format_certification(result))
+                return 0 if result["disposition"] == "CERTIFIED" else 1
+            write_json(None, result)
+            return 0
         if args.command == "fleet":
             if args.fleet_command == "doctor" and args.admin_socket:
                 admin = FabricAdminClient.connect(args.admin_socket)
@@ -628,6 +712,24 @@ def main(argv: list[str] | None = None) -> int:
                 admin.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
+            if args.admin_socket and args.fleet_command in {"inspect", "plan", "reconcile", "certify"}:
+                admin = FabricAdminClient.connect(args.admin_socket)
+                filters = {
+                    "profile": getattr(args, "profile", None),
+                    "platform": getattr(args, "platform", None),
+                    "worker_id": getattr(args, "worker_id", None),
+                }
+                if args.fleet_command == "inspect":
+                    result = admin.inspect_fleet(**filters)
+                elif args.fleet_command == "plan":
+                    result = admin.plan_fleet(**filters)
+                elif args.fleet_command == "reconcile":
+                    result = admin.reconcile_fleet(apply=getattr(args, "apply", False), **filters)
+                else:
+                    result = admin.certify_fleet(**filters)
+                admin.close()
+                write_json(None, result)
+                return 0
             if args.socket:
                 from .service_transport import SERVICE_REQUEST_TTL_SECONDS
 
@@ -643,6 +745,16 @@ def main(argv: list[str] | None = None) -> int:
                     result = client.fleet_status(args.worker_id)
                 elif args.fleet_command == "doctor":
                     result = client.fleet_doctor()
+                elif args.fleet_command == "inspect":
+                    result = client.inspect_fleet(
+                        profile=getattr(args, "profile", None),
+                        platform=getattr(args, "platform", None),
+                        worker_id=getattr(args, "worker_id", None),
+                    )
+                elif args.fleet_command == "plan":
+                    result = client.plan_worker(args.worker_id) if getattr(args, "worker_id", None) else client.inspect_fleet()
+                elif args.fleet_command in {"reconcile", "certify"}:
+                    raise SystemExit(f"fleet {args.fleet_command} requires --admin-socket")
                 else:
                     raise AssertionError("unreachable service fleet command")
                 client.close()

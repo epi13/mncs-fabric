@@ -363,7 +363,8 @@ treats inventory as authorization. See
 Use
 `collect_work_items()` for generic partitioned collection; Fabric does not
 interpret MNEL or RAVEL partition semantics. See
-[docs/WORKER_STATE.md](docs/WORKER_STATE.md) and
+[docs/WORKER_STATE.md](docs/WORKER_STATE.md),
+[docs/FLEET_MANAGEMENT.md](docs/FLEET_MANAGEMENT.md), and
 [docs/COLLECTIONS.md](docs/COLLECTIONS.md).
 
 Resource-aware consumers can pass a `PlacementRequest` to `execute()` or

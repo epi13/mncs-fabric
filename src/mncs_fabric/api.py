@@ -1034,7 +1034,7 @@ class FabricClient:
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id))) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id), management_state=worker.management_state()["state"])) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
         remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items() if worker_id not in self.blocked_worker_ids]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
@@ -1186,6 +1186,65 @@ class FabricClient:
             raise ProtocolError("administrative operation requires FabricAdminClient")
         return self.lifecycle.revoke_worker(worker_id, reason=reason, now=now)
 
+    def _management_controller(self, worker_id: str):
+        self._require_embedded("fleet management")
+        if worker_id in self.local.workers:
+            return self.local
+        return self.network
+
+    def inspect_worker(self, worker_id: str) -> dict[str, Any]:
+        if self._service_transport is not None:
+            return self._service_payload("worker.inspect", {"worker_id": worker_id})
+        return self._management_controller(worker_id).inspect_worker(worker_id)
+
+    def plan_worker(self, worker_id: str, *, profiles: list[str] | None = None, classes: list[str] | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            arguments: dict[str, Any] = {"worker_id": worker_id}
+            if profiles:
+                arguments["profiles"] = profiles
+            if classes:
+                arguments["classes"] = classes
+            return self._service_payload("worker.plan", arguments)
+        return self._management_controller(worker_id).plan_worker(worker_id, profiles=profiles, classes=classes)
+
+    def reconcile_worker(self, worker_id: str, *, apply: bool = False, profiles: list[str] | None = None, classes: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).reconcile_worker(worker_id, apply=apply, profiles=profiles, classes=classes, force=force)
+
+    def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).certify_worker(worker_id, profiles=profiles)
+
+    def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).drain_worker(worker_id, reason=reason)
+
+    def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).resume_worker(worker_id, reason=reason)
+
+    def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).quarantine_worker(worker_id, reason=reason)
+
+    def inspect_fleet(self, *, profile: str | None = None, platform: str | None = None, worker_id: str | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            arguments = {key: value for key, value in {"profile": profile, "platform": platform, "worker_id": worker_id}.items() if value is not None}
+            return self._service_payload("fleet.inspect", arguments)
+        from .fleet_ops import select_workers
+
+        workers = []
+        for item in self.local.inspect() + (self.network.inspect() if hasattr(self, "network") else []):
+            workers.append(item)
+        # Prefer network inspect for remotes; local inspect already listed in-process workers.
+        selected = select_workers(workers, profile=profile, platform=platform, worker_id=worker_id)
+        return {"workers": selected, "count": len(selected)}
+
     def controller_status(self) -> dict[str, Any]:
         if self._service_transport is None:
             raise ProtocolError("controller status requires a persistent service client")
@@ -1261,6 +1320,54 @@ class FabricAdminClient:
 
     def revoke_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
         return self._request("worker.revoke", {"worker_id": worker_id, "reason": reason})
+
+    def inspect_worker(self, worker_id: str) -> dict[str, Any]:
+        return self._request("worker.inspect", {"worker_id": worker_id})
+
+    def plan_worker(self, worker_id: str, *, profiles: list[str] | None = None, classes: list[str] | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id}
+        if profiles:
+            arguments["profiles"] = profiles
+        if classes:
+            arguments["classes"] = classes
+        return self._request("worker.plan", arguments)
+
+    def reconcile_worker(self, worker_id: str, *, apply: bool = False, profiles: list[str] | None = None, classes: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id, "apply": apply, "force": force}
+        if profiles:
+            arguments["profiles"] = profiles
+        if classes:
+            arguments["classes"] = classes
+        return self._request("worker.reconcile", arguments)
+
+    def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id}
+        if profiles:
+            arguments["profiles"] = profiles
+        return self._request("worker.certify", arguments)
+
+    def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
+        return self._request("worker.drain", {"worker_id": worker_id, "reason": reason})
+
+    def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
+        return self._request("worker.resume", {"worker_id": worker_id, "reason": reason})
+
+    def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
+        return self._request("worker.quarantine", {"worker_id": worker_id, "reason": reason})
+
+    def inspect_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.inspect", {key: value for key, value in filters.items() if value is not None})
+
+    def plan_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.plan", {key: value for key, value in filters.items() if value is not None})
+
+    def reconcile_fleet(self, *, apply: bool = False, **filters: Any) -> dict[str, Any]:
+        arguments = {key: value for key, value in filters.items() if value is not None}
+        arguments["apply"] = apply
+        return self._request("fleet.reconcile", arguments)
+
+    def certify_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.certify", {key: value for key, value in filters.items() if value is not None})
 
     def close(self) -> None:
         self._transport = None  # type: ignore[assignment]

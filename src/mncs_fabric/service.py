@@ -13,6 +13,11 @@ from .models import COHORT_SCHEMA, EXECUTION_SCHEMA, validate_job_plan
 from .node import capability_names, collect_node_capabilities
 from .reconcile import reconcile_records
 from .lifecycle import LifecycleStore
+from .certify import certify_inventory, format_certification
+from .desired_state import resolve_desired_state, default_profiles_for_platform
+from .inventory import collect_worker_inventory
+from .maintenance import build_maintenance_plan, format_plan
+from . import __version__
 
 
 class FabricService:
@@ -54,6 +59,29 @@ class FabricService:
     def bind_receipt_to_execution_bundle(self, receipt: object, archive: Path) -> dict[str, Any]:
         bundle = verify_bundle_archive(archive)
         return bind_receipt_to_bundle(receipt, bundle).as_dict()
+
+    def inventory(self, label: str) -> dict[str, Any]:
+        return collect_worker_inventory(label)
+
+    def desired_state(self, label: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        inventory = self.inventory(label)
+        chosen = profiles or list(default_profiles_for_platform(inventory["identity"]["platform"]))
+        return resolve_desired_state(worker_id=label, profiles=chosen, supported_current={"fabric-worker": __version__})
+
+    def plan_local(self, label: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        inventory = self.inventory(label)
+        desired = self.desired_state(label, profiles=profiles)
+        return build_maintenance_plan(worker_id=label, desired=desired, inventory=inventory, controller_id="local-process")
+
+    def certify_local(self, label: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        inventory = self.inventory(label)
+        return certify_inventory(inventory, profiles=list(profiles or []))
+
+    def format_plan(self, plan: dict[str, Any]) -> str:
+        return format_plan(plan)
+
+    def format_certification(self, result: dict[str, Any]) -> str:
+        return format_certification(result)
 
     def lifecycle(self, state_path: Path) -> LifecycleStore:
         """Open controller-owned lifecycle state without exposing ledger internals."""
