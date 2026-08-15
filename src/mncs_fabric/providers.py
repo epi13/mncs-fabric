@@ -128,6 +128,13 @@ def _skipped(action: Mapping[str, Any], reason: str, failure_class: str) -> dict
 
 
 def apply_inspect_tool(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
+    from .conformance import ADVISORY_PACKAGES
+
+    if action["target"] in ADVISORY_PACKAGES:
+        version = (inventory.get("fabric") or {}).get("harness_version")
+        if version:
+            return action_result(action=action, disposition="PASS", detail=str(version), changed=False)
+        return _skipped(action, "advisory local-harness is not present; not blocking apply", "PRIVILEGE_REQUIRED")
     tool = inventory_tool(inventory, action["target"])
     if tool and tool.get("present"):
         return action_result(action=action, disposition="PASS", detail=tool.get("version") or tool.get("path") or "present", changed=False)

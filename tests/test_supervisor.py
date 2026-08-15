@@ -53,6 +53,35 @@ class SupervisorTests(unittest.TestCase):
             self.assertIn("0.2.0a21", text)
             self.assertIn("/tmp/src", text)
 
+    def test_digest_named_wheel_is_copied_to_pep427_name(self) -> None:
+        from mncs_fabric.package_artifact import describe_package_artifact
+        from mncs_fabric.supervisor import installable_upgrade_source
+
+        with tempfile.TemporaryDirectory() as directory:
+            original = Path(directory) / "mncs_fabric-0.2.0a30-py3-none-any.whl"
+            original.write_bytes(b"wheel-bytes")
+            described = describe_package_artifact(original, version="0.2.0a30")
+            digest_name = described["digest"].split(":", 1)[1] + ".whl"
+            staged = Path(directory) / digest_name
+            original.rename(staged)
+            (Path(directory) / "artifact.json").write_text(
+                __import__("json").dumps(described, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            installable = installable_upgrade_source(str(staged))
+            self.assertEqual(installable.name, "mncs_fabric-0.2.0a30-py3-none-any.whl")
+            self.assertTrue(installable.is_file())
+            self.assertEqual(installable.read_bytes(), b"wheel-bytes")
+            self.assertTrue(staged.is_file())
+
+    def test_digest_named_sdist_is_already_installable(self) -> None:
+        from mncs_fabric.supervisor import installable_upgrade_source
+
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / ("a" * 64 + ".tar.gz")
+            staged.write_bytes(b"sdist-bytes")
+            self.assertEqual(installable_upgrade_source(str(staged)), staged)
+
     def test_resolve_upgrade_source_prefers_existing_path(self) -> None:
         from mncs_fabric.supervisor import resolve_upgrade_source
 

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0a30 - installable staged artifacts
+
+- copy a digest-named staged wheel to its descriptor/PEP 427 filename
+  before `pip install`, so Fabric-native apply no longer fails with
+  `Invalid wheel filename`;
+- treat missing `local-harness` as advisory: do not FAIL the maintenance
+  receipt or roll back a Fabric package apply;
+- keep advisory verifies on the controller so pre-0.2.0a30 workers do
+  not see a blocking `tool not present` during class A apply.
+
 ## 0.2.0a29 - runtime build identity
 
 - report a process-local `runtime_identity` from controller status:

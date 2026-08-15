@@ -160,6 +160,69 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual(result["disposition"], "PASS")
         self.assertTrue(result["restart_required"])
 
+    def test_missing_local_harness_is_advisory_not_blocking(self) -> None:
+        inventory = sample_inventory(harness=None)
+        desired = self._desired(version="0.2.0a21")
+        plan = build_maintenance_plan(worker_id="worker-a", desired=desired, inventory=inventory)
+        targets = {item["target"] for item in plan["actions"]}
+        self.assertIn("local-harness", targets)
+        from mncs_fabric.maintenance import partition_apply_actions
+
+        worker_actions, advisory = partition_apply_actions(plan["actions"])
+        self.assertTrue(any(item["target"] == "local-harness" for item in advisory))
+        self.assertFalse(any(item["target"] == "local-harness" for item in worker_actions))
+        action = next(item for item in plan["actions"] if item["target"] == "local-harness")
+        result = apply_action(action, inventory)
+        self.assertEqual(result["disposition"], "SKIPPED")
+        self.assertEqual(result["failure_class"], "PRIVILEGE_REQUIRED")
+        receipt = complete_receipt(plan, inventory, [result], mode="apply")
+        self.assertNotEqual(receipt["disposition"], "FAIL")
+
+    def test_advisory_verify_does_not_fail_fabric_apply_receipt(self) -> None:
+        inventory = sample_inventory(harness=None)
+        fabric = validate_action({
+            "action": "update",
+            "target": "fabric-worker",
+            "update_class": "A",
+            "provider": "package.fabric",
+            "disruptive": True,
+            "rollback": "partial",
+            "authorization": "operator",
+            "current": "0.2.0a28",
+            "desired": "0.2.0a30",
+            "reason": "pin",
+        })
+        harness = validate_action({
+            "action": "verify",
+            "target": "local-harness",
+            "update_class": "A",
+            "provider": "tool.inspect",
+            "disruptive": False,
+            "rollback": "unsupported",
+            "authorization": "privilege",
+            "current": "absent",
+            "desired": "present",
+            "reason": "harness package not importable",
+        })
+        fabric_result = {
+            **{key: fabric[key] for key in ("action", "target", "provider")},
+            "disposition": "PASS",
+            "failure_class": None,
+            "detail": "activated staged",
+            "changed": True,
+            "restart_required": True,
+        }
+        harness_result = apply_action(harness, inventory)
+        receipt = complete_receipt(
+            {"actions": [fabric, harness], "plan_identity": "sha256:" + ("ab" * 32),
+             "worker_identity": "worker-a", "controller_identity": "controller",
+             "desired_state_identity": "sha256:" + ("cd" * 32)},
+            inventory,
+            [fabric_result, harness_result],
+            mode="apply",
+        )
+        self.assertEqual(receipt["disposition"], "PASS")
+
     def test_commons_knowledge_only_for_unusual_discoveries(self) -> None:
         systemd = sample_inventory(ollama_manager="systemd-system")
         process = sample_inventory(ollama_manager="process")

@@ -36,6 +36,7 @@ from .maintenance import (
     complete_receipt,
     format_plan,
     operational_knowledge,
+    partition_apply_actions,
 )
 from .management import ManagementStore, management_allows_work, validate_management_state
 
@@ -295,12 +296,16 @@ class FleetManager:
                 "summary": format_plan(plan),
             }
         actions_to_apply = list(plan["actions"]) + extra_actions
-        if apply and any(item.get("provider") == "package.fabric" for item in actions_to_apply):
-            transaction = self._plan_update_transaction(worker_id, inventory, actions_to_apply)
+        from .providers import apply_action
+
+        worker_actions, advisory_actions = partition_apply_actions(actions_to_apply)
+        if apply and any(item.get("provider") == "package.fabric" for item in worker_actions):
+            transaction = self._plan_update_transaction(worker_id, inventory, worker_actions)
             if apply and plan["require_drain"]:
                 transaction = self._advance_update(transaction, "DRAINING", "worker drained before Fabric update")
             transaction = self._advance_update(transaction, "UPDATE_APPLYING", "applying staged Fabric artifact")
-        applied = apply_actions(actions_to_apply) if actions_to_apply else []
+        applied = apply_actions(worker_actions) if worker_actions else []
+        applied.extend(apply_action(action, inventory) for action in advisory_actions)
         receipt = complete_receipt(plan, inventory, applied, mode="apply")
         if receipt["disposition"] == "FAIL" and not any(item.get("restart_required") for item in applied):
             if transaction is not None:
