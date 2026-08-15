@@ -9,6 +9,7 @@ contexts are opaque provenance and never evaluator or promotion authority.
 from __future__ import annotations
 
 import base64
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -54,7 +55,7 @@ from .runtime import (
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .targets import ExecutionTargetReference, validate_execution_target_reference
-from .service_transport import ServiceClientTransport
+from .service_transport import SERVICE_REQUEST_TTL_SECONDS, ServiceClientTransport
 from .worker import LocalWorker
 from .models import validate_job_plan
 from .scheduler import WorkerSlot, schedule
@@ -622,6 +623,70 @@ class FabricClient:
             worker["capability_observation"] = inventory["observation"]
         return workers
 
+    def _execute_persistent_service(
+        self, arguments: dict[str, Any], plan: Mapping[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Wait for worker execution without holding a 30s service frame open.
+
+        Control-plane requests keep the existing ``SERVICE_REQUEST_TTL_SECONDS``
+        bound. The job plan timeout is the execution deadline. Synchronous
+        ``execution.dispatch`` cannot represent that split, so waitable work
+        uses submit + status/result polling. Short jobs may still dispatch
+        in one frame when their plan timeout fits the transport TTL.
+        """
+
+        timeout_seconds = float(plan.get("timeout_seconds") or 0)
+        if timeout_seconds <= SERVICE_REQUEST_TTL_SECONDS:
+            payload = self._service_payload("execution.dispatch", arguments)
+            return [dict(item) for item in payload.get("results", [])]
+        try:
+            return self._wait_for_detached_execution(arguments, timeout_seconds)
+        except ProtocolError as exc:
+            detail = str(exc).lower()
+            if "detached" not in detail and "not implemented" not in detail:
+                raise
+            payload = self._service_payload("execution.dispatch", arguments)
+            return [dict(item) for item in payload.get("results", [])]
+
+    def _wait_for_detached_execution(
+        self, arguments: Mapping[str, Any], timeout_seconds: float
+    ) -> list[dict[str, Any]]:
+        submit_arguments = dict(arguments)
+        request_id = arguments.get("request_id")
+        if isinstance(request_id, str) and request_id:
+            submit_arguments["idempotency_key"] = request_id
+        accepted = self._service_payload("execution.submit", submit_arguments)
+        work_id = accepted.get("work_id")
+        if not isinstance(work_id, str) or not work_id:
+            raise ProtocolError("detached execution did not return a work identity")
+        last_state = accepted.get("state")
+        # Plan timeout is the worker execution bound. Status/result fetches
+        # remain independent 30s control-plane requests.
+        deadline = time.monotonic() + max(timeout_seconds, 0.01)
+        poll_interval = 0.25
+        while True:
+            status = self._service_payload("execution.status", {"work_id": work_id})
+            last_state = status.get("state")
+            if last_state == "COMPLETED":
+                payload = self._service_payload("execution.result", {"work_id": work_id})
+                result = payload.get("result") or {}
+                results = result.get("results") if isinstance(result, dict) else None
+                if not isinstance(results, list):
+                    raise ProtocolError("detached execution result is missing results")
+                return [dict(item) for item in results]
+            if last_state == "FAILED":
+                payload = self._service_payload("execution.result", {"work_id": work_id})
+                reason = payload.get("reason") or "detached execution failed"
+                raise ProtocolError(str(reason))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransportTimeoutError(
+                    "persistent Fabric execution deadline exceeded "
+                    f"(work_id={work_id} last_state={last_state})"
+                )
+            time.sleep(min(poll_interval, max(0.01, remaining / 2.0)))
+            poll_interval = min(2.0, poll_interval * 1.5)
+
     def execute(
         self,
         plan: object,
@@ -648,23 +713,20 @@ class FabricClient:
                 if execution_bundle_archive is not None
                 else None
             )
-            payload = self._service_payload(
-                "execution.dispatch",
-                {
-                    "plan": dict(plan),
-                    "manifest": dict(manifest),
-                    "worker_id": worker_id,
-                    "replicas": replicas,
-                    "request_id": request_id,
-                    "challenge": challenge,
-                    "consumer_context": context_value,
-                    "placement": placement_value,
-                    "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
-                    "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
-                    "execution_bundle_reference": bundle_reference,
-                },
-            )
-            return [dict(item) for item in payload.get("results", [])]
+            arguments = {
+                "plan": dict(plan),
+                "manifest": dict(manifest),
+                "worker_id": worker_id,
+                "replicas": replicas,
+                "request_id": request_id,
+                "challenge": challenge,
+                "consumer_context": context_value,
+                "placement": placement_value,
+                "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
+                "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
+                "execution_bundle_reference": bundle_reference,
+            }
+            return self._execute_persistent_service(arguments, dict(plan))
         self._require_embedded("execution")
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
