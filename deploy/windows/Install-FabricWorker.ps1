@@ -23,10 +23,17 @@ New-Item -ItemType Directory -Force -Path (Join-Path $Root "state\upgrade") | Ou
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "logs") | Out-Null
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -File `"$launcher`""
-$trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$watch = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $watch) -Settings $settings -Principal $principal -Force | Out-Null
+
+$watchPython = $Python
+$watchLauncher = Join-Path $Root "launcher\windows_worker_launcher.py"
+$watchState = Join-Path $Root "state\launcher.json"
+$watchAction = New-ScheduledTaskAction -Execute $watchPython -Argument "-u `"$watchLauncher`" start --state `"$watchState`" --worker-id $WorkerId --stdout `"$Root\logs\worker.stdout.log`" --stderr `"$Root\logs\worker.stderr.log`" --cwd `"$Root`""
+Register-ScheduledTask -TaskName "MNCS-Fabric-Worker-Watch" -Action $watchAction -Trigger $watch -Settings $settings -Principal $principal -Force | Out-Null
 
 $result = [ordered]@{
     worker_id = $WorkerId

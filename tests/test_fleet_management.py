@@ -132,3 +132,20 @@ class FleetManagementTests(unittest.TestCase):
             controller.quarantine_worker("fleet-worker", reason="failed cert")
             self.assertEqual(worker.management_state()["state"], "QUARANTINED")
             self.assertFalse(controller.fleet_manager.status("fleet-worker")["schedulable"])
+
+    def test_service_capability_projection_advertises_management_ops(self) -> None:
+        from mncs_fabric.contracts import service_capability_projection
+
+        advertised = service_capability_projection(worker_backend=True)["operations"]
+        for operation in (
+            "worker.inspect",
+            "worker.plan",
+            "worker.reconcile",
+            "worker.certify",
+            "worker.drain",
+            "worker.resume",
+            "fleet.inspect",
+            "fleet.reconcile",
+            "fleet.certify",
+        ):
+            self.assertTrue(advertised[operation], operation)

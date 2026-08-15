@@ -46,3 +46,19 @@ class SupervisorTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             self.assertIn("0.2.0a21", text)
             self.assertIn("/tmp/src", text)
+
+    def test_resolve_upgrade_source_prefers_existing_path(self) -> None:
+        from mncs_fabric.supervisor import resolve_upgrade_source
+
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / "mncs-fabric-0.2.0a23.tar.gz"
+            staged.write_text("sdist", encoding="utf-8")
+            self.assertEqual(resolve_upgrade_source("0.2.0a23", stage_dir=Path(directory)), staged)
+            self.assertIsNone(resolve_upgrade_source("missing", stage_dir=Path(directory)))
+
+    def test_windows_scheduled_task_restart_uses_launcher_not_schtasks(self) -> None:
+        from mncs_fabric.supervisor import restart_supervisor
+
+        result = restart_supervisor({"kind": "windows-scheduled-task", "unit": "MNCS-Fabric-Worker", "worker_identity": "win-test"})
+        self.assertIn(result["disposition"], {"PASS", "FAIL", "SKIPPED"})
+        self.assertNotIn("schtasks /Run", str(result))

@@ -12,6 +12,7 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Mapping
@@ -204,6 +205,7 @@ def _windows_python() -> str | None:
     candidates = [
         Path.home() / "mncs-fabric-gpu" / ".venv" / "Scripts" / "python.exe",
         Path.home() / "mncs-fabric-worker" / ".venv" / "Scripts" / "python.exe",
+        Path.home() / "mncs-fabric-worker" / "venv" / "Scripts" / "python.exe",
     ]
     for path in candidates:
         if path.is_file():
@@ -250,13 +252,113 @@ def restart_supervisor(observation: Mapping[str, Any]) -> dict[str, Any]:
     if kind == "systemd-user" and unit:
         probed = run_argv(["systemctl", "--user", "restart", str(unit)], timeout=30.0)
         return {"disposition": "PASS" if probed["returncode"] == 0 else "FAIL", "detail": first_line(probed["stderr"] or probed["stdout"]) or f"restart {unit}", "stdout": probed["stdout"], "stderr": probed["stderr"]}
-    if kind == "windows-scheduled-task" and unit:
-        run_argv(["schtasks", "/End", "/TN", str(unit)], timeout=20.0)
-        probed = run_argv(["schtasks", "/Run", "/TN", str(unit)], timeout=20.0)
-        return {"disposition": "PASS" if probed["returncode"] == 0 else "FAIL", "detail": first_line(probed["stderr"] or probed["stdout"]) or f"run {unit}", "stdout": probed["stdout"], "stderr": probed["stderr"]}
+    if kind == "windows-scheduled-task":
+        return _restart_windows_detached(observation)
     if kind == "windows-service" and unit:
         return {"disposition": "SKIPPED", "detail": "Windows service restart requires privilege", "failure_class": "PRIVILEGE_REQUIRED"}
     return {"disposition": "SKIPPED", "detail": "no supervisor is available to restart the worker", "failure_class": "UNSUPPORTED_ACTION"}
+
+
+def _windows_root() -> Path:
+    return Path.home() / "mncs-fabric-worker"
+
+
+def _windows_launcher_script() -> Path | None:
+    candidates = [
+        _windows_root() / "launcher" / "windows_worker_launcher.py",
+        Path(__file__).resolve().parents[2] / "scripts" / "windows_worker_launcher.py",
+    ]
+    for path in candidates:
+        if path.is_file():
+            return path
+    return None
+
+
+def _restart_windows_detached(observation: Mapping[str, Any]) -> dict[str, Any]:
+    """Restart through the detached launcher.
+
+    ``schtasks /Run`` from a non-interactive SSH session fails for Interactive
+    tasks (Last Result 1).  The launcher uses CREATE_BREAKAWAY_FROM_JOB so the
+    worker outlives the management session.
+    """
+
+    if os.name != "nt":
+        return {"disposition": "SKIPPED", "detail": "Windows supervisor restart is only implemented on Windows", "failure_class": "UNSUPPORTED_PLATFORM"}
+    python = observation.get("python_executable") or _windows_python()
+    launcher = _windows_launcher_script()
+    if not python or launcher is None:
+        return {"disposition": "SKIPPED", "detail": "Windows detached launcher or Python runtime is missing", "failure_class": "UNSUPPORTED_ACTION"}
+    root = _windows_root()
+    state = root / "state" / "launcher.json"
+    flags = 0
+    if os.name == "nt":
+        flags = (
+            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+            | getattr(subprocess, "CREATE_BREAKAWAY_FROM_JOB", 0)
+        )
+    helper = [python, str(launcher), "restart", "--state", str(state), "--delay", "3", "--cwd", str(root)]
+    if os.name == "nt":
+        # cmd start /B is more reliable than Popen flags alone under OpenSSH jobs.
+        helper = ["cmd.exe", "/c", "start", "", "/B"] + helper
+    try:
+        subprocess.Popen(helper, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags, start_new_session=(os.name == "posix"))
+    except OSError as exc:
+        return {"disposition": "FAIL", "detail": f"could not schedule detached Windows restart: {exc}", "failure_class": "SERVICE_FAILURE"}
+    return {"disposition": "PASS", "detail": "scheduled detached Windows launcher restart"}
+
+
+def _read_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _default_windows_worker_command(python: str, root: Path, worker_id: str) -> list[str]:
+    controller_id = os.environ.get("MNCS_FABRIC_CONTROLLER_ID") or "mncs-fabric-controller"
+    return [
+        python, "-m", "mncs_fabric", "worker", "serve",
+        "--worker-id", worker_id,
+        "--controller-id", controller_id,
+        "--bundle-root", str(root / "bundle-root"),
+        "--state", str(root / "state" / "worker-ledger.jsonl"),
+        "--trust-state", str(root / "trust" / "worker-trust.jsonl"),
+        "--ca", str(root / "certs" / "ca.pem"),
+        "--certificate", str(root / "certs" / "worker.pem"),
+        "--key", str(root / "certs" / "worker.key"),
+        "--host", "0.0.0.0",
+        "--port", "7443",
+        "--timeout", "30",
+        "--max-requests", "100000",
+        "--max-concurrent-connections", "1",
+        "--graceful-shutdown-timeout", "5",
+        "--bundle-cache", str(root / "bundle-cache"),
+    ]
+
+
+def resolve_upgrade_source(desired: str, *, stage_dir: Path | None = None) -> Path | None:
+    """Resolve a staged sdist/wheel/checkout for a desired Fabric version or path."""
+
+    if desired and Path(desired).exists():
+        return Path(desired)
+    directory = Path(stage_dir or default_stage_dir())
+    candidates = [
+        directory / f"mncs-fabric-{desired}.tar.gz",
+        directory / f"mncs_fabric-{desired}.tar.gz",
+        directory / "mncs-fabric.tar.gz",
+        directory / "source",
+    ]
+    request = read_upgrade_request(directory)
+    if request and request.get("source"):
+        candidates.insert(0, Path(str(request["source"])))
+    for path in candidates:
+        if path.exists():
+            return path
+    return None
 
 
 def apply_staged_from_disk() -> dict[str, Any]:
@@ -265,7 +367,10 @@ def apply_staged_from_disk() -> dict[str, Any]:
     request = read_upgrade_request()
     if request is None:
         return {"disposition": "NO_CHANGES", "detail": "no staged upgrade request"}
-    return apply_staged_upgrade(python=sys.executable, source=str(request.get("source")), previous=request.get("previous_version"))
+    source = resolve_upgrade_source(str(request.get("source") or ""), stage_dir=default_stage_dir())
+    if source is None:
+        return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": "staged upgrade source is missing"}
+    return apply_staged_upgrade(python=sys.executable, source=str(source), previous=request.get("previous_version"))
 
 
 def apply_staged_upgrade(*, python: str, source: str, previous: str | None) -> dict[str, Any]:

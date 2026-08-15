@@ -1,9 +1,12 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-if (-not (Test-Path -LiteralPath (Join-Path $root "src\mncs_fabric"))) {
-    $root = "C:\Users\epicu\mncs-fabric-worker"
+if (-not (Test-Path -LiteralPath (Join-Path $root "certs\worker.key"))) {
+    $root = Join-Path $env:USERPROFILE "mncs-fabric-worker"
 }
-$python = "C:\Users\epicu\mncs-fabric-gpu\.venv\Scripts\python.exe"
+$python = Join-Path $env:USERPROFILE "mncs-fabric-gpu\.venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $python)) {
+    $python = Join-Path $root ".venv\Scripts\python.exe"
+}
 $logDir = Join-Path $root "logs"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 $transcript = Join-Path $logDir "supervisor.log"
@@ -12,7 +15,6 @@ function Write-Supervisor([string]$Message) {
 }
 
 if (-not (Test-Path -LiteralPath $python)) { throw "Fabric Python runtime not found: $python" }
-$env:PYTHONPATH = Join-Path $root "src"
 $gitCmd = "C:\Program Files\Git\cmd"
 if (Test-Path -LiteralPath $gitCmd) { $env:Path = "$gitCmd;$env:Path" }
 
