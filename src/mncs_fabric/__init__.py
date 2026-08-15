@@ -1,6 +1,6 @@
 """MNCS Fabric: bounded execution and evidence primitives."""
 
-__version__ = "0.2.0a21"
+__version__ = "0.2.0a23"
 
 from .api import ConsumerContext, FabricAdminClient, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
 from .capabilities import CAPABILITY_OBSERVATION_SCHEMA

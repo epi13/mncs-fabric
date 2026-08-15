@@ -365,12 +365,17 @@ def diff_desired_state(
         compliant = _is_compliant(requirement, actual)
         if compliant:
             continue
+        desired_value = requirement["level"] if requirement["version"] is None else f"{requirement['level']}:{requirement['version']}"
+        if requirement["kind"] == "package" and requirement["name"] == "fabric-worker":
+            pin = requirement.get("version") or annotated.get("_supported_current", {}).get("fabric-worker")
+            if pin:
+                desired_value = str(pin)
         changes.append(
             {
                 "kind": requirement["kind"],
                 "name": requirement["name"],
                 "update_class": requirement["update_class"],
-                "desired": requirement["level"] if requirement["version"] is None else f"{requirement['level']}:{requirement['version']}",
+                "desired": desired_value,
                 "actual": actual,
                 "detail": detail[:256],
                 "authorization": _authorization_for(requirement, actual),

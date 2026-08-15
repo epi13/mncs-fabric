@@ -1,0 +1,52 @@
+# Idempotent current-user Fabric worker supervisor for Windows.
+# Does not require elevation. Registers a Scheduled Task that restarts on
+# failure and at logon. Identity/certs/ledgers are preserved.
+[CmdletBinding()]
+param(
+    [string]$WorkerId = "collamore02-windows",
+    [string]$Root = (Join-Path $env:USERPROFILE "mncs-fabric-worker"),
+    [string]$Python = (Join-Path $env:USERPROFILE "mncs-fabric-gpu\.venv\Scripts\python.exe"),
+    [string]$TaskName = "MNCS-Fabric-Worker",
+    [switch]$Start
+)
+
+$ErrorActionPreference = "Stop"
+$launcher = Join-Path $Root "launcher\fabric_worker.ps1"
+if (-not (Test-Path -LiteralPath $Python)) { throw "Fabric Python runtime not found: $Python" }
+if (-not (Test-Path -LiteralPath $launcher)) { throw "Worker launcher not found: $launcher" }
+foreach ($name in @("certs\ca.pem", "certs\worker.pem", "certs\worker.key", "trust\worker-trust.jsonl")) {
+    $path = Join-Path $Root $name
+    if (-not (Test-Path -LiteralPath $path)) { throw "required worker identity file missing: $path" }
+}
+
+New-Item -ItemType Directory -Force -Path (Join-Path $Root "state\upgrade") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $Root "logs") | Out-Null
+
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -File `"$launcher`""
+$logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+$watch = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $watch) -Settings $settings -Principal $principal -Force | Out-Null
+
+$watchPython = $Python
+$watchLauncher = Join-Path $Root "launcher\windows_worker_launcher.py"
+$watchState = Join-Path $Root "state\launcher.json"
+$watchAction = New-ScheduledTaskAction -Execute $watchPython -Argument "-u `"$watchLauncher`" start --state `"$watchState`" --worker-id $WorkerId --stdout `"$Root\logs\worker.stdout.log`" --stderr `"$Root\logs\worker.stderr.log`" --cwd `"$Root`""
+Register-ScheduledTask -TaskName "MNCS-Fabric-Worker-Watch" -Action $watchAction -Trigger $watch -Settings $settings -Principal $principal -Force | Out-Null
+
+$result = [ordered]@{
+    worker_id = $WorkerId
+    task = $TaskName
+    root = $Root
+    python = $Python
+    launcher = $launcher
+    elevated = $false
+    privilege = "current-user-scheduled-task"
+    start_triggers = @("AtLogOn", "manual")
+}
+if ($Start) {
+    Start-ScheduledTask -TaskName $TaskName
+    $result.started = $true
+}
+$result | ConvertTo-Json -Compress

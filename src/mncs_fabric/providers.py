@@ -210,41 +210,94 @@ def apply_restart_service(action: Mapping[str, Any], inventory: Mapping[str, Any
         return _skipped(action, "system systemd restart requires host privilege and is not performed automatically", "PRIVILEGE_REQUIRED")
     if manager == "windows-service":
         return _skipped(action, "Windows service restart requires operator privilege", "PRIVILEGE_REQUIRED")
-    if manager == "systemd-user" and unit:
+    if manager == "systemd-user" and action["target"] != "fabric-worker" and unit:
         probed = run_argv(["systemctl", "--user", "restart", unit], timeout=20.0)
         if probed["returncode"] == 0:
             return action_result(action=action, disposition="PASS", detail=f"restarted {unit} via systemd-user", changed=True, stdout=probed["stdout"], stderr=probed["stderr"])
         return action_result(action=action, disposition="FAIL", failure_class="SERVICE_FAILURE", detail=f"systemctl --user restart {unit} failed", changed=False, stdout=probed["stdout"], stderr=probed["stderr"])
+    if manager in {"systemd-user", "windows-scheduled-task", "supervisor"}:
+        # Restarting the worker process itself is deferred until after the
+        # maintenance result is acknowledged.  The supervisor performs the
+        # actual stop/start so this process does not suicide mid-response.
+        return action_result(
+            action=action,
+            disposition="PASS",
+            detail=f"requested {manager} restart of {action['target']}; supervisor restart required",
+            changed=True,
+            restart_required=True,
+        )
     return _skipped(action, f"no restart adapter for manager {manager}", "UNSUPPORTED_ACTION")
 
 
 def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
     current = inventory.get("fabric", {}).get("worker_version")
-    desired = action.get("desired")
-    if desired in {"present", "supported-current", "mncs-supported"}:
-        desired = action.get("current") if False else desired
+    desired = str(action.get("desired") or "")
+    if desired.startswith("supported-current:"):
+        desired = desired.split(":", 1)[1]
+    staged_same = None
     if current and desired and current == desired:
-        return action_result(action=action, disposition="PASS", detail="fabric worker already at the desired version", changed=False)
-    if action["authorization"] != "none":
+        from .supervisor import resolve_upgrade_source
+
+        staged_same = resolve_upgrade_source(desired)
+        if staged_same is None or action["authorization"] not in {"none", "operator"}:
+            return action_result(action=action, disposition="PASS", detail="fabric worker already at the desired version", changed=False)
+    if action["authorization"] == "privilege":
+        return _skipped(action, "fabric worker package update is classified as privileged", "PRIVILEGE_REQUIRED")
+    if action["authorization"] not in {"none", "operator"}:
         return _skipped(action, "fabric worker package update requires an explicit operator apply of a pinned version", "HUMAN_REQUIRED")
-    if desired in {None, "present", "supported-current", "mncs-supported"}:
-        return _skipped(action, "fabric worker update needs an explicit version pin", "VERSION_CONFLICT")
-    pip = shutil.which("pip") or shutil.which("pip3")
-    if not pip:
-        return _skipped(action, "pip is not available in the worker environment", "PACKAGE_FAILURE")
-    probed = run_argv([pip, "install", "--upgrade", f"mncs-fabric=={desired}"], timeout=120.0)
-    if probed["returncode"] == 0:
+    if desired in {"", "present", "supported-current", "mncs-supported"}:
+        return _skipped(action, "fabric worker update needs an explicit version pin or staged source", "VERSION_CONFLICT")
+    from .supervisor import (
+        apply_staged_upgrade,
+        inspect_supervisor,
+        resolve_upgrade_source,
+        write_upgrade_request,
+    )
+
+    source = resolve_upgrade_source(desired)
+    if source is None:
+        return _skipped(
+            action,
+            f"no staged Fabric source for {desired}; place an sdist/wheel at the worker upgrade stage directory",
+            "HUMAN_REQUIRED",
+        )
+    observed = inspect_supervisor(worker_id=str(inventory.get("worker_identity") or "local-worker"))
+    write_upgrade_request(source=str(source), version=desired)
+    python = observed.get("python_executable") or inventory.get("fabric", {}).get("python_executable") or sys.executable
+    if observed.get("kind") == "systemd-user":
+        started = run_argv(["systemctl", "--user", "start", "mncs-fabric-worker-upgrade.service"], timeout=180.0)
+        if started["returncode"] == 0:
+            return action_result(
+                action=action,
+                disposition="PASS",
+                detail=f"activated staged {source} via systemd-user upgrade unit; worker restart required",
+                changed=True,
+                restart_required=True,
+                rollback={"capability": "partial", "previous_version": current},
+                stdout=started["stdout"],
+                stderr=started["stderr"],
+            )
+    activated = apply_staged_upgrade(python=str(python), source=str(source), previous=current)
+    if activated.get("disposition") == "PASS":
         return action_result(
             action=action,
             disposition="PASS",
-            detail=f"staged mncs-fabric=={desired}; worker restart required",
+            detail=str(activated.get("detail") or f"activated staged {source}; worker restart required"),
             changed=True,
             restart_required=True,
             rollback={"capability": "partial", "previous_version": current},
-            stdout=probed["stdout"],
-            stderr=probed["stderr"],
+            stdout=str(activated.get("stdout") or ""),
+            stderr=str(activated.get("stderr") or ""),
         )
-    return action_result(action=action, disposition="FAIL", failure_class="PACKAGE_FAILURE", detail="pip install of mncs-fabric failed", changed=False, stdout=probed["stdout"], stderr=probed["stderr"])
+    return action_result(
+        action=action,
+        disposition="FAIL",
+        failure_class=str(activated.get("failure_class") or "PACKAGE_FAILURE"),
+        detail=str(activated.get("detail") or "pip install of staged Fabric source failed"),
+        changed=False,
+        stdout=str(activated.get("stdout") or ""),
+        stderr=str(activated.get("stderr") or ""),
+    )
 
 
 def apply_pull_model(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:

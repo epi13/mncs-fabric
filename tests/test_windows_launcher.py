@@ -21,6 +21,11 @@ class WindowsLauncherTests(unittest.TestCase):
         self.assertEqual(args.worker_id, "worker")
         self.assertEqual(args.worker_command[-2:], ["-m", "mncs_fabric"])
 
+    def test_restart_is_a_first_class_launcher_action(self) -> None:
+        args = build_parser().parse_args(["restart", "--state", "state.json", "--delay", "3"])
+        self.assertEqual(args.action, "restart")
+        self.assertEqual(args.delay, 3.0)
+
 
 if __name__ == "__main__":
     unittest.main()

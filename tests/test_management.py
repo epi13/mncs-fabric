@@ -46,7 +46,7 @@ class ManagementStateTests(unittest.TestCase):
         self.assertTrue(can_transition("READY", "MAINTENANCE"))
         self.assertTrue(can_transition("DRAINING", "MAINTENANCE"))
         self.assertTrue(can_transition("VERIFYING", "READY"))
-        self.assertFalse(can_transition("QUARANTINED", "READY"))
+        self.assertTrue(can_transition("QUARANTINED", "READY"))
         self.assertTrue(management_allows_work("READY"))
         self.assertFalse(management_allows_work("MAINTENANCE"))
         self.assertFalse(management_allows_work("QUARANTINED"))
@@ -62,8 +62,9 @@ class ManagementStateTests(unittest.TestCase):
             store.set_state("w1", state="VERIFYING", reason="applied")
             failed = store.set_state("w1", state="QUARANTINED", reason="cert failed", certification_status="FAILED")
             self.assertEqual(failed["certification_status"], "FAILED")
-            with self.assertRaises(ProtocolError):
-                store.set_state("w1", state="READY", reason="nope")
+            recovered = store.set_state("w1", state="READY", reason="certification CERTIFIED", certification_status="CERTIFIED")
+            self.assertEqual(recovered["state"], "READY")
+            self.assertEqual(recovered["certification_status"], "CERTIFIED")
 
     def test_scheduler_skips_maintenance_workers(self) -> None:
         ready = WorkerSlot(worker_id="ready", capabilities=frozenset({"python"}), management_state="READY")

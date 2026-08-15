@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mncs-fabric"
-version = "0.2.0a21"
+version = "0.2.0a23"
 description = "Operator-controlled bounded execution and evidence fabric for MNCS"
 readme = "README.md"
 requires-python = ">=3.11"

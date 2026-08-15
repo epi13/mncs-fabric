@@ -269,8 +269,15 @@ def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bo
         "schedule.policy": True,
         "worker.inspect": True,
         "worker.plan": True,
+        "worker.reconcile": True,
+        "worker.certify": True,
+        "worker.drain": True,
+        "worker.resume": True,
+        "worker.quarantine": True,
         "fleet.inspect": True,
         "fleet.plan": True,
+        "fleet.reconcile": True,
+        "fleet.certify": True,
     }
     value = {
         "schema_version": SERVICE_CAPABILITIES_SCHEMA,

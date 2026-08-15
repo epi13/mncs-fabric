@@ -87,10 +87,10 @@ class FleetManager:
 
     def resume(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
         current = self.store.ensure(worker_id)
-        if current["state"] == "QUARANTINED":
-            raise ProtocolError("quarantined workers cannot resume to READY without certification")
         if current["certification_status"] == "FAILED":
             raise ProtocolError("a worker that failed certification cannot resume to READY")
+        if current["state"] == "QUARANTINED" and current["certification_status"] != "CERTIFIED":
+            raise ProtocolError("quarantined workers cannot resume to READY without a passing certification")
         status = current["certification_status"] if current["certification_status"] != "NOT_RUN" else "UNKNOWN"
         return self.store.set_state(worker_id, state="READY", reason=reason, certification_status=status)
 
@@ -174,6 +174,23 @@ class FleetManager:
             current = self.store.ensure(worker_id)
             if current["state"] not in {"MAINTENANCE", "DRAINING", "VERIFYING", "DEGRADED"}:
                 self.store.set_state(worker_id, state="MAINTENANCE", reason="reconcile apply")
+        extra_actions: list[dict[str, Any]] = []
+        if apply and force:
+            from .providers import validate_action
+
+            if not any(item.get("provider") == "package.fabric" for item in plan["actions"]):
+                extra_actions.append(validate_action({
+                    "action": "update",
+                    "target": "fabric-worker",
+                    "update_class": "A",
+                    "provider": "package.fabric",
+                    "disruptive": True,
+                    "rollback": "partial",
+                    "authorization": "operator",
+                    "current": str((inventory.get("fabric") or {}).get("worker_version") or "unknown"),
+                    "desired": __version__,
+                    "reason": "operator requested staged Fabric reinstall",
+                }))
         if not apply:
             receipt = complete_receipt(plan, inventory, [], mode="plan")
             self.store.record("management.receipt", receipt)
@@ -198,8 +215,26 @@ class FleetManager:
                 "management": self.store.state(worker_id),
                 "summary": format_plan(plan),
             }
-        applied = apply_actions(list(plan["actions"])) if plan["actions"] else []
+        actions_to_apply = list(plan["actions"]) + extra_actions
+        applied = apply_actions(actions_to_apply) if actions_to_apply else []
         receipt = complete_receipt(plan, inventory, applied, mode="apply")
+        if any(item.get("restart_required") for item in applied):
+            self.store.record("management.receipt", receipt)
+            self.store.set_state(
+                worker_id,
+                state="MAINTENANCE",
+                reason="staged update applied; waiting for supervisor restart and reconnect",
+                last_receipt_identity=receipt["receipt_identity"],
+            )
+            return {
+                "plan": plan,
+                "receipt": receipt,
+                "certification": None,
+                "knowledge": operational_knowledge(inventory, receipt),
+                "management": self.store.state(worker_id),
+                "summary": format_plan(plan),
+                "restart_required": True,
+            }
         if receipt["disposition"] == "FAIL":
             self.store.record("management.receipt", receipt)
             self.store.set_state(

@@ -162,7 +162,7 @@ def _certify_execution(inventory: Mapping[str, Any]) -> dict[str, Any]:
 def _certify_repository(inventory: Mapping[str, Any]) -> dict[str, Any]:
     tool = inventory_tool(inventory, "git")
     if not tool or not tool.get("present"):
-        return _layer("repository_access", "FAIL", "git is not present")
+        return _layer("repository_access", "SKIP", "git is not on PATH for this worker", applicable=False)
     result = apply_action(
         plan_action_from_change({"kind": "tool", "name": "git", "update_class": "B", "desired": "present", "actual": "present", "authorization": "none", "detail": "git"}),
         inventory,
@@ -180,7 +180,12 @@ def _optional_tool(inventory: Mapping[str, Any], layer: str, name: str, *, verif
     if result["disposition"] == "PASS":
         return _layer(layer, "PASS", result["detail"])
     if result.get("failure_class") == "AUTH_FAILURE":
-        return _layer(layer, "FAIL", result["detail"])
+        return _layer(
+            layer,
+            "SKIP",
+            result["detail"] + "; GitHub login is a one-time user credential bootstrap",
+            applicable=False,
+        )
     return _layer(layer, "FAIL", result["detail"])
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from typing import Any
 
 from .canonical import sha256_identity
@@ -155,6 +155,8 @@ class LocalWorker:
                         }
                     )
             self.ledger.append("protocol.maintenance", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "results": results})
+            if any(item.get("restart_required") for item in results):
+                self._schedule_supervisor_restart()
             return self._response(message, "worker.maintenance.result", {"results": results})
         if message["message_type"] == "worker.certify.request":
             if message["worker_id"] != self.worker_id:
@@ -314,6 +316,19 @@ class LocalWorker:
             return self._bundle_response(message, status, None)
         except (ProtocolError, StorageError, OSError, ValueError) as exc:
             return self._bundle_response(message, "FAIL" if isinstance(exc, ProtocolError) else "UNKNOWN", str(exc))
+
+    def _schedule_supervisor_restart(self) -> None:
+        """Ask the supervisor to restart after the maintenance result is sent."""
+
+        def _restart() -> None:
+            import time
+
+            time.sleep(2.0)
+            from .supervisor import inspect_supervisor, restart_supervisor
+
+            restart_supervisor(inspect_supervisor(worker_id=self.worker_id))
+
+        Thread(target=_restart, name="fabric-supervisor-restart", daemon=True).start()
 
     def _bundle_response(self, request: dict[str, Any], status: str, diagnostic: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"transfer_schema": "mncs-fabric.bundle-transfer.v0.1", "transfer_id": request["payload"]["transfer_id"], "status": status}

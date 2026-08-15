@@ -62,6 +62,7 @@ SERVICE_MANAGERS = frozenset({
     "systemd-system",
     "systemd-user",
     "windows-service",
+    "windows-scheduled-task",
     "process",
     "supervisor",
     "unknown",
@@ -240,11 +241,33 @@ def _tool_record(*, name: str, present: bool, path: str | None, version: str | N
     }
 
 
+def _windows_extra_paths(name: str) -> list[str]:
+    if os.name != "nt":
+        return []
+    home = Path.home()
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    candidates = {
+        "git": [
+            program_files / "Git" / "cmd" / "git.exe",
+            home / "AppData" / "Local" / "Programs" / "Git" / "cmd" / "git.exe",
+        ],
+        "gh": [
+            program_files / "GitHub CLI" / "gh.exe",
+            home / "AppData" / "Local" / "Programs" / "GitHub CLI" / "gh.exe",
+        ],
+        "ollama": [
+            program_files / "Ollama" / "ollama.exe",
+            home / "AppData" / "Local" / "Programs" / "Ollama" / "ollama.exe",
+        ],
+    }
+    return [str(path) for path in candidates.get(name, []) if path.is_file()]
+
+
 def _probe_tool(name: str, version_args: tuple[str, ...]) -> dict[str, Any]:
     if name == "python":
         path = shutil.which("python") or shutil.which("python3") or sys.executable
     else:
-        path = shutil.which(name)
+        path = shutil.which(name) or next(iter(_windows_extra_paths(name)), None)
     if not path:
         return _tool_record(name=name, present=False, path=None, version=None, detail=None)
     if not version_args:
@@ -281,6 +304,33 @@ def _systemctl(args: list[str], *, user: bool) -> dict[str, Any]:
         return {"returncode": None, "stdout": "", "stderr": "systemctl-absent", "timed_out": False}
     argv = [binary, "--user", *args] if user else [binary, *args]
     return run_argv(argv, timeout=3.0)
+
+
+def _windows_scheduled_task(name: str) -> dict[str, Any] | None:
+    if platform.system().lower() != "windows":
+        return None
+    task_name = "MNCS-Fabric-Worker" if name in {"fabric-worker", "mncs-fabric-worker"} else name
+    queried = run_argv(["schtasks", "/Query", "/TN", task_name, "/FO", "LIST"], timeout=8.0)
+    if queried["returncode"] != 0 or "TaskName" not in (queried["stdout"] or ""):
+        return None
+    output = queried["stdout"] or ""
+    state = "unknown"
+    if "Status:" in output:
+        for line in output.splitlines():
+            if line.strip().startswith("Status:"):
+                raw = line.split(":", 1)[1].strip().lower()
+                state = {"ready": "ready", "running": "running"}.get(raw, raw or "unknown")
+                break
+    if _process_listening(7443):
+        state = "running"
+    return {
+        "name": name,
+        "present": True,
+        "manager": "windows-scheduled-task",
+        "unit": task_name,
+        "state": state,
+        "install_type": "windows-package",
+    }
 
 
 def _windows_service(name: str) -> dict[str, Any] | None:
@@ -328,7 +378,7 @@ def discover_service(name: str, *, units: tuple[str, ...] | None = None, listen_
             for line in system["stdout"].splitlines():
                 if line.startswith("ActiveState="):
                     mapped = line.split("=", 1)[1].strip()
-                    state = {"active": "running", "inactive": "stopped", "failed": "failed"}.get(mapped, mapped)
+                    state = {"active": "running", "activating": "running", "reloading": "running", "inactive": "stopped", "failed": "failed"}.get(mapped, mapped)
             return {
                 "name": name,
                 "present": True,
@@ -343,7 +393,7 @@ def discover_service(name: str, *, units: tuple[str, ...] | None = None, listen_
             for line in user["stdout"].splitlines():
                 if line.startswith("ActiveState="):
                     mapped = line.split("=", 1)[1].strip()
-                    state = {"active": "running", "inactive": "stopped", "failed": "failed"}.get(mapped, mapped)
+                    state = {"active": "running", "activating": "running", "reloading": "running", "inactive": "stopped", "failed": "failed"}.get(mapped, mapped)
             return {
                 "name": name,
                 "present": True,
@@ -355,6 +405,9 @@ def discover_service(name: str, *, units: tuple[str, ...] | None = None, listen_
     windows = _windows_service(name)
     if windows is not None:
         return windows
+    scheduled = _windows_scheduled_task(name)
+    if scheduled is not None:
+        return scheduled
     if listen_port is not None and _process_listening(listen_port):
         return {
             "name": name,
@@ -466,7 +519,7 @@ def collect_services(*, worker_id: str) -> list[dict[str, Any]]:
         "fabric-worker.service",
     )
     services = [
-        discover_service("fabric-worker", units=fabric_units),
+        discover_service("fabric-worker", units=fabric_units, listen_port=7443),
         discover_service("ollama", units=("ollama.service", "ollama"), listen_port=11434),
         discover_service("mncs-fabric-controller", units=("mncs-fabric-controller.service",)),
     ]

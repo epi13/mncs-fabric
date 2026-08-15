@@ -130,6 +130,36 @@ class MaintenanceTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             validate_maintenance_receipt(tampered)
 
+    def test_fabric_package_plan_pins_controller_version(self) -> None:
+        inventory = sample_inventory()
+        desired = self._desired(version="0.2.0a23")
+        plan = build_maintenance_plan(worker_id="worker-a", desired=desired, inventory=inventory)
+        fabric = next(item for item in plan["actions"] if item["provider"] == "package.fabric")
+        self.assertEqual(fabric["desired"], "0.2.0a23")
+        self.assertEqual(fabric["authorization"], "operator")
+
+    def test_operator_fabric_update_uses_staged_source(self) -> None:
+        inventory = sample_inventory()
+        action = validate_action({
+            "action": "update",
+            "target": "fabric-worker",
+            "update_class": "A",
+            "provider": "package.fabric",
+            "disruptive": True,
+            "rollback": "partial",
+            "authorization": "operator",
+            "current": "version-drift",
+            "desired": "0.2.0a23",
+            "reason": "pin",
+        })
+        with tempfile.TemporaryDirectory() as directory:
+            staged = Path(directory) / "mncs-fabric-0.2.0a23.tar.gz"
+            staged.write_text("sdist", encoding="utf-8")
+            with patch("mncs_fabric.supervisor.default_stage_dir", return_value=Path(directory)), patch("mncs_fabric.supervisor.apply_staged_upgrade", return_value={"disposition": "PASS", "detail": "activated staged", "stdout": "", "stderr": ""}), patch("mncs_fabric.supervisor.inspect_supervisor", return_value={"kind": "process", "python_executable": "python"}):
+                result = apply_action(action, inventory)
+        self.assertEqual(result["disposition"], "PASS")
+        self.assertTrue(result["restart_required"])
+
     def test_commons_knowledge_only_for_unusual_discoveries(self) -> None:
         systemd = sample_inventory(ollama_manager="systemd-system")
         process = sample_inventory(ollama_manager="process")

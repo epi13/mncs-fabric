@@ -383,6 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     worker_plan = worker_sub.add_parser("plan", help="diff this worker against desired state")
     worker_reconcile = worker_sub.add_parser("reconcile", help="apply typed reconciliation")
     worker_reconcile.add_argument("--apply", action="store_true")
+    worker_reconcile.add_argument("--force", action="store_true", help="apply staged Fabric reinstall even when versions already match")
     worker_certify = worker_sub.add_parser("certify", help="run capability-aware certification")
     worker_drain = worker_sub.add_parser("drain", help="stop new work before maintenance")
     worker_resume = worker_sub.add_parser("resume", help="return a certified worker to READY")
@@ -670,13 +671,14 @@ def main(argv: list[str] | None = None) -> int:
                 write_json(None, result)
                 return 0
             if args.admin_socket:
-                admin = FabricAdminClient.connect(args.admin_socket)
+                admin_timeout = 90.0 if args.worker_command in {"certify", "reconcile"} else 30.0
+                admin = FabricAdminClient.connect(args.admin_socket, timeout=admin_timeout)
                 if args.worker_command == "inspect":
                     result = admin.inspect_worker(args.worker_id)
                 elif args.worker_command == "plan":
                     result = admin.plan_worker(args.worker_id, profiles=args.profile or None, classes=args.update_class or None)
                 elif args.worker_command == "reconcile":
-                    result = admin.reconcile_worker(args.worker_id, apply=args.apply, profiles=args.profile or None, classes=args.update_class or None)
+                    result = admin.reconcile_worker(args.worker_id, apply=args.apply, profiles=args.profile or None, classes=args.update_class or None, force=getattr(args, "force", False))
                 elif args.worker_command == "certify":
                     result = admin.certify_worker(args.worker_id, profiles=args.profile or None)
                 elif args.worker_command == "drain":

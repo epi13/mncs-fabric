@@ -26,6 +26,16 @@ mutual-TLS protocol as `worker.describe`.
 
 ## What is functioning
 
+Physical deployments observed in 0.2.0a22:
+
+- Linux `fabric-worker-01` uses systemd-user unit `mncs-fabric-worker.service`
+  under `/home/fabric/mncs-fabric-worker/current` with linger enabled.
+- Windows `collamore02-windows` uses a current-user Scheduled Task
+  `MNCS-Fabric-Worker` plus the existing detached launcher. The task is
+  registered without elevation. Starting it from a non-interactive SSH
+  session is unreliable; AtLogOn and the detached launcher are the
+  supported restart paths.
+
 The following path is implemented and unit-tested in-process and over
 `InProcessTransport`:
 
@@ -166,11 +176,22 @@ inspect/plan/reconcile/certify is controller-driven.
 
 ## Self-update
 
-A Fabric package update is a class A action. The worker can stage
-`pip install mncs-fabric==VERSION` in its own interpreter and return
-`restart_required`. The process that applied the update is not killed by the
-action. Restart is left to the existing systemd user supervisor
-(`mncs-fabric-worker-rendezvous@.service`) or an explicit operator restart.
+A Fabric package update is a class A action. The controller pins the desired
+version. The worker activates a **staged** sdist/wheel from its upgrade
+directory (not PyPI) and returns `restart_required` **before** the process
+exits. A deferred supervisor restart then reconnects the worker.
+
+Linux uses `mncs-fabric-worker-upgrade.service` (no `ProtectHome`) to rewrite
+the worker venv, then `systemctl --user restart mncs-fabric-worker.service`.
+
+Windows uses current-user Scheduled Tasks `MNCS-Fabric-Worker` (AtLogOn) and
+`MNCS-Fabric-Worker-Watch` (1-minute idempotent start) plus
+`windows_worker_launcher.py` (detached / `CREATE_BREAKAWAY_FROM_JOB`).
+`schtasks /Run` from SSH is not the supported restart path.
+
+The first time a pre-0.2.0a21 worker is brought onto this path, the staged
+package must be copied onto the host once. After that, the controller can
+request the same upgrade/restart cycle without a login.
 
 Controller self-update is designed the same way and is not auto-applied.
 
