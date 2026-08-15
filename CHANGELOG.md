@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- persistent `FabricClient.execute()` no longer holds the 30s service-frame
+  TTL open for jobs whose plan timeout exceeds that bound; those jobs submit
+  as detached work and poll `execution.status`/`execution.result` until the
+  job deadline, so controller request timeouts cannot expire before
+  legitimate worker execution;
+- advertise `persistent_execution_deadline_wait` so consumers can detect the
+  split between control-plane TTL and execution deadline without guessing
+  package versions;
 - bundle cache GC can evict unused published bundles under pressure, never
   evicts in-use or pinned identities, and fails closed when safe reclamation
   cannot free enough space (`mncs-fabric cache status|gc`);
