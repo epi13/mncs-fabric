@@ -65,21 +65,48 @@ def _requires(inventory: Mapping[str, Any], kind: str, name: str) -> bool:
     return False
 
 
-def probe_inference(inventory: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Run a model-agnostic generate against the first discovered local model."""
+def discovered_model_names(inventory: Mapping[str, Any]) -> list[str]:
+    runtime = inventory_runtime(inventory, "ollama")
+    if not runtime:
+        return []
+    names: list[str] = []
+    for item in runtime.get("models") or []:
+        if isinstance(item, Mapping) and item.get("name"):
+            names.append(str(item["name"]))
+    return names
+
+
+def select_inference_models(inventory: Mapping[str, Any], *, desired_models: list[str] | None) -> list[str]:
+    """Return desired models when specified; otherwise the generic first discovered model."""
+
+    available = discovered_model_names(inventory)
+    if desired_models:
+        selected: list[str] = []
+        for wanted in desired_models:
+            match = next((name for name in available if name == wanted or name.startswith(wanted + ":")), None)
+            if match is not None:
+                selected.append(match)
+            else:
+                selected.append(wanted)
+        return selected
+    return available[:1]
+
+
+def probe_inference(inventory: Mapping[str, Any], *, model: str | None = None) -> dict[str, Any] | None:
+    """Run a model-agnostic generate against one discovered or requested local model."""
 
     runtime = inventory_runtime(inventory, "ollama")
     if not runtime or not runtime.get("reachable") or not runtime.get("endpoint"):
         return None
-    models = runtime.get("models") or []
-    names = [item.get("name") for item in models if isinstance(item, Mapping) and item.get("name")]
-    if not names:
+    names = discovered_model_names(inventory)
+    target = model or (names[0] if names else None)
+    if not target:
         return {"status": "UNKNOWN", "detail": "runtime reachable but no models are installed"}
     import json
     import urllib.error
     import urllib.request
 
-    payload = json.dumps({"model": names[0], "prompt": "ping", "stream": False}).encode("utf-8")
+    payload = json.dumps({"model": target, "prompt": "ping", "stream": False}).encode("utf-8")
     request = urllib.request.Request(
         str(runtime["endpoint"]).rstrip("/") + "/api/generate",
         data=payload,
@@ -90,15 +117,15 @@ def probe_inference(inventory: Mapping[str, Any]) -> dict[str, Any] | None:
         with urllib.request.urlopen(request, timeout=max(HTTP_PROBE_TIMEOUT, 20.0)) as response:
             raw = response.read(64 * 1024)
     except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
-        return {"status": "FAIL", "detail": f"inference probe of {names[0]} failed: {exc}"[:256]}
+        return {"status": "FAIL", "detail": f"inference probe of {target} failed: {exc}"[:256], "model": target}
     try:
         body = json.loads(raw.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError):
-        return {"status": "FAIL", "detail": f"inference probe of {names[0]} returned non-JSON"}
+        return {"status": "FAIL", "detail": f"inference probe of {target} returned non-JSON", "model": target}
     if isinstance(body, dict) and (body.get("response") is not None or body.get("done") is True):
-        return {"status": "PASS", "detail": f"generic generate succeeded on {names[0]}"}
+        return {"status": "PASS", "detail": f"generic generate succeeded on {target}", "model": target}
     error = body.get("error") if isinstance(body, dict) else None
-    return {"status": "FAIL", "detail": f"inference probe of {names[0]} failed: {error or 'empty response'}"}
+    return {"status": "FAIL", "detail": f"inference probe of {target} failed: {error or 'empty response'}", "model": target}
 
 
 def certify_inventory(
@@ -116,9 +143,9 @@ def certify_inventory(
         _layer("connectivity", "PASS", "inventory collected from the worker process"),
         _certify_execution(checked),
         _certify_repository(checked),
-        _optional_tool(checked, "github", "gh", verify=True),
-        _optional_tool(checked, "forge", "forge", verify=True),
-        _optional_tool(checked, "joern", "joern", verify=True),
+        _health_tool(checked, "github", "gh"),
+        _health_tool(checked, "forge", "forge"),
+        _health_tool(checked, "joern", "joern"),
         _certify_ollama(checked, required=inference_required),
         _certify_models(checked, required=inference_required),
         _certify_inference(checked, required=inference_required, probe=inference_probe),
@@ -145,7 +172,7 @@ def certify_inventory(
         "disposition": disposition,
         "failing_layer": failing_layer,
         "created_at": utc_now(),
-        "claim_boundary": "capability-aware worker certification; not independence, honesty, or MNCS conformance",
+        "claim_boundary": "capability health of advertised worker functions; not desired-state conformance, honesty, or attestation",
     }
     return attach_identity(value, "certification_identity")
 
@@ -170,9 +197,15 @@ def _certify_repository(inventory: Mapping[str, Any]) -> dict[str, Any]:
     return _layer("repository_access", "PASS" if result["disposition"] == "PASS" else "FAIL", result["detail"])
 
 
-def _optional_tool(inventory: Mapping[str, Any], layer: str, name: str, *, verify: bool) -> dict[str, Any]:
+def _health_tool(inventory: Mapping[str, Any], layer: str, name: str) -> dict[str, Any]:
+    """Health-test a tool only when the worker advertises it.
+
+    Absence is NOT_APPLICABLE here.  Assigned-profile requirements are
+    evaluated separately as desired-state conformance.
+    """
+
     if not _requires(inventory, "tool", name):
-        return _layer(layer, "SKIP", f"{name} not present on this worker", applicable=False)
+        return _layer(layer, "SKIP", f"{name} not advertised on this worker", applicable=False)
     result = apply_action(
         plan_action_from_change({"kind": "tool", "name": name, "update_class": "B", "desired": "mncs-supported", "actual": "present", "authorization": "none", "detail": name}),
         inventory,
@@ -183,7 +216,7 @@ def _optional_tool(inventory: Mapping[str, Any], layer: str, name: str, *, verif
         return _layer(
             layer,
             "SKIP",
-            result["detail"] + "; GitHub login is a one-time user credential bootstrap",
+            result["detail"] + "; credential bootstrap is conformance, not health",
             applicable=False,
         )
     return _layer(layer, "FAIL", result["detail"])

@@ -258,11 +258,29 @@ def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any])
     if source is None:
         return _skipped(
             action,
-            f"no staged Fabric source for {desired}; place an sdist/wheel at the worker upgrade stage directory",
+            f"no staged Fabric source for {desired}; transfer a content-addressed artifact first",
             "HUMAN_REQUIRED",
         )
+    from .errors import ValidationError as ArtifactValidationError
+    from .package_artifact import read_artifact_descriptor, verify_package_artifact
+
+    descriptor = read_artifact_descriptor(source.parent)
+    if descriptor is not None:
+        try:
+            verify_package_artifact(source, descriptor)
+        except ArtifactValidationError as exc:
+            return action_result(action=action, disposition="FAIL", failure_class="PACKAGE_FAILURE", detail=str(exc), changed=False)
+        if desired not in {descriptor["version"], descriptor["digest"], descriptor["artifact_identity"]} and desired != str(source):
+            return action_result(action=action, disposition="FAIL", failure_class="VERSION_CONFLICT", detail=f"staged artifact version {descriptor['version']} does not match desired {desired}", changed=False)
     observed = inspect_supervisor(worker_id=str(inventory.get("worker_identity") or "local-worker"))
-    write_upgrade_request(source=str(source), version=desired)
+    write_upgrade_request(source=str(source), version=str(descriptor["version"] if descriptor else desired))
+    rollback_meta = {
+        "capability": "partial",
+        "previous_version": current,
+        "artifact_identity": descriptor.get("artifact_identity") if descriptor else None,
+        "previous_artifact_identity": None,
+        "previous_artifact_path": None,
+    }
     python = observed.get("python_executable") or inventory.get("fabric", {}).get("python_executable") or sys.executable
     if observed.get("kind") == "systemd-user":
         started = run_argv(["systemctl", "--user", "start", "mncs-fabric-worker-upgrade.service"], timeout=180.0)
@@ -273,7 +291,7 @@ def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any])
                 detail=f"activated staged {source} via systemd-user upgrade unit; worker restart required",
                 changed=True,
                 restart_required=True,
-                rollback={"capability": "partial", "previous_version": current},
+                rollback=rollback_meta,
                 stdout=started["stdout"],
                 stderr=started["stderr"],
             )
@@ -285,7 +303,7 @@ def apply_update_fabric(action: Mapping[str, Any], inventory: Mapping[str, Any])
             detail=str(activated.get("detail") or f"activated staged {source}; worker restart required"),
             changed=True,
             restart_required=True,
-            rollback={"capability": "partial", "previous_version": current},
+            rollback=rollback_meta,
             stdout=str(activated.get("stdout") or ""),
             stderr=str(activated.get("stderr") or ""),
         )
@@ -421,7 +439,15 @@ def rollback_action(result: Mapping[str, Any], inventory: Mapping[str, Any]) -> 
             "failure_class": "ROLLBACK_FAILURE" if capability == "manual" else "UNSUPPORTED_ACTION",
             "detail": f"rollback capability is {capability}",
         }
+    previous_path = rollback.get("previous_artifact_path")
     previous = rollback.get("previous_version")
+    if result.get("provider") == "package.fabric" and previous_path:
+        from .supervisor import apply_staged_upgrade
+
+        restored = apply_staged_upgrade(python=sys.executable, source=str(previous_path), previous=None)
+        if restored.get("disposition") == "PASS":
+            return {"disposition": "PASS", "failure_class": None, "detail": f"restored previous artifact {previous_path}", "restart_required": True}
+        return {"disposition": "FAIL", "failure_class": "ROLLBACK_FAILURE", "detail": str(restored.get("detail") or "previous artifact restore failed")}
     if result.get("provider") == "package.fabric" and previous:
         pip = shutil.which("pip") or shutil.which("pip3")
         if not pip:

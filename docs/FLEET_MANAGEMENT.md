@@ -131,15 +131,31 @@ Management state is separate:
 
 ```text
 READY → BUSY | DRAINING | MAINTENANCE | QUARANTINED | DEGRADED
-DRAINING → MAINTENANCE
-MAINTENANCE → VERIFYING
-VERIFYING → READY | DEGRADED | QUARANTINED
-QUARANTINED → DRAINING | MAINTENANCE   # not READY
+DRAINING → MAINTENANCE | READY | QUARANTINED | DEGRADED
+MAINTENANCE → VERIFYING | DEGRADED | QUARANTINED | READY
+VERIFYING → READY | DEGRADED | QUARANTINED | MAINTENANCE
+QUARANTINED → DRAINING | MAINTENANCE | VERIFYING | READY
 ```
 
-A worker that failed certification cannot become READY. The scheduler ignores
-any worker whose management state is not `READY` or `BUSY`. The worker also
-refuses `dispatch.request` while drained, in maintenance, or quarantined.
+`READY` requires **health CERTIFIED** and **no blocking desired-state
+nonconformance**. A later passing certification/conformance pair may recover a
+quarantined worker. Health failure still cannot be READY.
+
+The scheduler ignores any worker whose management state is not `READY` or
+`BUSY`. The worker also refuses `dispatch.request` while drained, in
+maintenance, or quarantined.
+
+## Certification versus conformance
+
+**Health certification** tests advertised capabilities. Missing optional tools
+are `SKIP` / not applicable. This is not profile conformance.
+
+**Desired-state conformance** evaluates assigned profiles. A required `git`
+that is absent is `NOT_INSTALLED` and **blocks READY** even if health is
+`CERTIFIED`. Privilege-gated or one-time items (`local-harness`, `gh` auth)
+are recorded as nonconformance but are advisory for scheduling.
+
+Claim boundary: health is not conformance; conformance is not attestation.
 
 ## Certification
 
@@ -176,10 +192,14 @@ inspect/plan/reconcile/certify is controller-driven.
 
 ## Self-update
 
-A Fabric package update is a class A action. The controller pins the desired
-version. The worker activates a **staged** sdist/wheel from its upgrade
-directory (not PyPI) and returns `restart_required` **before** the process
-exits. A deferred supervisor restart then reconnects the worker.
+A Fabric package update is a class A action bound to a **content-addressed
+artifact** (`digest`, `size`, `package`, `version`). The controller transfers
+those bytes over mTLS (`worker.package-artifact.*`). Filenames are not
+trusted. The worker verifies the digest before apply and returns
+`restart_required` **before** the process exits.
+
+The controller records an update transaction in `DISCONNECT_EXPECTED` so the
+authorized restart is not mistaken for an unexplained outage.
 
 Linux uses `mncs-fabric-worker-upgrade.service` (no `ProtectHome`) to rewrite
 the worker venv, then `systemctl --user restart mncs-fabric-worker.service`.

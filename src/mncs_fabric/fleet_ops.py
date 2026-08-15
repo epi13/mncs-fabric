@@ -11,7 +11,16 @@ from typing import Any, Callable, Iterable, Mapping
 
 from . import __version__
 from .certify import certify_inventory, format_certification, validate_certification
+from .conformance import decide_ready_state, evaluate_conformance, validate_conformance
 from .desired_state import default_profiles_for_platform, resolve_desired_state, validate_desired_state
+from .update_lifecycle import (
+    build_update_transaction,
+    disconnect_is_expected,
+    reconnect_deadline,
+    transition_update_transaction,
+    validate_update_transaction,
+    version_matches_expected,
+)
 from .errors import ProtocolError, ValidationError
 from .inventory import validate_worker_inventory
 from .maintenance import (
@@ -68,12 +77,17 @@ class FleetManager:
     def status(self, worker_id: str) -> dict[str, Any]:
         state = self.store.ensure(worker_id)
         desired = self.store.desired_state(worker_id)
+        conformance = self.store.latest("management.conformance", worker_id)
+        transaction = self.store.latest("management.update-transaction", worker_id)
         return {
             "worker_id": worker_id,
             "management": state,
             "schedulable": management_allows_work(state["state"]),
             "desired_state_identity": desired.get("desired_state_identity") if desired else None,
             "profiles": list(desired.get("profiles", [])) if desired else [],
+            "conformance_disposition": conformance.get("disposition") if conformance else None,
+            "update_transaction": transaction,
+            "expected_disconnect": disconnect_is_expected(transaction) if transaction else False,
         }
 
     def assign(self, desired: Mapping[str, Any]) -> dict[str, Any]:
@@ -91,6 +105,14 @@ class FleetManager:
             raise ProtocolError("a worker that failed certification cannot resume to READY")
         if current["state"] == "QUARANTINED" and current["certification_status"] != "CERTIFIED":
             raise ProtocolError("quarantined workers cannot resume to READY without a passing certification")
+        conformance = self.store.latest("management.conformance", worker_id)
+        if conformance and conformance.get("blocking_failures"):
+            return self.store.set_state(
+                worker_id,
+                state="DEGRADED",
+                reason="resume blocked by desired-state conformance: " + str(conformance["blocking_failures"][0]),
+                certification_status=current["certification_status"],
+            )
         status = current["certification_status"] if current["certification_status"] != "NOT_RUN" else "UNKNOWN"
         return self.store.set_state(worker_id, state="READY", reason=reason, certification_status=status)
 
@@ -220,18 +242,33 @@ class FleetManager:
         receipt = complete_receipt(plan, inventory, applied, mode="apply")
         if any(item.get("restart_required") for item in applied):
             self.store.record("management.receipt", receipt)
+            previous = str((inventory.get("fabric") or {}).get("worker_version") or "")
+            transaction = build_update_transaction(
+                worker_id=worker_id,
+                state="DISCONNECT_EXPECTED",
+                expected_version=__version__,
+                previous_version=previous or None,
+                artifact_identity=(applied[-1].get("rollback") or {}).get("artifact_identity") if isinstance(applied[-1].get("rollback"), dict) else None,
+                previous_artifact_identity=(applied[-1].get("rollback") or {}).get("previous_artifact_identity") if isinstance(applied[-1].get("rollback"), dict) else None,
+                deadline=reconnect_deadline(),
+                reason="authorized Fabric package apply; supervisor restart expected",
+                receipt_identity=receipt["receipt_identity"],
+            )
+            self.store.record("management.update-transaction", transaction)
             self.store.set_state(
                 worker_id,
                 state="MAINTENANCE",
-                reason="staged update applied; waiting for supervisor restart and reconnect",
+                reason="authorized update applied; disconnect expected until supervisor reconnect",
                 last_receipt_identity=receipt["receipt_identity"],
             )
             return {
                 "plan": plan,
                 "receipt": receipt,
                 "certification": None,
+                "conformance": None,
                 "knowledge": operational_knowledge(inventory, receipt),
                 "management": self.store.state(worker_id),
+                "update_transaction": transaction,
                 "summary": format_plan(plan),
                 "restart_required": True,
             }
@@ -254,15 +291,18 @@ class FleetManager:
         self.store.set_state(worker_id, state="VERIFYING", reason="maintenance applied", last_receipt_identity=receipt["receipt_identity"])
         certification = (certify or (lambda _: certify_inventory(inventory)))(inventory)
         validate_certification(certification, expected_worker_id=worker_id)
-        final = "READY" if certification["disposition"] == "CERTIFIED" else "QUARANTINED" if certification["disposition"] == "FAILED" else "DEGRADED"
-        cert_status = "CERTIFIED" if certification["disposition"] == "CERTIFIED" else "FAILED" if certification["disposition"] == "FAILED" else "UNKNOWN"
-        receipt = bind_certification(receipt, certification["certification_identity"], final_state=final)
+        desired = self.desired_for(worker_id, inventory, profiles=profiles)
+        conformance = evaluate_conformance(desired, inventory)
+        validate_conformance(conformance, expected_worker_id=worker_id)
+        decision = decide_ready_state(certification, conformance)
+        receipt = bind_certification(receipt, certification["certification_identity"], final_state=decision["state"])
         self.store.record("management.certification", certification)
+        self.store.record("management.conformance", conformance)
         self.store.set_state(
             worker_id,
-            state=final,
-            reason="certification " + certification["disposition"],
-            certification_status=cert_status,
+            state=decision["state"],
+            reason=decision["reason"],
+            certification_status=decision["certification_status"],
             last_certification_identity=certification["certification_identity"],
             last_receipt_identity=receipt["receipt_identity"],
         )
@@ -271,6 +311,7 @@ class FleetManager:
             "plan": plan,
             "receipt": receipt,
             "certification": certification,
+            "conformance": conformance,
             "knowledge": operational_knowledge(inventory, receipt),
             "management": self.store.state(worker_id),
             "summary": format_plan(plan) + "\n\n" + format_certification(certification),
@@ -288,19 +329,20 @@ class FleetManager:
         desired = self.desired_for(worker_id, checked, profiles=profiles)
         result = dict(certification) if certification is not None else certify_inventory(checked, profiles=list(desired["profiles"]))
         validate_certification(result, expected_worker_id=worker_id)
-        final = "READY" if result["disposition"] == "CERTIFIED" else "QUARANTINED" if result["disposition"] == "FAILED" else "DEGRADED"
-        cert_status = "CERTIFIED" if result["disposition"] == "CERTIFIED" else "FAILED" if result["disposition"] == "FAILED" else "UNKNOWN"
+        conformance = evaluate_conformance(desired, checked)
+        validate_conformance(conformance, expected_worker_id=worker_id)
+        decision = decide_ready_state(result, conformance)
         current = self.store.ensure(worker_id)
-        if current["state"] not in {"MAINTENANCE", "VERIFYING", "DEGRADED", "READY", "BUSY"}:
-            if current["state"] == "QUARANTINED" and result["disposition"] != "CERTIFIED":
-                final = "QUARANTINED"
+        if current["state"] == "QUARANTINED" and result["disposition"] != "CERTIFIED":
+            decision = {"state": "QUARANTINED", "certification_status": "FAILED", "reason": "quarantined and health certification did not pass"}
         self.store.record("management.certification", result)
+        self.store.record("management.conformance", conformance)
         self.store.set_state(
             worker_id,
-            state=final if result["disposition"] == "CERTIFIED" or current["state"] != "QUARANTINED" else "QUARANTINED",
-            reason="certification " + result["disposition"],
-            certification_status=cert_status,
+            state=decision["state"],
+            reason=decision["reason"],
+            certification_status=decision["certification_status"],
             last_inventory_identity=checked["inventory_identity"],
             last_certification_identity=result["certification_identity"],
         )
-        return result
+        return {"certification": result, "conformance": conformance, "management": self.store.state(worker_id)}

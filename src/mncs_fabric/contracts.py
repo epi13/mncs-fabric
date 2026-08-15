@@ -278,6 +278,8 @@ def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bo
         "fleet.plan": True,
         "fleet.reconcile": True,
         "fleet.certify": True,
+        "worker.artifact.stage": True,
+        "fleet.rollout": True,
     }
     value = {
         "schema_version": SERVICE_CAPABILITIES_SCHEMA,
