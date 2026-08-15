@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0a29 - runtime build identity
+
+- report a process-local `runtime_identity` from controller status:
+  package, version, source commit, artifact digest, and build identity
+  when available;
+- keep that identity off inventory and conformance hashes so existing
+  CERTIFIED workers are not rotated by observation-only reporting;
+- project optional worker source commit / artifact digest on fleet
+  refresh when a worker advertises them.
+
 ## 0.2.0a28 - self-recovering fleet updates
 
 - separate fleet-refresh concurrency unit tests from LocalWorker host

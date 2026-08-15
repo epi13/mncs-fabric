@@ -942,9 +942,14 @@ class ControllerService:
         service_capabilities = service_capability_projection(
             worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready
         )
+        from .runtime_identity import collect_runtime_identity
+
+        runtime_identity = collect_runtime_identity(role="controller")
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
+            "runtime_identity": runtime_identity,
+            "source_commit": runtime_identity.get("source_commit"),
             "service_contract": CONTROLLER_SERVICE_SCHEMA,
             "public_api_version": public_contract["public_api_version"],
             "public_contract_identity": public_contract["contract_identity"],
