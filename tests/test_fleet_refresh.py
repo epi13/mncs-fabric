@@ -18,6 +18,8 @@ from mncs_fabric.fleet_refresh import (
     remaining_request_seconds,
 )
 from mncs_fabric.service_transport import SERVICE_REQUEST_TTL_SECONDS
+from mncs_fabric.node import utc_now
+from mncs_fabric.protocol import make_envelope
 from mncs_fabric.transport import InProcessTransport
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.worker_state import build_liveness_observation
@@ -50,6 +52,34 @@ class _IgnoreDeadlineTransport(_TimeoutTransport):
         self.calls += 1
         time.sleep(self.delay)
         raise TransportTimeoutError("worker ignored the per-request deadline")
+
+
+class _CachedDescribeTransport:
+    """Deterministic describe transport whose latency is controlled."""
+
+    def __init__(self, description: dict[str, object], delay: float = 0.0) -> None:
+        self.description = description
+        self.delay = delay
+        self.calls = 0
+
+    def request(self, envelope: dict[str, object], *, timeout: float | None = None) -> dict[str, object]:
+        self.calls += 1
+        wait = self.delay if timeout is None else min(self.delay, max(timeout, 0.0))
+        time.sleep(wait)
+        if timeout is not None and self.delay > timeout:
+            raise TransportTimeoutError(f"Fabric control response timed out after {timeout:.3f}s")
+        created = utc_now()
+        return make_envelope(
+            "worker.describe.result",
+            controller_id=str(envelope["controller_id"]),
+            worker_id=str(envelope["worker_id"]),
+            request_id=str(envelope["request_id"]),
+            job_id=str(envelope["job_id"]),
+            nonce=str(envelope["nonce"]),
+            payload={"description": self.description},
+            created_at=created,
+            expires_at="2099-01-01T00:00:00Z",
+        )
 
 
 def _local_worker(root: Path, worker_id: str) -> LocalWorker:
@@ -141,21 +171,29 @@ class NetworkFleetRefreshTests(unittest.TestCase):
     def test_concurrent_refresh_keeps_fast_worker_when_peer_is_slow(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
-            fast = _local_worker(root, "b-fast")
+            seed = _local_worker(root, "b-fast")
+            description = seed.description()
             controller = NetworkController("controller", root / "controller.jsonl")
             controller.register_remote("a-slow", frozenset({"python"}), _TimeoutTransport(delay=0.4))
-            controller.register_remote("b-fast", fast.capabilities(), InProcessTransport(fast))
+            controller.register_remote("b-fast", seed.capabilities(), _CachedDescribeTransport(description, delay=0.0))
             started = time.monotonic()
-            # Windows CI scheduling plus LocalWorker.inventory() can exceed
-            # a 250ms operation budget and turn the fast worker into TIMEOUT
-            # as well (UNKNOWN). Keep the peer slow relative to the budget.
-            report = controller.refresh_fleet(operation_deadline=2.0, per_worker_deadline=1.0)
+            report = controller.refresh_fleet(operation_deadline=0.25, per_worker_deadline=0.1)
             elapsed = time.monotonic() - started
             by_id = {item["worker_id"]: item for item in report["workers"]}
             self.assertEqual(report["outcome"], "PARTIAL")
             self.assertEqual(by_id["b-fast"]["refresh"], "PASS")
             self.assertEqual(by_id["a-slow"]["refresh"], "TIMEOUT")
-            self.assertLess(elapsed, 2.5)
+            self.assertLess(elapsed, 0.8)
+
+    def test_local_worker_inventory_refresh_is_separate_from_concurrency_semantics(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            worker = _local_worker(root, "inventory-worker")
+            controller = NetworkController("controller", root / "controller.jsonl")
+            controller.register_remote("inventory-worker", worker.capabilities(), InProcessTransport(worker))
+            report = controller.refresh_fleet(operation_deadline=10.0, per_worker_deadline=8.0)
+            self.assertEqual(report["outcome"], "PASS")
+            self.assertEqual(report["workers"][0]["refresh"], "PASS")
 
     def test_operation_deadline_is_named_when_it_fires_first(self) -> None:
         with TemporaryDirectory() as directory:
