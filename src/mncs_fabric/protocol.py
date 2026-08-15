@@ -41,6 +41,8 @@ MESSAGE_TYPES = {
     "worker.maintenance.result",
     "worker.certify.request",
     "worker.certify.result",
+    "worker.package-artifact.request",
+    "worker.package-artifact.result",
     "worker.management.request",
     "worker.management.result",
     "worker.session.open",
@@ -295,6 +297,32 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if set(value) != required:
             raise ProtocolError("worker certify result fields are invalid")
         validate_certification(value.get("certification"))
+    elif message_type == "worker.package-artifact.request":
+        from .package_artifact import MAX_ARTIFACT_BYTES, MAX_CHUNK_BYTES, validate_package_artifact
+        required = {"artifact_request_identity", "mode"}
+        if not required <= set(value) or not is_sha256_identity(value.get("artifact_request_identity")):
+            raise ProtocolError("package artifact request identity is invalid")
+        if value.get("mode") not in {"offer", "chunk", "commit"}:
+            raise ProtocolError("package artifact mode is invalid")
+        if value["mode"] == "offer":
+            if "artifact" not in value:
+                raise ProtocolError("package artifact offer is missing the descriptor")
+            validate_package_artifact(value["artifact"])
+            if not isinstance(value.get("total_bytes"), int) or not 1 <= value["total_bytes"] <= MAX_ARTIFACT_BYTES:
+                raise ProtocolError("package artifact size is invalid")
+        elif value["mode"] == "chunk":
+            if not isinstance(value.get("sequence"), int) or value["sequence"] < 0 or not isinstance(value.get("data"), str):
+                raise ProtocolError("package artifact chunk is invalid")
+            try:
+                decoded = base64.b64decode(value["data"], validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ProtocolError("package artifact chunk is not canonical base64") from exc
+            if not 0 < len(decoded) <= MAX_CHUNK_BYTES:
+                raise ProtocolError("package artifact chunk exceeds its bound")
+    elif message_type == "worker.package-artifact.result":
+        required = {"disposition", "detail"}
+        if not required <= set(value) or value.get("disposition") not in {"PASS", "FAIL"}:
+            raise ProtocolError("package artifact result is invalid")
     elif message_type == "worker.management.request":
         required = {"management_request_identity", "command", "reason"}
         if set(value) != required or not is_sha256_identity(value.get("management_request_identity")):

@@ -77,12 +77,13 @@ class FleetManagementTests(unittest.TestCase):
             result = controller.dispatch(plan, manifest)
             self.assertEqual(result[0]["disposition"], "UNKNOWN")
             certified = controller.certify_worker("fleet-worker", profiles=["mncs-linux-worker"])
-            if certified["disposition"] == "CERTIFIED":
+            health = certified.get("certification") or certified
+            if health["disposition"] == "CERTIFIED" and not (certified.get("conformance") or {}).get("blocking_failures"):
                 controller.resume_worker("fleet-worker", reason="test resume")
                 self.assertTrue(worker.accepts_work())
             else:
                 with self.assertRaises(Exception):
-                    if certified["disposition"] == "FAILED":
+                    if health["disposition"] == "FAILED":
                         controller.fleet_manager.resume("fleet-worker")
 
     def test_network_controller_uses_same_typed_messages(self) -> None:
@@ -147,5 +148,7 @@ class FleetManagementTests(unittest.TestCase):
             "fleet.inspect",
             "fleet.reconcile",
             "fleet.certify",
+            "worker.artifact.stage",
+            "fleet.rollout",
         ):
             self.assertTrue(advertised[operation], operation)

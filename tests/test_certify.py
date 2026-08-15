@@ -67,3 +67,23 @@ class CertificationTests(unittest.TestCase):
             result = certify_inventory(inventory, profiles=["mncs-inference-worker"])
         self.assertNotIn("granite", result["layers"][8]["detail"].lower())
         self.assertIn("brand-new-model", next(layer["detail"] for layer in result["layers"] if layer["name"] == "inference"))
+
+    def test_probe_uses_requested_model_not_inventory_order(self) -> None:
+        inventory = sample_inventory(models=[
+            {"name": "aaa:1", "digest": None, "size_bytes": 1, "family": None, "parameter_size": None, "quantization": None},
+            {"name": "zzz:1", "digest": None, "size_bytes": 1, "family": None, "parameter_size": None, "quantization": None},
+        ])
+        from mncs_fabric.certify import probe_inference
+
+        with patch("urllib.request.urlopen") as opener:
+            class _Resp:
+                def read(self, _n):
+                    return b'{"response":"pong","done":true}'
+                def __enter__(self):
+                    return self
+                def __exit__(self, *args):
+                    return False
+            opener.return_value = _Resp()
+            probed = probe_inference(inventory, model="zzz:1")
+        self.assertEqual(probed["model"], "zzz:1")
+        self.assertEqual(probed["status"], "PASS")

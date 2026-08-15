@@ -42,6 +42,7 @@ class LocalWorker:
         self._replay_lock = Lock()
         self._dispatch_by_request: dict[str, dict[str, Any]] = {}
         self._result_by_request: dict[str, dict[str, Any]] = {}
+        self._artifact_session: dict[str, Any] | None = None
         for entry in self.ledger.all_records():
             record = entry["record"]
             request = record.get("request_id")
@@ -164,6 +165,12 @@ class LocalWorker:
             certification = certify_inventory(self.inventory(), profiles=list(message["payload"]["profiles"]))
             self.ledger.append("protocol.certification", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "certification": certification})
             return self._response(message, "worker.certify.result", {"certification": certification})
+        if message["message_type"] == "worker.package-artifact.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("package artifact transfer is bound to a different worker")
+            result = self._accept_package_artifact(message["payload"])
+            self.ledger.append("protocol.package-artifact", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "result": result})
+            return self._response(message, "worker.package-artifact.result", result)
         if message["message_type"] == "worker.management.request":
             if message["worker_id"] != self.worker_id:
                 raise ProtocolError("management is bound to a different worker")
@@ -316,6 +323,54 @@ class LocalWorker:
             return self._bundle_response(message, status, None)
         except (ProtocolError, StorageError, OSError, ValueError) as exc:
             return self._bundle_response(message, "FAIL" if isinstance(exc, ProtocolError) else "UNKNOWN", str(exc))
+
+    def _accept_package_artifact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        import base64
+
+        from .package_artifact import (
+            MAX_ARTIFACT_BYTES,
+            staged_artifact_path,
+            validate_package_artifact,
+            verify_package_artifact,
+            write_artifact_descriptor,
+        )
+        from .supervisor import default_stage_dir
+
+        mode = payload["mode"]
+        if mode == "offer":
+            artifact = validate_package_artifact(payload["artifact"])
+            if int(payload["total_bytes"]) != artifact["size_bytes"] or artifact["size_bytes"] > MAX_ARTIFACT_BYTES:
+                raise ProtocolError("package artifact offer size does not match the descriptor")
+            self._artifact_session = {"artifact": artifact, "chunks": {}, "total_bytes": artifact["size_bytes"]}
+            return {"disposition": "PASS", "detail": f"accepted offer {artifact['artifact_identity']}"}
+        if self._artifact_session is None:
+            raise ProtocolError("package artifact chunk/commit has no open offer")
+        if mode == "chunk":
+            data = base64.b64decode(payload["data"], validate=True)
+            self._artifact_session["chunks"][int(payload["sequence"])] = data
+            received = sum(len(item) for item in self._artifact_session["chunks"].values())
+            if received > self._artifact_session["total_bytes"]:
+                raise ProtocolError("package artifact transfer exceeded the offered size")
+            return {"disposition": "PASS", "detail": f"accepted chunk {payload['sequence']}"}
+        ordered = [self._artifact_session["chunks"][index] for index in sorted(self._artifact_session["chunks"])]
+        blob = b"".join(ordered)
+        artifact = self._artifact_session["artifact"]
+        if len(blob) != artifact["size_bytes"]:
+            raise ProtocolError("package artifact commit size does not match the descriptor")
+        stage = default_stage_dir()
+        target = staged_artifact_path(stage, artifact)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(target.suffix + ".part")
+        temporary.write_bytes(blob)
+        try:
+            verify_package_artifact(temporary, artifact)
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        write_artifact_descriptor(stage, artifact)
+        self._artifact_session = None
+        return {"disposition": "PASS", "detail": f"staged {artifact['digest']} as {target}", "staged_path": str(target), "artifact_identity": artifact["artifact_identity"]}
 
     def _schedule_supervisor_restart(self) -> None:
         """Ask the supervisor to restart after the maintenance result is sent."""

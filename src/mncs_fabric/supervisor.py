@@ -22,6 +22,7 @@ from .canonical import attach_identity, verify_identity
 from .errors import ValidationError
 from .inventory import first_line, run_argv
 from .node import utc_now
+from .versioning import FabricVersion, classify_worker_version as _classify, parse_fabric_version as _parse
 
 SUPERVISOR_SCHEMA = "mncs-fabric.worker-supervisor.v0.1"
 SUPERVISOR_KINDS = frozenset({
@@ -42,30 +43,12 @@ def _text(value: object, field: str, maximum: int = 256) -> str:
     return value
 
 
-def parse_fabric_version(value: str | None) -> tuple[int, int, int, str]:
-    if not value:
-        return (0, 0, 0, "")
-    core, _, pre = value.partition("a")
-    parts = core.split(".")
-    try:
-        numbers = [int(item) for item in parts[:3]]
-        pre_number = int(pre) if pre else 10**9
-    except ValueError:
-        return (0, 0, 0, 0)
-    while len(numbers) < 3:
-        numbers.append(0)
-    return (numbers[0], numbers[1], numbers[2], pre_number)
+def parse_fabric_version(value: str | None) -> FabricVersion | None:
+    return _parse(value)
 
 
 def classify_worker_version(version: str | None) -> str:
-    parsed = parse_fabric_version(version)
-    if parsed >= MANAGEMENT_MIN_VERSION:
-        return "current"
-    if parsed >= (0, 2, 0, 6):
-        return "upgradeable"
-    if parsed > (0, 0, 0, ""):
-        return "bootstrap-required"
-    return "unsupported"
+    return _classify(version, minimum=FabricVersion(*MANAGEMENT_MIN_VERSION))
 
 
 def default_stage_dir() -> Path:

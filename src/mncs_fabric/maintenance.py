@@ -357,6 +357,28 @@ def operational_knowledge(inventory: Mapping[str, Any], receipt: Mapping[str, An
                     evidence=[inventory.get("inventory_identity")],
                 )
             )
+    supervisor = None
+    for service in inventory.get("services", []):
+        if service.get("name") == "fabric-worker" and service.get("manager") == "windows-scheduled-task":
+            supervisor = service
+            break
+    if supervisor is not None:
+        records.append(
+            _knowledge(
+                kind="Finding",
+                summary=f"Windows worker {inventory.get('worker_identity')} is supervised by a current-user scheduled task, not a native service.",
+                rationale="schtasks /Run from a non-interactive OpenSSH session is unreliable; AtLogOn and the watch/launcher path are the supported restart mechanisms.",
+                evidence=[inventory.get("inventory_identity")],
+            )
+        )
+        records.append(
+            _knowledge(
+                kind="Decision",
+                summary="Treat Windows OpenSSH job-object restart failure as an expected supervisor limitation, not a worker health failure.",
+                rationale="An authorized DISCONNECT_EXPECTED transaction is the protocol observation; host recovery is the scheduled-task watch.",
+                evidence=[inventory.get("inventory_identity")],
+            )
+        )
     if receipt and receipt.get("disposition") == "FAIL" and receipt.get("failure_class"):
         records.append(
             _knowledge(

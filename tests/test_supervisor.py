@@ -25,8 +25,14 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(classify_worker_version(None), "unsupported")
 
     def test_parse_version_orders_prereleases(self) -> None:
-        self.assertLess(parse_fabric_version("0.2.0a19"), parse_fabric_version("0.2.0a21"))
-        self.assertGreaterEqual(parse_fabric_version("0.2.0a21"), (0, 2, 0, 21))
+        left = parse_fabric_version("0.2.0a19")
+        right = parse_fabric_version("0.2.0a21")
+        self.assertIsNotNone(left)
+        self.assertIsNotNone(right)
+        self.assertLess(left, right)
+        self.assertIsNone(parse_fabric_version("not-a-version"))
+        self.assertIsNone(parse_fabric_version("0.2.0a"))
+        self.assertIsNone(parse_fabric_version("1.2.3.4.5"))
 
     def test_inspect_supervisor_is_identity_bound(self) -> None:
         observed = inspect_supervisor(worker_id="local-test")

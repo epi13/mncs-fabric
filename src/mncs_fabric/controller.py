@@ -97,6 +97,41 @@ class LocalController:
         self.ledger.append("worker.inventory", inventory)
         return inventory
 
+    def transfer_package_artifact(self, worker_id: str, path: Path, *, version: str, source: str = "operator-staged") -> dict[str, Any]:
+        import base64
+
+        from .package_artifact import MAX_CHUNK_BYTES, chunk_bounds, describe_package_artifact
+
+        artifact = describe_package_artifact(Path(path), version=version, source=source)
+        raw = Path(path).read_bytes()
+        chunk_bytes, chunk_count = chunk_bounds(len(raw))
+        transport = self._worker_transport(worker_id)
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
+
+        def _send(payload: dict[str, Any]) -> dict[str, Any]:
+            request = "artifact-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "mode": payload["mode"], "digest": artifact["digest"]})[7:40]
+            scope = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.package-artifact.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request})
+            payload = dict(payload)
+            payload["artifact_request_identity"] = scope
+            envelope = make_envelope("worker.package-artifact.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request, job_id="package-artifact", nonce="artifact-" + scope[7:23], payload=payload, created_at=created, expires_at=expires)
+            response = validate_envelope(transport.request(envelope))
+            if response.get("message_type") != "worker.package-artifact.result":
+                raise ProtocolError("package artifact response identity is invalid")
+            return response["payload"]
+
+        offered = _send({"mode": "offer", "artifact": artifact, "total_bytes": artifact["size_bytes"], "chunk_bytes": chunk_bytes, "chunk_count": chunk_count})
+        if offered.get("disposition") != "PASS":
+            return offered
+        for sequence in range(chunk_count):
+            piece = raw[sequence * MAX_CHUNK_BYTES:(sequence + 1) * MAX_CHUNK_BYTES]
+            chunked = _send({"mode": "chunk", "sequence": sequence, "data": base64.b64encode(piece).decode("ascii")})
+            if chunked.get("disposition") != "PASS":
+                return chunked
+        committed = _send({"mode": "commit"})
+        self.ledger.append("package.artifact.transfer", {"worker_id": worker_id, "artifact": artifact, "result": committed})
+        return {"artifact": artifact, "result": committed}
+
     def inspect_worker(self, worker_id: str) -> dict[str, Any]:
         inventory = self.inventory_via(self._worker_transport(worker_id), worker_id=worker_id)
         self.fleet_manager.desired_for(worker_id, inventory)

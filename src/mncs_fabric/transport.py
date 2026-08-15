@@ -147,6 +147,7 @@ class TLSNetworkTransport:
             "worker.maintenance.request",
             "worker.certify.request",
             "worker.management.request",
+            "worker.package-artifact.request",
         }:
             # Management probes collect host inventory and may run certification.
             # An explicit timeout extends the control bound instead of being

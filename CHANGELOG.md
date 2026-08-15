@@ -2,17 +2,16 @@
 
 ## Unreleased
 
-- close the live fleet-management loop: upgrade the persistent controller
-  and both physical workers to a management-capable Fabric, add a
-  supervisor abstraction (systemd-user plus current-user Windows
-  Scheduled Task), recover QUARANTINED nodes after a later CERTIFIED
-  result, and give management/certify probes a longer transport bound
-  than the 5s describe timeout;
-- classify worker package versions as current / upgradeable /
-  bootstrap-required / unsupported so one-release-behind nodes can be
-  upgraded without a new identity;
-- treat GitHub AUTH_FAILURE and missing git-on-PATH as capability skips
-  rather than hard certification failures.
+- separate health certification from desired-state conformance so a
+  required missing Git (or other blocking profile requirement) can no
+  longer yield CERTIFIED READY;
+- bind Fabric package updates to content-addressed artifacts with digest,
+  size, and version checks, transferred over the existing mTLS protocol;
+- record authorized restart as an explicit update transaction
+  (DISCONNECT_EXPECTED) instead of an unexplained outage;
+- add a bounded canary rollout planner with stop-on-failure;
+- treat GitHub AUTH_FAILURE as health SKIP / conformance AUTH_REQUIRED
+  (advisory) rather than a hard health failure.
 
 ## 0.2.0a21 - desired-state fleet management
 

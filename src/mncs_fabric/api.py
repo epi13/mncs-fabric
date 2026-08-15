@@ -1346,6 +1346,15 @@ class FabricAdminClient:
             arguments["profiles"] = profiles
         return self._request("worker.certify", arguments)
 
+    def stage_artifact(self, worker_id: str, *, source: str, version: str) -> dict[str, Any]:
+        return self._request("worker.artifact.stage", {"worker_id": worker_id, "source": source, "version": version})
+
+    def rollout_fleet(self, *, apply: bool = False, canary_count: int = 1, stop_on_failure: bool = True, update_class: str = "A", force: bool = False, worker_id: str | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"apply": apply, "canary_count": canary_count, "stop_on_failure": stop_on_failure, "update_class": update_class, "force": force}
+        if worker_id:
+            arguments["worker_id"] = worker_id
+        return self._request("fleet.rollout", arguments)
+
     def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
         return self._request("worker.drain", {"worker_id": worker_id, "reason": reason})
 

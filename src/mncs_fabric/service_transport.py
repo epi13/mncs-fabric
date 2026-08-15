@@ -52,7 +52,9 @@ _OPERATIONS = {
     "enrollment.expire", "enrollment.submit", "worker.revoke",
     "worker.inspect", "worker.plan", "worker.reconcile", "worker.certify",
     "worker.drain", "worker.resume", "worker.quarantine",
+    "worker.artifact.stage",
     "fleet.inspect", "fleet.plan", "fleet.reconcile", "fleet.certify",
+    "fleet.rollout",
 }
 _ADMIN_OPERATIONS = {
     "fleet.doctor", "enrollment.create", "enrollment.list",
@@ -60,6 +62,7 @@ _ADMIN_OPERATIONS = {
     "enrollment.deny", "enrollment.expire", "enrollment.submit", "worker.revoke",
     "worker.reconcile", "worker.certify", "worker.drain", "worker.resume",
     "worker.quarantine", "fleet.reconcile", "fleet.certify",
+    "worker.artifact.stage", "fleet.rollout",
 }
 
 

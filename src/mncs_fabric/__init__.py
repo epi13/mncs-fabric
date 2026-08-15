@@ -1,6 +1,6 @@
 """MNCS Fabric: bounded execution and evidence primitives."""
 
-__version__ = "0.2.0a23"
+__version__ = "0.2.0a24"
 
 from .api import ConsumerContext, FabricAdminClient, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
 from .capabilities import CAPABILITY_OBSERVATION_SCHEMA
@@ -25,6 +25,9 @@ from .desired_state import DESIRED_STATE_SCHEMA, PROFILE_SCHEMA
 from .management import MANAGEMENT_STATE_SCHEMA
 from .maintenance import PLAN_SCHEMA, RECEIPT_SCHEMA
 from .certify import CERTIFICATION_SCHEMA
+from .conformance import CONFORMANCE_SCHEMA
+from .package_artifact import PACKAGE_ARTIFACT_SCHEMA
+from .update_lifecycle import UPDATE_TRANSACTION_SCHEMA
 
 __all__ = [
     "CAPABILITY_OBSERVATION_SCHEMA", "ConsumerContext", "FabricClient", "FabricAdminClient",
@@ -42,4 +45,7 @@ __all__ = [
     "INVENTORY_SCHEMA", "DESIRED_STATE_SCHEMA", "PROFILE_SCHEMA",
     "MANAGEMENT_STATE_SCHEMA", "PLAN_SCHEMA", "RECEIPT_SCHEMA",
     "CERTIFICATION_SCHEMA",
+    "CONFORMANCE_SCHEMA",
+    "PACKAGE_ARTIFACT_SCHEMA",
+    "UPDATE_TRANSACTION_SCHEMA",
 ]

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mncs.local/schemas/conformance-result-v0.1.schema.json",
+  "title": "mncs-fabric.conformance-result.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "worker_identity",
+    "inventory_identity",
+    "desired_state_identity",
+    "profiles",
+    "requirements",
+    "blocking_failures",
+    "disposition",
+    "failing_requirement",
+    "created_at",
+    "claim_boundary",
+    "conformance_identity"
+  ]
+}

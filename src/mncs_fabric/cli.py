@@ -353,13 +353,21 @@ def build_parser() -> argparse.ArgumentParser:
     fleet_reconcile = fleet_sub.add_parser("reconcile", help="apply typed desired-state reconciliation")
     fleet_reconcile.add_argument("--apply", action="store_true")
     fleet_certify = fleet_sub.add_parser("certify", help="run capability-aware certification")
+    fleet_rollout = fleet_sub.add_parser("rollout", help="plan or apply a bounded canary rollout")
+    fleet_rollout.add_argument("--apply", action="store_true")
+    fleet_rollout.add_argument("--force", action="store_true")
+    fleet_rollout.add_argument("--canary-count", type=int, default=1)
+    fleet_rollout.add_argument("--stop-on-failure", action="store_true", default=True)
+    fleet_rollout.add_argument("--class", dest="update_class", default="A")
     for fleet_filter in (fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify):
         fleet_filter.add_argument("--json", action="store_true")
         fleet_filter.add_argument("--profile")
         fleet_filter.add_argument("--os", dest="platform")
         fleet_filter.add_argument("--worker", dest="worker_id")
         fleet_filter.add_argument("--class", dest="update_class", action="append", default=[])
-    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor, fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify):
+    fleet_rollout.add_argument("--json", action="store_true")
+    fleet_rollout.add_argument("--worker", dest="worker_id")
+    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor, fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify, fleet_rollout):
         fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
         fleet_command.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
         fleet_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
@@ -389,6 +397,12 @@ def build_parser() -> argparse.ArgumentParser:
     worker_resume = worker_sub.add_parser("resume", help="return a certified worker to READY")
     worker_quarantine = worker_sub.add_parser("quarantine", help="keep a worker out of production")
     worker_quarantine.add_argument("--reason", required=True)
+    worker_artifact = worker_sub.add_parser("artifact-stage", help="transfer a content-addressed Fabric package artifact")
+    worker_artifact.add_argument("worker_id")
+    worker_artifact.add_argument("--source", required=True, type=_path)
+    worker_artifact.add_argument("--version", required=True)
+    worker_artifact.add_argument("--json", action="store_true")
+    worker_artifact.add_argument("--admin-socket", type=_path, required=True)
     for managed in (worker_inspect, worker_plan, worker_reconcile, worker_certify, worker_drain, worker_resume, worker_quarantine):
         managed.add_argument("worker_id", nargs="?", help="registered worker identity; omit with --local")
         managed.add_argument("--local", action="store_true", help="inspect the current process as a worker")
@@ -651,6 +665,12 @@ def main(argv: list[str] | None = None) -> int:
                 result = cache.gc(dry_run=args.dry_run or not args.confirm, confirm=args.confirm)
             write_json(None, result)
             return 0
+        if args.command == "worker" and args.worker_command == "artifact-stage":
+            admin = FabricAdminClient.connect(args.admin_socket, timeout=90.0)
+            result = admin.stage_artifact(args.worker_id, source=str(args.source), version=args.version)
+            admin.close()
+            write_json(None, result)
+            return 0
         if args.command == "worker" and args.worker_command in {"inspect", "plan", "reconcile", "certify", "drain", "resume", "quarantine"}:
             if getattr(args, "local", False) or not args.worker_id:
                 label = args.label or args.worker_id or "local-worker"
@@ -702,9 +722,17 @@ def main(argv: list[str] | None = None) -> int:
             if not args.json and args.worker_command == "plan" and "actions" in result:
                 print(_SERVICE.format_plan(result))
                 return 0
-            if not args.json and args.worker_command == "certify" and "disposition" in result:
-                print(_SERVICE.format_certification(result))
-                return 0 if result["disposition"] == "CERTIFIED" else 1
+            cert = result.get("certification") if isinstance(result.get("certification"), dict) else result
+            if not args.json and args.worker_command == "certify" and isinstance(cert, dict) and "disposition" in cert:
+                print(_SERVICE.format_certification(cert))
+                conformance = result.get("conformance") if isinstance(result, dict) else None
+                if isinstance(conformance, dict):
+                    print("")
+                    print("Conformance", conformance.get("disposition"), conformance.get("blocking_failures") or [])
+                ready = (result.get("management") or {}).get("state") if isinstance(result, dict) else None
+                if ready:
+                    print("Management", ready)
+                return 0 if cert["disposition"] == "CERTIFIED" and not (isinstance(conformance, dict) and conformance.get("blocking_failures")) else 1
             write_json(None, result)
             return 0
         if args.command == "fleet":
@@ -714,7 +742,7 @@ def main(argv: list[str] | None = None) -> int:
                 admin.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
-            if args.admin_socket and args.fleet_command in {"inspect", "plan", "reconcile", "certify"}:
+            if args.admin_socket and args.fleet_command in {"inspect", "plan", "reconcile", "certify", "rollout"}:
                 admin = FabricAdminClient.connect(args.admin_socket)
                 filters = {
                     "profile": getattr(args, "profile", None),
@@ -727,6 +755,15 @@ def main(argv: list[str] | None = None) -> int:
                     result = admin.plan_fleet(**filters)
                 elif args.fleet_command == "reconcile":
                     result = admin.reconcile_fleet(apply=getattr(args, "apply", False), **filters)
+                elif args.fleet_command == "rollout":
+                    result = admin.rollout_fleet(
+                        apply=getattr(args, "apply", False),
+                        force=getattr(args, "force", False),
+                        canary_count=getattr(args, "canary_count", 1),
+                        stop_on_failure=getattr(args, "stop_on_failure", True),
+                        update_class=getattr(args, "update_class", "A") or "A",
+                        worker_id=getattr(args, "worker_id", None),
+                    )
                 else:
                     result = admin.certify_fleet(**filters)
                 admin.close()

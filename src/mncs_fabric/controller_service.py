@@ -1312,6 +1312,31 @@ class ControllerService:
                 payload = self._fleet_worker_op("resume_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator resume")))
             elif operation == "worker.quarantine":
                 payload = self._fleet_worker_op("quarantine_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator quarantine")))
+            elif operation == "worker.artifact.stage":
+                payload = self._fleet_backend().transfer_package_artifact(
+                    str(args.get("worker_id", "")),
+                    Path(str(args.get("source", ""))),
+                    version=str(args.get("version", "")),
+                    source=str(args.get("provenance", "controller-staged")),
+                )
+            elif operation == "fleet.rollout":
+                from .rollout import build_rollout_plan, execute_rollout
+
+                workers, _registry = self._worker_backend_status(refresh=False)
+                ids = [str(item.get("worker_id")) for item in workers if item.get("worker_id")]
+                if args.get("worker_id"):
+                    ids = [str(args["worker_id"])]
+                plan = build_rollout_plan(
+                    worker_ids=ids,
+                    canary_count=int(args.get("canary_count", 1)),
+                    stop_on_failure=bool(args.get("stop_on_failure", True)),
+                    update_class=str(args.get("update_class", "A")),
+                )
+                if not args.get("apply"):
+                    payload = plan
+                else:
+                    backend = self._fleet_backend()
+                    payload = execute_rollout(plan, lambda worker_id: backend.reconcile_worker(worker_id, apply=True, classes=[str(args.get("update_class", "A"))], force=bool(args.get("force", False))), apply=True)
             elif operation == "fleet.inspect":
                 payload = self._fleet_collection_op("inspect_worker", args)
             elif operation == "fleet.plan":
