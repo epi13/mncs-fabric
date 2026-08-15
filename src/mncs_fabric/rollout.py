@@ -184,17 +184,39 @@ def execute_rollout(
     reconcile: Callable[[str], Mapping[str, Any]],
     *,
     apply: bool = False,
+    persist: Callable[[Mapping[str, Any]], None] | None = None,
+    artifact_identity: str | None = None,
 ) -> dict[str, Any]:
     checked = validate_rollout(plan)
     if not apply:
         return checked
+    prior = {item["worker_id"]: item for item in checked.get("results") or [] if isinstance(item, dict) and item.get("worker_id")}
     results: list[dict[str, Any]] = []
     state = "IN_PROGRESS"
     canary_status = "CANARY_PENDING"
+
+    def _persist(payload: Mapping[str, Any]) -> None:
+        if persist is None:
+            return
+        record = dict(payload)
+        if artifact_identity:
+            record["artifact_identity"] = artifact_identity
+        persist(record)
+
     for worker_id in list(checked["canaries"]):
+        prior_item = prior.get(worker_id)
+        if prior_item and prior_item.get("succeeded"):
+            results.append(dict(prior_item))
+            canary_status = "CANARY_SUCCEEDED"
+            continue
         outcome = dict(reconcile(worker_id))
         recorded = _record_outcome(worker_id, outcome, role="canary")
+        if artifact_identity:
+            recorded["artifact_identity"] = artifact_identity
         results.append(recorded)
+        snapshot = {**checked, "state": "IN_PROGRESS", "canary_status": canary_status, "results": list(results)}
+        snapshot.pop("rollout_identity", None)
+        _persist(attach_identity(snapshot, "rollout_identity"))
         if recorded["succeeded"]:
             canary_status = "CANARY_SUCCEEDED"
             continue
@@ -224,9 +246,18 @@ def execute_rollout(
             else:
                 canary_status = "ROLLOUT_CONTINUING"
             for worker_id in list(checked["remainder"]):
+                prior_item = prior.get(worker_id)
+                if prior_item and prior_item.get("succeeded"):
+                    results.append(dict(prior_item))
+                    continue
                 outcome = dict(reconcile(worker_id))
                 recorded = _record_outcome(worker_id, outcome, role="remainder")
+                if artifact_identity:
+                    recorded["artifact_identity"] = artifact_identity
                 results.append(recorded)
+                snapshot = {**checked, "state": "IN_PROGRESS", "canary_status": canary_status, "results": list(results)}
+                snapshot.pop("rollout_identity", None)
+                _persist(attach_identity(snapshot, "rollout_identity"))
                 if recorded["failed"] and checked["stop_on_failure"]:
                     state = "STOPPED"
                     canary_status = "ROLLOUT_STOPPED"
@@ -244,4 +275,6 @@ def execute_rollout(
     payload["canary_status"] = canary_status
     payload["results"] = results
     del payload["rollout_identity"]
-    return attach_identity(payload, "rollout_identity")
+    finished = attach_identity(payload, "rollout_identity")
+    _persist(finished)
+    return finished

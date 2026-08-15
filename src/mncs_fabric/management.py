@@ -28,7 +28,7 @@ MANAGEMENT_STATES = frozenset({
 SCHEDULABLE_STATES = frozenset({"READY", "BUSY"})
 CERTIFICATION_STATUSES = frozenset({"CERTIFIED", "FAILED", "UNKNOWN", "NOT_RUN"})
 _TRANSITIONS = {
-    "READY": frozenset({"BUSY", "DRAINING", "MAINTENANCE", "QUARANTINED", "DEGRADED"}),
+    "READY": frozenset({"BUSY", "DRAINING", "MAINTENANCE", "VERIFYING", "QUARANTINED", "DEGRADED"}),
     "BUSY": frozenset({"READY", "DRAINING", "QUARANTINED"}),
     "DRAINING": frozenset({"MAINTENANCE", "READY", "QUARANTINED", "DEGRADED"}),
     "MAINTENANCE": frozenset({"VERIFYING", "DEGRADED", "QUARANTINED", "READY"}),
@@ -215,4 +215,12 @@ class ManagementStore:
             record = entry["record"]
             if record.get(identity_field) == worker_id:
                 latest = record
+        return dict(latest) if latest is not None else None
+
+    def latest_unscoped(self, record_type: str) -> dict[str, Any] | None:
+        latest = None
+        for entry in self.ledger.all_records():
+            if entry["record_type"] != record_type:
+                continue
+            latest = entry["record"]
         return dict(latest) if latest is not None else None

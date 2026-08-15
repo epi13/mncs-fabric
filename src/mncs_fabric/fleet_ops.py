@@ -10,7 +10,12 @@ from __future__ import annotations
 from typing import Any, Callable, Iterable, Mapping
 
 from . import __version__
-from .certify import certify_inventory, format_certification, validate_certification
+from .certify import (
+    certify_inventory,
+    format_certification,
+    normalize_certification_evidence,
+    validate_certification,
+)
 from .conformance import UNRESOLVED_UPDATE_STATES, evaluate_conformance, evaluate_ready, validate_conformance
 from .desired_state import default_profiles_for_platform, resolve_desired_state, validate_desired_state
 from .update_lifecycle import (
@@ -20,6 +25,7 @@ from .update_lifecycle import (
     reconnect_deadline,
     transition_update_transaction,
     validate_update_transaction,
+    version_matches_expected,
 )
 from .versioning import parse_fabric_version
 from .errors import ProtocolError, ValidationError
@@ -176,7 +182,22 @@ class FleetManager:
             return desired
         existing = self.store.desired_state(worker_id)
         if existing is not None:
-            return validate_desired_state(existing, expected_worker_id=worker_id)
+            checked = validate_desired_state(existing, expected_worker_id=worker_id)
+            supported = dict(checked.get("supported_current") or {})
+            observed = str((inventory.get("fabric") or {}).get("worker_version") or "")
+            if (
+                __version__
+                and supported.get("fabric-worker") != __version__
+                and observed == __version__
+            ):
+                refreshed = default_desired_state(
+                    worker_id,
+                    inventory,
+                    profiles=list(checked.get("profiles") or []) or profiles,
+                )
+                self.assign(refreshed)
+                return refreshed
+            return checked
         desired = default_desired_state(worker_id, inventory)
         self.assign(desired)
         return desired
@@ -343,10 +364,40 @@ class FleetManager:
                 "restart_required": True,
             }
         self.store.set_state(worker_id, state="VERIFYING", reason="maintenance applied", last_receipt_identity=receipt["receipt_identity"])
-        certification = (certify or (lambda _: certify_inventory(inventory)))(inventory)
-        validate_certification(certification, expected_worker_id=worker_id)
-        desired = self.desired_for(worker_id, inventory, profiles=profiles)
-        conformance = evaluate_conformance(desired, inventory)
+        raw_evidence = (certify or (lambda current: {"certification": certify_inventory(current), "certified_inventory": current}))(inventory)
+        try:
+            evidence = normalize_certification_evidence(raw_evidence, fallback_inventory=inventory, expected_worker_id=worker_id)
+        except ValidationError as exc:
+            receipt = complete_receipt(
+                plan,
+                inventory,
+                applied,
+                mode="apply",
+                disposition="FAIL",
+                failure_class="VALIDATION_FAILURE",
+            )
+            self.store.record("management.receipt", receipt)
+            self.store.set_state(
+                worker_id,
+                state="VERIFYING",
+                reason=f"certification evidence is not bound to one inventory: {exc}",
+                last_receipt_identity=receipt["receipt_identity"],
+            )
+            return {
+                "plan": plan,
+                "receipt": receipt,
+                "certification": None,
+                "certified_inventory": None,
+                "conformance": None,
+                "knowledge": operational_knowledge(inventory, receipt, transaction=transaction),
+                "management": self.store.state(worker_id),
+                "update_transaction": transaction,
+                "summary": format_plan(plan),
+            }
+        certification = evidence["certification"]
+        certified_inventory = evidence["certified_inventory"]
+        desired = self.desired_for(worker_id, certified_inventory, profiles=profiles)
+        conformance = evaluate_conformance(desired, certified_inventory)
         validate_conformance(conformance, expected_worker_id=worker_id)
         self.store.record("management.certification", certification)
         self.store.record("management.conformance", conformance)
@@ -354,7 +405,7 @@ class FleetManager:
             worker_id,
             certification=certification,
             conformance=conformance,
-            inventory=inventory,
+            inventory=certified_inventory,
             desired=desired,
         )
         receipt = bind_certification(receipt, certification["certification_identity"], final_state=decision["state"])
@@ -363,7 +414,7 @@ class FleetManager:
             state=decision["state"],
             reason=decision["reason"],
             certification_status=decision["certification_status"],
-            last_inventory_identity=validate_worker_inventory(inventory, expected_worker_id=worker_id)["inventory_identity"],
+            last_inventory_identity=certified_inventory["inventory_identity"],
             last_certification_identity=certification["certification_identity"],
             last_receipt_identity=receipt["receipt_identity"],
         )
@@ -372,8 +423,9 @@ class FleetManager:
             "plan": plan,
             "receipt": receipt,
             "certification": certification,
+            "certified_inventory": certified_inventory,
             "conformance": conformance,
-            "knowledge": operational_knowledge(inventory, receipt, transaction=transaction),
+            "knowledge": operational_knowledge(certified_inventory, receipt, transaction=transaction),
             "management": self.store.state(worker_id),
             "update_transaction": transaction,
             "summary": format_plan(plan) + "\n\n" + format_certification(certification),
@@ -389,9 +441,15 @@ class FleetManager:
     ) -> dict[str, Any]:
         checked = validate_worker_inventory(inventory, expected_worker_id=worker_id)
         desired = self.desired_for(worker_id, checked, profiles=profiles)
-        result = dict(certification) if certification is not None else certify_inventory(checked, profiles=list(desired["profiles"]))
-        validate_certification(result, expected_worker_id=worker_id)
-        conformance = evaluate_conformance(desired, checked)
+        raw = {"certification": certification, "certified_inventory": checked} if certification is not None else {
+            "certification": certify_inventory(checked, profiles=list(desired["profiles"])),
+            "certified_inventory": checked,
+        }
+        evidence = normalize_certification_evidence(raw, fallback_inventory=checked, expected_worker_id=worker_id)
+        result = evidence["certification"]
+        certified_inventory = evidence["certified_inventory"]
+        desired = self.desired_for(worker_id, certified_inventory, profiles=profiles)
+        conformance = evaluate_conformance(desired, certified_inventory)
         validate_conformance(conformance, expected_worker_id=worker_id)
         self.store.record("management.certification", result)
         self.store.record("management.conformance", conformance)
@@ -400,7 +458,7 @@ class FleetManager:
             worker_id,
             certification=result,
             conformance=conformance,
-            inventory=checked,
+            inventory=certified_inventory,
             desired=desired,
             completing_update=bool(open_txn and open_txn.get("state") == "CERTIFYING"),
         )
@@ -412,10 +470,15 @@ class FleetManager:
             state=decision["state"],
             reason=decision["reason"],
             certification_status=decision["certification_status"],
-            last_inventory_identity=checked["inventory_identity"],
+            last_inventory_identity=certified_inventory["inventory_identity"],
             last_certification_identity=result["certification_identity"],
         )
-        return {"certification": result, "conformance": conformance, "management": self.store.state(worker_id)}
+        return {
+            "certification": result,
+            "certified_inventory": certified_inventory,
+            "conformance": conformance,
+            "management": self.store.state(worker_id),
+        }
 
     def _expected_version(self, actions: Iterable[Mapping[str, Any]], inventory: Mapping[str, Any]) -> str:
         for item in reversed(list(actions)):
@@ -482,6 +545,7 @@ class FleetManager:
         seen_disconnect: bool,
         inventory: Mapping[str, Any] | None = None,
         now: str | None = None,
+        recovery: bool = False,
     ) -> dict[str, Any]:
         transaction = self.store.latest("management.update-transaction", worker_id)
         if transaction is None:
@@ -496,6 +560,7 @@ class FleetManager:
             observed_worker_id=observed_id,
             observed_version=str(observed_version) if observed_version else None,
             now=now,
+            recovery=recovery,
         )
         if result["next_state"] != transaction["state"]:
             transaction = self._advance_update(
@@ -605,15 +670,18 @@ class FleetManager:
         certified = self.certify(worker_id, inventory, profiles=profiles, certification=certification)
         if transaction is not None and transaction["state"] == "CERTIFYING":
             decision = certified["management"]
-            if decision["state"] == "READY":
+            observed = (inventory.get("fabric") or {}).get("worker_version")
+            version_ok = version_matches_expected(str(observed) if observed else None, transaction.get("expected_version") or "")
+            health = (certified.get("certification") or {}).get("disposition")
+            if decision["state"] == "READY" or (version_ok and health == "CERTIFIED" and decision["state"] != "QUARANTINED"):
                 rolled_back = transaction.get("expected_version") == transaction.get("previous_version")
                 transaction = self._advance_update(
                     transaction,
                     "ROLLED_BACK" if rolled_back and transaction.get("previous_version") else "READY",
-                    "update transaction completed after certification and conformance",
-                    observed_version=(inventory.get("fabric") or {}).get("worker_version"),
+                    "update transaction completed after version verification and health certification",
+                    observed_version=observed,
                 )
-                if transaction["state"] == "ROLLED_BACK":
+                if transaction["state"] == "ROLLED_BACK" and decision["state"] == "READY":
                     self.store.set_state(
                         worker_id,
                         state="READY",
@@ -621,21 +689,24 @@ class FleetManager:
                         certification_status="CERTIFIED",
                     )
                     certified["management"] = self.store.state(worker_id)
-            elif decision["state"] == "QUARANTINED":
+            elif decision["state"] == "QUARANTINED" or health == "FAILED":
                 transaction = self._fail_update(transaction, decision.get("reason") or "certification failed", quarantined=True)
+            elif not version_ok:
+                transaction = self._advance_update(transaction, "ROLLBACK_APPLYING", decision.get("reason") or "observed version does not match the update transaction")
             else:
-                transaction = self._advance_update(transaction, "ROLLBACK_APPLYING", decision.get("reason") or "certification did not reach READY")
+                transaction = self._fail_update(transaction, decision.get("reason") or "update completion is uncertain")
         certified["update_transaction"] = transaction
         certified["observation"] = verified.get("observation")
         return certified
 
-    def recover_unresolved_updates(self) -> dict[str, Any]:
-        """Resume ledger-backed update observation after controller restart.
+    MUTATION_RECOVERY_STATES = frozenset({
+        "UPDATE_APPLYING",
+        "UPDATE_APPLIED",
+        "ROLLBACK_APPLYING",
+    })
 
-        Does not re-apply packages. Unresolved reconnect/verify/certify
-        transactions are marked for observation resume; apply-phase
-        transactions require an operator decision.
-        """
+    def classify_unresolved_updates(self) -> dict[str, Any]:
+        """Classify ledger-backed update transactions after controller restart."""
 
         recovered: list[dict[str, Any]] = []
         for worker_id in self.store.worker_ids():
@@ -645,8 +716,10 @@ class FleetManager:
             state = transaction["state"]
             if state in {"DISCONNECT_EXPECTED", "RECONNECTING", "VERSION_VERIFYING", "CERTIFYING"}:
                 action = "resume_observation"
-            elif state in {"UPDATE_PLANNED", "DRAINING", "UPDATE_APPLYING", "UPDATE_APPLIED", "RESTART_PENDING", "ROLLBACK_APPLYING"}:
-                action = "require_operator"
+            elif state == "RESTART_PENDING":
+                action = "resume_observation"
+            elif state in self.MUTATION_RECOVERY_STATES:
+                action = "fail_closed"
             else:
                 action = "require_operator"
             recovered.append(
@@ -655,11 +728,197 @@ class FleetManager:
                     "state": state,
                     "action": action,
                     "transaction_identity": transaction.get("transaction_identity"),
+                    "artifact_identity": transaction.get("artifact_identity"),
+                    "previous_artifact_identity": transaction.get("previous_artifact_identity"),
                     "expected_version": transaction.get("expected_version"),
                     "deadline": transaction.get("deadline"),
+                    "uncertainty": (
+                        "mutation_phase_after_controller_restart"
+                        if action == "fail_closed"
+                        else "disconnect_not_observed" if action == "resume_observation" else None
+                    ),
                 }
             )
         return {
             "unresolved": recovered,
             "claim_boundary": "ledger recovery of update transactions; not a second apply and not proof the worker restarted",
         }
+
+    def recover_unresolved_updates(
+        self,
+        *,
+        resume: Callable[[str, Mapping[str, Any]], Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Classify, and optionally resume, unresolved update transactions.
+
+        Does not re-apply packages. Mutation-phase transactions stay
+        fail-closed until explicit operator recovery.
+        """
+
+        classified = self.classify_unresolved_updates()
+        if resume is None:
+            return classified
+        resumed: list[dict[str, Any]] = []
+        for item in classified["unresolved"]:
+            if item["action"] != "resume_observation":
+                resumed.append({**item, "executed": False})
+                continue
+            outcome = dict(resume(str(item["worker_id"]), item))
+            outcome.setdefault("worker_id", item["worker_id"])
+            outcome.setdefault("transaction_identity", item["transaction_identity"])
+            outcome["executed"] = True
+            resumed.append(outcome)
+        return {
+            **classified,
+            "resumed": resumed,
+            "claim_boundary": classified["claim_boundary"],
+        }
+
+    def resume_update_after_restart(
+        self,
+        worker_id: str,
+        *,
+        connected: bool,
+        inventory: Mapping[str, Any] | None,
+        certify: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+        now: str | None = None,
+    ) -> dict[str, Any]:
+        """Resume observation/certify after controller reconstruction.
+
+        Never re-runs package apply. Does not fabricate a disconnect.
+        """
+
+        transaction = self.store.latest("management.update-transaction", worker_id)
+        if transaction is None:
+            return {
+                "worker_id": worker_id,
+                "action": "none",
+                "state": None,
+                "update_transaction": None,
+                "management": self.store.ensure(worker_id),
+            }
+        state = transaction["state"]
+        if state in self.MUTATION_RECOVERY_STATES:
+            observed = None if inventory is None else (inventory.get("fabric") or {}).get("worker_version")
+            if (
+                state == "ROLLBACK_APPLYING"
+                and inventory is not None
+                and version_matches_expected(str(observed) if observed else None, transaction.get("expected_version") or "")
+            ):
+                transaction = self._advance_update(
+                    transaction,
+                    "CERTIFYING",
+                    "rollback cancelled after controller reconstruction; worker already runs the expected version",
+                    observed_version=str(observed) if observed else None,
+                )
+                completed = self.complete_update(worker_id, inventory)
+                return {
+                    "worker_id": worker_id,
+                    "action": "resumed",
+                    "state": (completed.get("update_transaction") or {}).get("state") or transaction["state"],
+                    "uncertainty": "rollback_not_executed",
+                    "reason": "expected version is already running; rollback was not applied",
+                    "update_transaction": completed.get("update_transaction"),
+                    "certification": completed.get("certification"),
+                    "conformance": completed.get("conformance"),
+                    "management": completed.get("management"),
+                }
+            return {
+                "worker_id": worker_id,
+                "action": "fail_closed",
+                "state": state,
+                "uncertainty": "mutation_phase_after_controller_restart",
+                "reason": f"update transaction is in {state}; automatic resume would risk a second apply",
+                "update_transaction": transaction,
+                "management": self.store.ensure(worker_id),
+            }
+        if state not in {"RESTART_PENDING", "DISCONNECT_EXPECTED", "RECONNECTING", "VERSION_VERIFYING", "CERTIFYING"}:
+            return {
+                "worker_id": worker_id,
+                "action": "require_operator",
+                "state": state,
+                "update_transaction": transaction,
+                "management": self.store.ensure(worker_id),
+            }
+        if state == "RESTART_PENDING" and not connected:
+            transaction = self._advance_update(
+                transaction,
+                "DISCONNECT_EXPECTED",
+                "controller reconstructed; worker is not present after restart-pending",
+            )
+        observed = self.observe_update(
+            worker_id,
+            connected=connected,
+            seen_disconnect=False,
+            inventory=inventory,
+            now=now,
+            recovery=True,
+        )
+        transaction = observed.get("update_transaction") or transaction
+        if transaction["state"] == "VERSION_VERIFYING" and inventory is not None:
+            observed = self.observe_update(
+                worker_id,
+                connected=True,
+                seen_disconnect=False,
+                inventory=inventory,
+                now=now,
+                recovery=True,
+            )
+            transaction = observed.get("update_transaction") or transaction
+        if transaction["state"] == "CERTIFYING" and inventory is not None:
+            certification = None
+            if certify is not None:
+                raw = certify(inventory)
+                evidence = normalize_certification_evidence(
+                    raw,
+                    fallback_inventory=inventory,
+                    expected_worker_id=worker_id,
+                )
+                certification = evidence["certification"]
+                inventory = evidence["certified_inventory"]
+            completed = self.complete_update(worker_id, inventory, certification=certification)
+            return {
+                "worker_id": worker_id,
+                "action": "resumed",
+                "state": (completed.get("update_transaction") or {}).get("state") or transaction["state"],
+                "observation": completed.get("observation") or observed.get("observation"),
+                "update_transaction": completed.get("update_transaction"),
+                "certification": completed.get("certification"),
+                "certified_inventory": completed.get("certified_inventory"),
+                "conformance": completed.get("conformance"),
+                "management": completed.get("management"),
+            }
+        return {
+            "worker_id": worker_id,
+            "action": "resumed" if transaction["state"] != state else "resume_observation",
+            "state": transaction["state"],
+            "observation": observed.get("observation"),
+            "update_transaction": transaction,
+            "management": observed.get("management"),
+        }
+
+    def live_artifact_references(self) -> set[str]:
+        """Identities still referenced by current deployments or open work."""
+
+        refs: set[str] = set()
+        for worker_id in self.store.worker_ids():
+            transaction = self.store.latest("management.update-transaction", worker_id)
+            if transaction is None:
+                continue
+            for key in ("artifact_identity", "previous_artifact_identity"):
+                value = transaction.get(key)
+                if isinstance(value, str) and value.startswith("sha256:"):
+                    refs.add(value)
+        rollout = self.store.latest_unscoped("management.rollout")
+        if rollout:
+            identity = rollout.get("artifact_identity")
+            if isinstance(identity, str) and identity.startswith("sha256:"):
+                refs.add(identity)
+            for item in rollout.get("results") or []:
+                if not isinstance(item, dict):
+                    continue
+                for key in ("artifact_identity", "previous_artifact_identity"):
+                    value = item.get(key)
+                    if isinstance(value, str) and value.startswith("sha256:"):
+                        refs.add(value)
+        return refs

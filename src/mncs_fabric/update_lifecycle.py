@@ -38,11 +38,11 @@ _TRANSITIONS = {
     "UPDATE_APPLYING": {"UPDATE_APPLIED", "FAILED", "QUARANTINED"},
     "UPDATE_APPLIED": {"RESTART_PENDING", "FAILED"},
     "RESTART_PENDING": {"DISCONNECT_EXPECTED", "FAILED"},
-    "DISCONNECT_EXPECTED": {"RECONNECTING", "FAILED", "QUARANTINED"},
+    "DISCONNECT_EXPECTED": {"RECONNECTING", "VERSION_VERIFYING", "FAILED", "QUARANTINED"},
     "RECONNECTING": {"VERSION_VERIFYING", "FAILED", "QUARANTINED"},
     "VERSION_VERIFYING": {"CERTIFYING", "ROLLBACK_APPLYING", "ROLLED_BACK", "FAILED", "QUARANTINED"},
     "CERTIFYING": {"READY", "ROLLBACK_APPLYING", "ROLLED_BACK", "FAILED", "QUARANTINED"},
-    "ROLLBACK_APPLYING": {"RESTART_PENDING", "FAILED", "QUARANTINED"},
+    "ROLLBACK_APPLYING": {"RESTART_PENDING", "CERTIFYING", "FAILED", "QUARANTINED"},
     "READY": set(),
     "ROLLED_BACK": {"READY", "QUARANTINED"},
     "FAILED": {"QUARANTINED", "UPDATE_PLANNED"},
@@ -199,8 +199,14 @@ def observe_reconnect(
     observed_version: str | None = None,
     observed_artifact_identity: str | None = None,
     now: str | None = None,
+    recovery: bool = False,
 ) -> dict[str, Any]:
-    """Classify reconnect evidence without sleeping or mutating ledgers."""
+    """Classify reconnect evidence without sleeping or mutating ledgers.
+
+    ``recovery=True`` is for controller restart. It does not fabricate a
+    disconnect. If the enrolled worker is already present at the expected
+    version, observation resumes at version verification.
+    """
 
     checked = validate_update_transaction(transaction)
     expired = deadline_expired(checked, now=now)
@@ -208,7 +214,16 @@ def observe_reconnect(
     observation = "AWAITING_DISCONNECT"
     next_state = state
     reason = "no reconnect observation yet"
-    if state == "DISCONNECT_EXPECTED":
+    present_at_expected = bool(
+        connected
+        and observed_worker_id in {None, checked["worker_identity"]}
+        and version_matches_expected(observed_version, checked["expected_version"])
+    )
+    if recovery and state in {"DISCONNECT_EXPECTED", "RECONNECTING"} and present_at_expected:
+        observation = "RECONNECTED"
+        next_state = "VERSION_VERIFYING"
+        reason = "controller reconstructed; worker is present at the expected version"
+    elif state == "DISCONNECT_EXPECTED":
         if expired and connected and not seen_disconnect:
             observation = "STILL_CONNECTED"
             next_state = "FAILED"
@@ -290,6 +305,7 @@ def observe_reconnect(
         "expected_worker_id": checked["worker_identity"],
         "same_identity": observed_worker_id in {None, checked["worker_identity"]},
         "version_matched": version_matches_expected(observed_version, checked["expected_version"]),
+        "recovery": bool(recovery),
     }
 
 

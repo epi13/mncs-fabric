@@ -165,6 +165,49 @@ class UpdateLifecycleTests(unittest.TestCase):
         self.assertEqual(calls, ["a", "b"])
         self.assertEqual(completed["state"], "COMPLETED")
 
+        replayed = []
+
+        def should_not_rerun(worker_id: str):
+            replayed.append(worker_id)
+            raise AssertionError("successful canary must not be mutated again after controller restart")
+
+        recovered = execute_rollout(completed, should_not_rerun, apply=True)
+        self.assertEqual(replayed, [])
+        self.assertEqual(recovered["state"], "COMPLETED")
+
+        persisted: list[dict] = []
+        mid = execute_rollout(
+            validate_rollout(build_rollout_plan(worker_ids=["a", "b"], canary_count=1, stop_on_failure=True)),
+            ready,
+            apply=True,
+            persist=persisted.append,
+        )
+        self.assertTrue(persisted)
+        self.assertEqual(mid["state"], "COMPLETED")
+        after_canary = dict(persisted[0])
+        after_canary["remainder"] = ["b"]
+        after_canary["results"] = [item for item in after_canary["results"] if item["worker_id"] == "a"]
+        del after_canary["rollout_identity"]
+        from mncs_fabric.canonical import attach_identity
+
+        partial = attach_identity(after_canary, "rollout_identity")
+        continued_calls: list[str] = []
+
+        def remainder_only(worker_id: str):
+            continued_calls.append(worker_id)
+            return {
+                "restart_required": False,
+                "management": {"state": "READY"},
+                "certification": {"disposition": "CERTIFIED"},
+                "conformance": {"blocking_failures": []},
+                "update_transaction": {"state": "READY"},
+                "receipt": {"disposition": "PASS"},
+            }
+
+        continued = execute_rollout(partial, remainder_only, apply=True)
+        self.assertEqual(continued_calls, ["b"])
+        self.assertEqual(continued["state"], "COMPLETED")
+
     def test_failed_health_and_wrong_version_stop_rollout(self) -> None:
         plan = validate_rollout(build_rollout_plan(worker_ids=["a", "b"], canary_count=1, stop_on_failure=True))
         calls: list[str] = []
@@ -232,3 +275,128 @@ class UpdateLifecycleTests(unittest.TestCase):
             self.assertEqual(len(recovered["unresolved"]), 1)
             self.assertEqual(recovered["unresolved"][0]["action"], "resume_observation")
             self.assertEqual(recovered["unresolved"][0]["state"], "DISCONNECT_EXPECTED")
+
+    def test_matching_version_does_not_rollback_on_scheduler_degraded(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from mncs_fabric.certify import certify_inventory
+        from tests.test_inventory import sample_inventory
+
+        inventory = sample_inventory(harness="0.1.0")
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            txn = build_update_transaction(
+                worker_id="worker-a",
+                state="CERTIFYING",
+                expected_version="0.2.0a21",
+                previous_version="0.2.0a20",
+                artifact_identity=None,
+                previous_artifact_identity=None,
+                deadline=reconnect_deadline(seconds=30),
+                reason="certify after reconnect",
+            )
+            manager.store.record("management.update-transaction", txn)
+            completed = manager.complete_update(
+                "worker-a",
+                inventory,
+                certification=certify_inventory(inventory, profiles=["mncs-linux-worker"]),
+            )
+            self.assertEqual(completed["update_transaction"]["state"], "READY")
+            self.assertNotEqual(completed["update_transaction"]["state"], "ROLLBACK_APPLYING")
+
+    def test_controller_restart_resumes_observation_without_reapplying(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from tests.test_inventory import sample_inventory
+
+        inventory = sample_inventory(harness="0.1.0")
+        inventory = dict(inventory)
+        applies = []
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            txn = build_update_transaction(
+                worker_id="worker-a",
+                state="DISCONNECT_EXPECTED",
+                expected_version="0.2.0a21",
+                previous_version="0.2.0a20",
+                artifact_identity="sha256:" + "a" * 64,
+                previous_artifact_identity="sha256:" + "b" * 64,
+                deadline=reconnect_deadline(seconds=30),
+                reason="authorized restart",
+            )
+            manager.store.record("management.update-transaction", txn)
+            resumed = manager.resume_update_after_restart(
+                "worker-a",
+                connected=True,
+                inventory=inventory,
+            )
+            self.assertEqual(resumed["action"], "resumed")
+            self.assertNotIn(resumed["state"], {"UPDATE_APPLYING", "UPDATE_APPLIED"})
+            self.assertEqual(applies, [])
+            again = manager.resume_update_after_restart(
+                "worker-a",
+                connected=True,
+                inventory=inventory,
+            )
+            self.assertEqual(again["update_transaction"]["worker_identity"], "worker-a")
+            self.assertEqual(again["update_transaction"]["expected_version"], "0.2.0a21")
+            self.assertEqual(again["update_transaction"]["artifact_identity"], "sha256:" + "a" * 64)
+
+    def test_mutation_phase_recovery_is_fail_closed_and_does_not_apply(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            for state in ("UPDATE_APPLYING", "UPDATE_APPLIED", "ROLLBACK_APPLYING"):
+                txn = build_update_transaction(
+                    worker_id="worker-a",
+                    state=state,
+                    expected_version="0.2.0a21",
+                    previous_version="0.2.0a20",
+                    artifact_identity="sha256:" + "a" * 64,
+                    previous_artifact_identity=None,
+                    deadline=reconnect_deadline(seconds=30),
+                    reason="mid-mutation",
+                )
+                manager.store.record("management.update-transaction", txn)
+                recovered = manager.resume_update_after_restart("worker-a", connected=True, inventory=None)
+                self.assertEqual(recovered["action"], "fail_closed")
+                self.assertEqual(recovered["state"], state)
+                self.assertEqual(manager.store.latest("management.update-transaction", "worker-a")["state"], state)
+
+    def test_recovery_walks_each_observation_boundary_once(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        from tests.test_inventory import sample_inventory
+
+        inventory = sample_inventory(harness="0.1.0")
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            for state in ("DISCONNECT_EXPECTED", "RECONNECTING", "VERSION_VERIFYING", "CERTIFYING"):
+                txn = build_update_transaction(
+                    worker_id="worker-a",
+                    state=state,
+                    expected_version="0.2.0a21",
+                    previous_version="0.2.0a20",
+                    artifact_identity=None,
+                    previous_artifact_identity=None,
+                    deadline=reconnect_deadline(seconds=30),
+                    reason="boundary",
+                )
+                manager.store.record("management.update-transaction", txn)
+                resumed = manager.resume_update_after_restart(
+                    "worker-a",
+                    connected=True,
+                    inventory=inventory,
+                )
+                self.assertNotEqual(resumed["state"], "UPDATE_APPLYING")
+                if state == "CERTIFYING":
+                    self.assertIn(
+                        resumed["state"],
+                        {"READY", "CERTIFYING", "ROLLBACK_APPLYING", "FAILED", "DEGRADED", "VERIFYING", "QUARANTINED"},
+                    )

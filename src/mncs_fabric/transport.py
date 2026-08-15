@@ -236,12 +236,14 @@ class TLSWorkerServer:
         self.context.load_cert_chain(certfile=str(server_cert), keyfile=str(server_key))
         self._listener: socket.socket | None = None
         self._stop_event = threading.Event()
+        self.ready = threading.Event()
         self._threads: set[threading.Thread] = set()
         self._threads_lock = threading.Lock()
         self.handled_requests = 0
 
     def bind(self) -> int:
         if self._listener is not None:
+            self.ready.set()
             return self._listener.getsockname()[1]
         listener = socket.socket(socket.AF_INET6 if ":" in self.host else socket.AF_INET, socket.SOCK_STREAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -250,6 +252,7 @@ class TLSWorkerServer:
         listener.listen(self.max_concurrent_connections)
         self._listener = listener
         self.port = listener.getsockname()[1]
+        self.ready.set()
         return self.port
 
     def serve_once(self) -> None:
@@ -309,7 +312,12 @@ class TLSWorkerServer:
             if self._stop_event.is_set():
                 return
             raise
-        listener.settimeout(idle_timeout if idle_timeout is not None else self.timeout)
+        try:
+            listener.settimeout(idle_timeout if idle_timeout is not None else self.timeout)
+        except OSError:
+            if self._stop_event.is_set():
+                return
+            raise
         semaphore = threading.BoundedSemaphore(limit)
         accepted = 0
         try:

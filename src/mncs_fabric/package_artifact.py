@@ -137,6 +137,100 @@ def staged_artifact_path(directory: Path, artifact: Mapping[str, Any]) -> Path:
     return Path(directory) / f"{digest}{suffix}"
 
 
+def _digest_hex(digest: str) -> str:
+    if not digest.startswith("sha256:") or len(digest) != 71:
+        raise ValidationError("package artifact digest is invalid")
+    return digest.split(":", 1)[1]
+
+
+def _identity_hex(identity: str) -> str:
+    if not identity.startswith("sha256:") or len(identity) != 71:
+        raise ValidationError("package artifact identity is invalid")
+    return identity.split(":", 1)[1]
+
+
+def artifact_object_dir(directory: Path, digest: str) -> Path:
+    return Path(directory) / "objects" / _digest_hex(digest)
+
+
+def artifact_object_bytes_path(directory: Path, digest: str) -> Path:
+    return artifact_object_dir(directory, digest) / "artifact"
+
+
+def artifact_object_descriptor_path(directory: Path, artifact: Mapping[str, Any]) -> Path:
+    checked = validate_package_artifact(artifact)
+    return artifact_object_dir(directory, checked["digest"]) / "descriptors" / f"{_identity_hex(checked['artifact_identity'])}.json"
+
+
+def store_artifact_object(directory: Path, artifact: Mapping[str, Any], blob: bytes) -> Path:
+    """Write content-addressed bytes and an identity descriptor. Crash-safe."""
+
+    checked = validate_package_artifact(artifact)
+    if len(blob) != checked["size_bytes"]:
+        raise ValidationError("staged package artifact size does not match the descriptor")
+    digest = "sha256:" + hashlib.sha256(blob).hexdigest()
+    if digest != checked["digest"]:
+        raise ValidationError("staged package artifact digest does not match the descriptor")
+    obj = artifact_object_dir(directory, checked["digest"])
+    obj.mkdir(parents=True, exist_ok=True)
+    descriptors = obj / "descriptors"
+    descriptors.mkdir(parents=True, exist_ok=True)
+    target = obj / "artifact"
+    temporary = obj / "artifact.part"
+    temporary.write_bytes(blob)
+    try:
+        verify_package_artifact(temporary, checked)
+        temporary.replace(target)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    descriptor_path = artifact_object_descriptor_path(directory, checked)
+    descriptor_path.write_text(json.dumps(checked, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return target
+
+
+def resolve_artifact_identity(directory: Path, identity: str) -> dict[str, Any] | None:
+    """Map a retained artifact identity to descriptor + bytes if present."""
+
+    directory = Path(directory)
+    if not isinstance(identity, str) or not identity.startswith("sha256:"):
+        return None
+    hex_id = identity.split(":", 1)[1]
+    candidates: list[Path] = []
+    objects = directory / "objects"
+    if objects.is_dir():
+        for desc in objects.glob(f"*/descriptors/{hex_id}.json"):
+            candidates.append(desc)
+    current = read_artifact_descriptor(directory)
+    if current is not None and current.get("artifact_identity") == identity:
+        return {
+            "artifact": current,
+            "path": staged_artifact_path(directory, current),
+            "object_path": artifact_object_bytes_path(directory, current["digest"]),
+        }
+    previous = read_artifact_descriptor(previous_dir(directory))
+    if previous is not None and previous.get("artifact_identity") == identity:
+        return {
+            "artifact": previous,
+            "path": staged_artifact_path(previous_dir(directory), previous),
+            "object_path": artifact_object_bytes_path(directory, previous["digest"]),
+        }
+    for desc_path in candidates:
+        try:
+            value = json.loads(desc_path.read_text(encoding="utf-8"))
+            checked = validate_package_artifact(value)
+        except (OSError, json.JSONDecodeError, ValidationError):
+            continue
+        if checked["artifact_identity"] != identity:
+            continue
+        return {
+            "artifact": checked,
+            "path": staged_artifact_path(directory, checked),
+            "object_path": artifact_object_bytes_path(directory, checked["digest"]),
+        }
+    return None
+
+
 def chunk_bounds(size_bytes: int) -> tuple[int, int]:
     if not 1 <= size_bytes <= MAX_ARTIFACT_BYTES:
         raise ValidationError("package artifact size is outside the bounded range")
@@ -244,47 +338,115 @@ def gc_package_artifacts(
     *,
     retain_identities: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Delete unreferenced staged artifacts. Never remove current or previous."""
+    """Delete unreferenced staged artifacts. Never remove current or previous.
+
+    ``retain_identities`` must preserve the corresponding bytes, not merely
+    appear in the returned list. Identities are resolved through the
+    content-addressed object index, then current/previous pointers.
+    """
 
     directory = Path(directory)
-    retained = set(retain_identities or ())
+    requested = set(retain_identities or ())
+    retained: set[str] = set()
     keep_paths: set[Path] = set()
+    missing_identities: list[str] = []
+
+    def _retain(artifact: Mapping[str, Any], *paths: Path) -> None:
+        retained.add(str(artifact["artifact_identity"]))
+        for path in paths:
+            if path is not None:
+                keep_paths.add(Path(path).resolve())
+
     current = read_artifact_descriptor(directory)
     if current is not None:
-        retained.add(current["artifact_identity"])
-        keep_paths.add(staged_artifact_path(directory, current).resolve())
+        _retain(
+            current,
+            staged_artifact_path(directory, current),
+            artifact_object_bytes_path(directory, current["digest"]),
+            artifact_object_descriptor_path(directory, current),
+            directory / "artifact.json",
+        )
     previous = read_artifact_descriptor(previous_dir(directory))
     if previous is not None:
-        retained.add(previous["artifact_identity"])
-        keep_paths.add(staged_artifact_path(previous_dir(directory), previous).resolve())
+        _retain(
+            previous,
+            staged_artifact_path(previous_dir(directory), previous),
+            artifact_object_bytes_path(directory, previous["digest"]),
+            artifact_object_descriptor_path(directory, previous),
+            previous_dir(directory) / "artifact.json",
+        )
+    for identity in sorted(requested):
+        resolved = resolve_artifact_identity(directory, identity)
+        if resolved is None:
+            missing_identities.append(identity)
+            continue
+        artifact = resolved["artifact"]
+        _retain(artifact, resolved["path"], resolved["object_path"], artifact_object_descriptor_path(directory, artifact))
     removed: list[str] = []
     kept: list[str] = []
-    candidates: list[Path] = []
-    if directory.is_dir():
-        candidates.extend(path for path in directory.iterdir() if path.is_file())
-    if previous_dir(directory).is_dir():
-        keep_paths.add(previous_dir(directory).joinpath("artifact.json").resolve())
-    for path in candidates:
+
+    def _maybe_remove(path: Path) -> None:
         resolved = path.resolve()
-        if path.name == "artifact.json":
-            kept.append(str(path))
-            continue
         if path.name.endswith(".part"):
             path.unlink(missing_ok=True)
             removed.append(str(path))
-            continue
+            return
         if resolved in keep_paths:
             kept.append(str(path))
-            continue
-        if path.name.endswith((".whl", ".tar.gz", ".tgz")):
+            return
+        if path.is_file() and (path.name.endswith((".whl", ".tar.gz", ".tgz")) or path.name == "artifact"):
             path.unlink(missing_ok=True)
             removed.append(str(path))
-        else:
-            kept.append(str(path))
+            return
+        if path.is_file() and path.suffix == ".json" and path.parent.name == "descriptors":
+            path.unlink(missing_ok=True)
+            removed.append(str(path))
+            return
+        kept.append(str(path))
+
+    if directory.is_dir():
+        for path in directory.iterdir():
+            if path.is_file():
+                if path.name == "artifact.json":
+                    kept.append(str(path))
+                    continue
+                _maybe_remove(path)
+    if previous_dir(directory).is_dir():
+        for path in previous_dir(directory).iterdir():
+            if path.is_file():
+                if path.name == "artifact.json":
+                    kept.append(str(path))
+                    continue
+                _maybe_remove(path)
+    objects = directory / "objects"
+    if objects.is_dir():
+        for obj in objects.iterdir():
+            if not obj.is_dir():
+                continue
+            artifact_file = obj / "artifact"
+            if artifact_file.is_file():
+                _maybe_remove(artifact_file)
+            desc_dir = obj / "descriptors"
+            if desc_dir.is_dir():
+                for desc in desc_dir.iterdir():
+                    if desc.is_file():
+                        _maybe_remove(desc)
+            leftover_part = obj / "artifact.part"
+            if leftover_part.is_file():
+                leftover_part.unlink(missing_ok=True)
+                removed.append(str(leftover_part))
+            remaining = [item for item in obj.rglob("*") if item.is_file()]
+            if not remaining:
+                for child in sorted(obj.rglob("*"), reverse=True):
+                    if child.is_dir():
+                        child.rmdir()
+                obj.rmdir()
     return {
         "removed": removed,
         "kept": kept,
         "retained_identities": sorted(retained),
+        "requested_identities": sorted(requested),
+        "missing_identities": missing_identities,
         "claim_boundary": "stage-directory GC; ledger identities are not deleted",
     }
 
@@ -533,5 +695,6 @@ def write_verified_artifact(directory: Path, artifact: Mapping[str, Any], blob: 
     except Exception:
         temporary.unlink(missing_ok=True)
         raise
+    store_artifact_object(directory, checked, blob)
     write_artifact_descriptor(directory, checked)
     return target

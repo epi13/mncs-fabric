@@ -261,3 +261,39 @@ class PackageArtifactTests(unittest.TestCase):
             self.assertTrue((root / "artifact.json").is_file())
             self.assertTrue(any(path.name.endswith(".tar.gz") and path.is_file() for path in root.iterdir()))
             self.assertIn(described["artifact_identity"], result["retained_identities"])
+
+    def test_gc_retain_identities_preserves_non_current_referenced_bytes(self) -> None:
+        from mncs_fabric.package_artifact import (
+            artifact_object_bytes_path,
+            gc_package_artifacts,
+            resolve_artifact_identity,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = root / "first.tar.gz"
+            first.write_bytes(b"first-bytes")
+            first_desc = describe_package_artifact(first, version="0.2.0a26")
+            write_verified_artifact(root, first_desc, first.read_bytes())
+            second = root / "second.tar.gz"
+            second.write_bytes(b"second-bytes")
+            second_desc = describe_package_artifact(second, version="0.2.0a27")
+            write_verified_artifact(root, second_desc, second.read_bytes())
+            third = root / "third.tar.gz"
+            third.write_bytes(b"third-bytes")
+            third_desc = describe_package_artifact(third, version="0.2.0a28")
+            write_verified_artifact(root, third_desc, third.read_bytes())
+            result = gc_package_artifacts(root, retain_identities={first_desc["artifact_identity"]})
+            self.assertIn(first_desc["artifact_identity"], result["retained_identities"])
+            self.assertIn(third_desc["artifact_identity"], result["retained_identities"])
+            resolved = resolve_artifact_identity(root, first_desc["artifact_identity"])
+            self.assertIsNotNone(resolved)
+            object_path = artifact_object_bytes_path(root, first_desc["digest"])
+            self.assertTrue(object_path.is_file())
+            self.assertEqual(object_path.read_bytes(), b"first-bytes")
+            orphan = root / "orphan.tar.gz"
+            orphan.write_bytes(b"orphan")
+            after = gc_package_artifacts(root, retain_identities={first_desc["artifact_identity"]})
+            self.assertFalse(orphan.exists())
+            self.assertTrue(object_path.is_file())
+            self.assertIn(first_desc["artifact_identity"], after["retained_identities"])

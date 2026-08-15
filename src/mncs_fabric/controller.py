@@ -171,7 +171,12 @@ class LocalController:
         def certify(current: dict[str, Any]) -> dict[str, Any]:
             desired = self.fleet_manager.desired_for(worker_id, current, profiles=profiles)
             certified = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
-            return certified["certification"]
+            if certified.get("inventory") is None:
+                raise ProtocolError("remote certification did not return the inventory that was certified")
+            return {
+                "certification": certified["certification"],
+                "certified_inventory": certified["inventory"],
+            }
 
         return self.fleet_manager.reconcile(worker_id, inventory, apply_actions, apply=apply, profiles=profiles, classes=classes, force=force, certify=certify)
 
@@ -180,7 +185,9 @@ class LocalController:
         inspected = self.inventory_via(transport, worker_id=worker_id)
         desired = self.fleet_manager.desired_for(worker_id, inspected, profiles=profiles)
         certified = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
-        inventory = certified["inventory"] or inspected
+        if certified.get("inventory") is None:
+            raise ProtocolError("remote certification did not return the inventory that was certified")
+        inventory = certified["inventory"]
         return self.fleet_manager.certify(worker_id, inventory, profiles=profiles, certification=certified["certification"])
 
     def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
@@ -695,7 +702,44 @@ class NetworkController(LocalController):
     def restore_last_known(self) -> dict[str, Any]:
         """Rebuild in-memory last-known observations from the controller ledger."""
 
-        update_recovery = self.fleet_manager.recover_unresolved_updates()
+        def _resume(worker_id: str, item: object) -> dict[str, Any]:
+            del item
+            connected = False
+            inventory = None
+            if worker_id in self.remote_workers:
+                try:
+                    inventory = self.inventory_via(
+                        self._worker_transport(worker_id),
+                        worker_id=worker_id,
+                        timeout=15.0,
+                    )
+                    connected = True
+                except Exception:
+                    connected = False
+                    inventory = None
+
+            def certify(current: dict[str, Any]) -> dict[str, Any]:
+                desired = self.fleet_manager.desired_for(worker_id, current)
+                certified = self.certify_via(
+                    self._worker_transport(worker_id),
+                    worker_id=worker_id,
+                    profiles=list(desired["profiles"]),
+                )
+                if certified.get("inventory") is None:
+                    raise ProtocolError("remote certification did not return the inventory that was certified")
+                return {
+                    "certification": certified["certification"],
+                    "certified_inventory": certified["inventory"],
+                }
+
+            return self.fleet_manager.resume_update_after_restart(
+                worker_id,
+                connected=connected,
+                inventory=inventory,
+                certify=certify if connected and inventory is not None else None,
+            )
+
+        update_recovery = self.fleet_manager.recover_unresolved_updates(resume=_resume)
 
         latest_state: dict[str, dict[str, Any]] = {}
         for entry in self.ledger.all_records(record_type="worker.state"):

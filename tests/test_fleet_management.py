@@ -153,6 +153,56 @@ class FleetManagementTests(unittest.TestCase):
             self.assertEqual(worker.management_state()["state"], "QUARANTINED")
             self.assertFalse(controller.fleet_manager.status("fleet-worker")["schedulable"])
 
+    def test_non_restart_reconcile_uses_certified_inventory_not_inspect_inventory(self) -> None:
+        from mncs_fabric.certify import certify_inventory
+        from mncs_fabric.desired_state import resolve_desired_state
+        from mncs_fabric.fleet_ops import FleetManager
+        from mncs_fabric.management import ManagementStore
+        from tests.test_inventory import sample_inventory
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            inspect_inventory = sample_inventory(harness="0.1.0")
+            certified_inventory = sample_inventory(harness="0.2.0")
+            self.assertNotEqual(inspect_inventory["inventory_identity"], certified_inventory["inventory_identity"])
+            desired = resolve_desired_state(
+                worker_id="worker-a",
+                profiles=["mncs-linux-worker"],
+                supported_current={"fabric-worker": "0.2.0a21"},
+            )
+            manager.assign(desired)
+
+            def mismatched(_inventory):
+                return certify_inventory(certified_inventory, profiles=["mncs-linux-worker"])
+
+            closed = manager.reconcile(
+                "worker-a",
+                inspect_inventory,
+                lambda _actions: [],
+                apply=True,
+                certify=mismatched,
+            )
+            self.assertNotEqual((closed.get("management") or {}).get("state"), "READY")
+            self.assertIsNone(closed.get("certification"))
+
+            def evidence(_inventory):
+                return {
+                    "certification": certify_inventory(certified_inventory, profiles=["mncs-linux-worker"]),
+                    "certified_inventory": certified_inventory,
+                }
+
+            ready = manager.reconcile(
+                "worker-a",
+                inspect_inventory,
+                lambda _actions: [],
+                apply=True,
+                certify=evidence,
+            )
+            self.assertEqual(ready["certified_inventory"]["inventory_identity"], certified_inventory["inventory_identity"])
+            self.assertEqual(ready["certification"]["inventory_identity"], certified_inventory["inventory_identity"])
+            self.assertEqual(ready["conformance"]["inventory_identity"], certified_inventory["inventory_identity"])
+            self.assertEqual(ready["management"]["state"], "READY")
+
     def test_service_capability_projection_advertises_management_ops(self) -> None:
         from mncs_fabric.contracts import service_capability_projection
 

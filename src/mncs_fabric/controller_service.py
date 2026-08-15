@@ -1324,23 +1324,46 @@ class ControllerService:
                     source=str(args.get("provenance", "controller-staged")),
                 )
             elif operation == "fleet.rollout":
-                from .rollout import build_rollout_plan, execute_rollout
+                from .rollout import build_rollout_plan, execute_rollout, validate_rollout
 
                 workers, _registry = self._worker_backend_status(refresh=False)
                 ids = [str(item.get("worker_id")) for item in workers if item.get("worker_id")]
                 if args.get("worker_id"):
                     ids = [str(args["worker_id"])]
-                plan = build_rollout_plan(
-                    worker_ids=ids,
-                    canary_count=int(args.get("canary_count", 1)),
-                    stop_on_failure=bool(args.get("stop_on_failure", True)),
-                    update_class=str(args.get("update_class", "A")),
-                )
-                if not args.get("apply"):
-                    payload = plan
+                backend = self._fleet_backend()
+                manager = getattr(backend, "fleet_manager", None)
+                prior = manager.store.latest_unscoped("management.rollout") if manager is not None else None
+                resume = bool(args.get("resume")) or bool(args.get("apply") and prior and prior.get("state") == "IN_PROGRESS")
+                if resume and prior is not None:
+                    plan = validate_rollout({key: value for key, value in prior.items() if key != "artifact_identity"})
                 else:
-                    backend = self._fleet_backend()
-                    payload = execute_rollout(plan, lambda worker_id: backend.reconcile_worker(worker_id, apply=True, classes=[str(args.get("update_class", "A"))], force=bool(args.get("force", False))), apply=True)
+                    plan = build_rollout_plan(
+                        worker_ids=ids,
+                        canary_count=int(args.get("canary_count", 1)),
+                        stop_on_failure=bool(args.get("stop_on_failure", True)),
+                        update_class=str(args.get("update_class", "A")),
+                    )
+                if not args.get("apply") and not resume:
+                    payload = plan
+                    if manager is not None:
+                        manager.store.record("management.rollout", plan)
+                else:
+                    def _persist(record: object) -> None:
+                        if manager is not None:
+                            manager.store.record("management.rollout", record)
+
+                    payload = execute_rollout(
+                        plan,
+                        lambda worker_id: backend.reconcile_worker(
+                            worker_id,
+                            apply=True,
+                            classes=[str(args.get("update_class", "A"))],
+                            force=bool(args.get("force", False)),
+                        ),
+                        apply=True,
+                        persist=_persist,
+                        artifact_identity=str(args["artifact_identity"]) if args.get("artifact_identity") else (prior or {}).get("artifact_identity"),
+                    )
             elif operation == "fleet.inspect":
                 payload = self._fleet_collection_op("inspect_worker", args)
             elif operation == "fleet.plan":

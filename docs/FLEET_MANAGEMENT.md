@@ -52,25 +52,41 @@ inspect → desired state → plan → drain → apply typed actions
 
 This closure pass is **implemented + unit-tested + CI-tested**.
 
-Live claim levels after the a23→a25 bootstrap exception and Fabric-native a25→a27 proof:
+Live claim levels after the a23→a25 bootstrap exception, Fabric-native a25→a27
+proof, and Windows Git recovery on a27:
 
-| Capability | Unit | CI | Live Linux | Live Windows | Reboot |
-| --- | --- | --- | --- | --- | --- |
-| READY invariant | yes | yes | READY on a27 | DEGRADED (blocking `tool:git`) | no |
-| Artifact transfer | yes | yes | controller→worker mTLS PASS | controller→worker mTLS PASS | no |
-| Package activation | yes | yes | Fabric reconcile `--force` a27 | bootstrap exception + watch recover | no |
-| Restart / reconnect | yes | yes | PID 257275→275899→280312 | process recycled; identity preserved | no |
-| Version verification | yes | yes | observed 0.2.0a27 | observed 0.2.0a27 | no |
-| Rollback | yes | yes | not physically exercised | not physically exercised | no |
-| Canary barrier | yes | yes | plan-only live; not mutating | would be first canary (DEGRADED) | no |
-| Controller update | partial | n/a | local venv + systemd a23→a27 | n/a | no |
+| Capability | Unit | CI | Live Linux | Live Windows | Controller restart | Host reboot |
+| --- | --- | --- | --- | --- | --- | --- |
+| READY invariant | yes | yes | READY on a27 | READY on a27 after Git install + recertify | classify+resume unit-tested | no |
+| Artifact transfer | yes | yes | controller→worker mTLS PASS | controller→worker mTLS PASS | n/a | no |
+| Package activation | yes | yes | Fabric reconcile `--force` a27 | bootstrap exception + watch recover | no second apply on resume | no |
+| Restart / reconnect | yes | yes | PID 257275→275899→280312 | process recycled; identity preserved | resume_observation implemented | no |
+| Version verification | yes | yes | observed 0.2.0a27 | observed 0.2.0a27 | recovery skip to VERSION_VERIFYING | no |
+| Certified-inventory bind | yes | yes | a25 live bug fixed in a26/a27 | recertify used worker-returned inventory | same contract | no |
+| Rollback | yes | yes | not physically exercised | not physically exercised | mutation-phase fail-closed | no |
+| Canary barrier | yes | yes | plan-only live; mutating canary is a28 target | a27 READY; mutating canary is a28 target | durable rollout persist unit-tested | no |
+| Artifact GC | yes | yes | not live-required | not live-required | reference-aware retain | n/a |
+| Controller update | partial | n/a | local venv + systemd a23→a27 | n/a | transaction resume implemented | no |
+| Scheduler return-to-service | yes | yes | eligible | eligible after Git recertify; small job PASS | n/a | no |
 
 The a23→a25 hop is a **BOOTSTRAP EXCEPTION**. After both ends spoke a25,
 a27 was transferred and staged by `worker.artifact.stage` over mTLS with no
 SSH. Linux apply/restart after that hop was controller-native.
 
-Windows Git is **not installed** (not a stale PATH). That remains blocking
-nonconformance. Package deploy success and scheduler READY are separate.
+Windows Git is now **installed and visible to the persistent worker** at
+`C:\Program Files\Git\cmd\git.exe` (`git version 2.55.0.windows.3`). The
+a27 worker discovered it through existing environment-relative extra-path
+lookup without a restart. A later recertify bound READY to the new
+inventory identity. Package deploy success and scheduler READY remain
+separate.
+
+Distinguish three Git facts:
+
+```text
+Git physically installed  → operator observation
+Git available to worker   → worker-observed inventory tool record
+Git satisfies desired state → conformance has no blocking tool:git
+```
 
 Live CLI against the current process:
 
