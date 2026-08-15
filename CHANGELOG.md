@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- expose `transfer_package_artifact` on the persistent FabricClient
+  backend so `worker.artifact.stage` can reach enrolled mTLS workers;
 - bind certification and conformance to the inventory the worker actually
   certified, so READY cannot fail closed on two live inventory snapshots;
 - recover unresolved update transactions after controller restart without

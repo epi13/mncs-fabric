@@ -52,6 +52,22 @@ class PackageArtifactTests(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 validate_package_artifact(tampered)
 
+    def test_fabric_client_backend_exposes_artifact_transfer(self) -> None:
+        from mncs_fabric.api import FabricClient
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / "bundle"
+            bundle.mkdir()
+            source = root / "mncs-fabric-0.2.0a27.tar.gz"
+            source.write_bytes(b"client-transfer" * 80)
+            worker = LocalWorker("xfer-worker", bundle, root / "worker.jsonl", stage_dir=root / "stage")
+            client = FabricClient("xfer-controller", root / "controller.jsonl")
+            client.local.register(worker)
+            result = client.transfer_package_artifact("xfer-worker", source, version="0.2.0a27")
+            self.assertEqual(result["result"]["disposition"], "PASS")
+            self.assertTrue((root / "stage").exists())
+
     def test_controller_transfers_artifact_over_protocol(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
