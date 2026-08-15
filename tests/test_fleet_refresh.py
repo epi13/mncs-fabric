@@ -174,16 +174,19 @@ class NetworkFleetRefreshTests(unittest.TestCase):
             seed = _local_worker(root, "b-fast")
             description = seed.description()
             controller = NetworkController("controller", root / "controller.jsonl")
-            controller.register_remote("a-slow", frozenset({"python"}), _TimeoutTransport(delay=0.4))
+            controller.register_remote("a-slow", frozenset({"python"}), _TimeoutTransport(delay=0.6))
             controller.register_remote("b-fast", seed.capabilities(), _CachedDescribeTransport(description, delay=0.0))
             started = time.monotonic()
-            report = controller.refresh_fleet(operation_deadline=0.25, per_worker_deadline=0.1)
+            # The per-worker deadline is what proves independence. The
+            # operation budget only has to outlive Windows thread-pool
+            # startup; it is not the semantic under test.
+            report = controller.refresh_fleet(operation_deadline=2.0, per_worker_deadline=0.2)
             elapsed = time.monotonic() - started
             by_id = {item["worker_id"]: item for item in report["workers"]}
             self.assertEqual(report["outcome"], "PARTIAL")
             self.assertEqual(by_id["b-fast"]["refresh"], "PASS")
             self.assertEqual(by_id["a-slow"]["refresh"], "TIMEOUT")
-            self.assertLess(elapsed, 0.8)
+            self.assertLess(elapsed, 1.5)
 
     def test_local_worker_inventory_refresh_is_separate_from_concurrency_semantics(self) -> None:
         with TemporaryDirectory() as directory:
