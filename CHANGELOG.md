@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.2.0a31 - transport topology observation
+
+- carry bounded passive network interface, route, and neighbor observations in
+  node records without changing the v0.2 worker-description wire schema;
+- classify USB-backed IP interfaces as a first-class link medium while keeping
+  execution on the existing mutually authenticated TLS/IP transport;
+- surface topology evidence and identity in local, remote, and rendezvous fleet
+  status and derive direct worker links from matching passive neighbor evidence;
+- document the OS/Fabric responsibility boundary for routed USB node chains.
+
 ## 0.2.0a30 - installable staged artifacts
 
 - copy a digest-named staged wheel to its descriptor/PEP 427 filename

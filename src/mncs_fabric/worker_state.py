@@ -17,6 +17,7 @@ from .node import utc_now
 from .models import NODE_SCHEMA
 from .resources import validate_resource_snapshot
 from .runtime import build_runtime_profile, validate_runtime_profile
+from .topology import validate_network_topology
 
 LEGACY_DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.1"
 DESCRIPTION_SCHEMA = "mncs-fabric.worker-description.v0.2"
@@ -89,6 +90,8 @@ def validate_worker_description(value: object, *, expected_worker_id: str | None
     node = value["node"]
     if not isinstance(node, dict) or node.get("schema_version") != NODE_SCHEMA or node.get("machine_label") != worker_id or not isinstance(node.get("record_id"), str) or not verify_identity(node, "record_id"):
         raise ValidationError("worker description node binding is invalid")
+    if "network_topology" in node:
+        validate_network_topology(node["network_topology"], expected_worker_identity=worker_id)
     snapshot = validate_resource_snapshot(value["resource_snapshot"])
     if snapshot["worker_identity"] != worker_id:
         raise ValidationError("worker description resource snapshot is bound to another worker")

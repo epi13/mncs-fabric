@@ -390,3 +390,38 @@ inventory, planning, verification, certification, or user-level repairs.
 | certification `failing layer: inference` | runtime reachable but generate failed |
 | worker stays `QUARANTINED` | cert failed or rollback failed; inspect receipt, repair, certify |
 | `fleet inspect` without backend | persistent controller has no worker backend configured |
+
+## IP link topology and USB-connected workers
+
+Fabric treats the worker network as an IP fabric rather than assuming one flat
+Ethernet LAN. Worker descriptions include a bounded `network_topology`
+observation containing local interfaces, link medium, observed speed, addresses,
+routes, and passive neighbor entries. The controller surfaces the observation
+and its `topology_identity` through worker/fleet status.
+
+This makes USB networking a first-class link medium without adding USB-specific
+execution semantics. A USB gadget link, USB Ethernet adapter, USB4/Thunderbolt
+IP link, conventional Ethernet, or Wi-Fi link can all carry the same mutually
+authenticated Fabric protocol once the operating system exposes IP reachability.
+The link is described as `medium: usb` when the local OS can identify the
+interface as USB-backed.
+
+The responsibility boundary is deliberate:
+
+- the host OS or provisioning layer configures interface addresses, forwarding,
+  persistent routes, firewall policy, and any USB gadget/device mode;
+- Fabric passively observes those links and routes and carries them as
+  identity-bound worker evidence;
+- controller/rendezvous status exposes the current observation without claiming
+  that a route is continuously reachable or that reported bandwidth is
+  guaranteed;
+- direct worker-to-worker edges can be derived from matching passive neighbor
+  and interface evidence with `build_topology_snapshot`;
+- execution continues to use the normal TLS/IP transport. There is no
+  USB-specific scheduler fallback and no unauthenticated transport path.
+
+A chained cluster can therefore use a topology such as
+`controller -> worker-a -> worker-b -> worker-c` over routed point-to-point USB
+IP links. The intermediate hosts must provide the required OS routing/forwarding;
+Fabric does not silently modify host networking or bypass its authenticated
+protocol to make an unreachable worker appear reachable.

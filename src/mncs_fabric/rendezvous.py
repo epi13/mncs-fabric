@@ -212,6 +212,8 @@ class RendezvousCoordinator:
                 "last_seen": description.get("captured_at"), "capabilities": sorted(capability_names(description["node"])),
                 "description": dict(description), "resource_snapshot": snapshot,
                 "resource_snapshot_identity": snapshot.get("resource_snapshot_identity") if isinstance(snapshot, dict) else None,
+                "network_topology": dict(description["node"]["network_topology"]) if isinstance(description.get("node", {}).get("network_topology"), dict) else None,
+                "topology_identity": description.get("node", {}).get("network_topology", {}).get("topology_identity"),
                 "concurrency_limit": int(known.get(worker_id, {}).get("concurrency_limit", 1)),
                 "liveness": "FRESH" if fresh else "STALE",
             })
