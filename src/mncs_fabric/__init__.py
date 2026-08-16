@@ -1,6 +1,6 @@
 """MNCS Fabric: bounded execution and evidence primitives."""
 
-__version__ = "0.2.0a30"
+__version__ = "0.2.0a31"
 
 from .api import ConsumerContext, FabricAdminClient, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
 from .capabilities import CAPABILITY_OBSERVATION_SCHEMA
@@ -28,6 +28,10 @@ from .certify import CERTIFICATION_SCHEMA
 from .conformance import CONFORMANCE_SCHEMA
 from .package_artifact import PACKAGE_ARTIFACT_SCHEMA
 from .update_lifecycle import UPDATE_TRANSACTION_SCHEMA
+from .topology import (
+    TOPOLOGY_SCHEMA, TOPOLOGY_SNAPSHOT_SCHEMA, build_topology_snapshot,
+    collect_network_topology, validate_network_topology,
+)
 
 __all__ = [
     "CAPABILITY_OBSERVATION_SCHEMA", "ConsumerContext", "FabricClient", "FabricAdminClient",
@@ -48,4 +52,6 @@ __all__ = [
     "CONFORMANCE_SCHEMA",
     "PACKAGE_ARTIFACT_SCHEMA",
     "UPDATE_TRANSACTION_SCHEMA",
+    "TOPOLOGY_SCHEMA", "TOPOLOGY_SNAPSHOT_SCHEMA",
+    "build_topology_snapshot", "collect_network_topology", "validate_network_topology",
 ]

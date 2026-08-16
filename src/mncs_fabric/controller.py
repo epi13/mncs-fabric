@@ -72,7 +72,7 @@ class LocalController:
             snapshot = worker.resource_snapshot()
             description = worker.description()
             management = self.fleet_manager.status(worker_id)
-            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": worker.accepts_work(), "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"], "management_state": management["management"]["state"], "schedulable": management["schedulable"], "profiles": management["profiles"]})
+            result.append({"worker_id": worker_id, "capabilities": sorted(worker.capabilities()), "concurrency_limit": worker.concurrency_limit, "available": worker.accepts_work(), "availability": "AVAILABLE", "observation_source": "worker-observed", "last_observed_at": description["captured_at"], "description_identity": description["description_identity"], "node_record_identity": description["node"]["record_id"], "resource_snapshot": snapshot, "resource_snapshot_identity": snapshot["resource_snapshot_identity"], "network_topology": description.get("node", {}).get("network_topology"), "topology_identity": description.get("node", {}).get("network_topology", {}).get("topology_identity"), "management_state": management["management"]["state"], "schedulable": management["schedulable"], "profiles": management["profiles"]})
         return result
 
     def _local_transport(self, worker_id: str) -> EnvelopeTransport:
@@ -573,6 +573,8 @@ class NetworkController(LocalController):
             "description_identity": description.get("description_identity") if description else None,
             "description": dict(description) if description else None,
             "node_record_identity": description.get("node", {}).get("record_id") if description else None,
+            "network_topology": dict(description["node"]["network_topology"]) if description and isinstance(description.get("node", {}).get("network_topology"), dict) else None,
+            "topology_identity": description.get("node", {}).get("network_topology", {}).get("topology_identity") if description else None,
             "capabilities": sorted(slot.capabilities),
             "resource_snapshot": slot.resource_snapshot,
             "resource_snapshot_identity": slot.resource_snapshot.get("resource_snapshot_identity") if slot.resource_snapshot else None,

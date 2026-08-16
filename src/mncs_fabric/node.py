@@ -11,6 +11,7 @@ from typing import Any
 from .artifacts import file_identity
 from .canonical import attach_identity, sha256_identity
 from .models import NODE_SCHEMA
+from .topology import collect_network_topology
 
 _TOOL_NAMES = ("git", "gcc", "clang", "make", "rustc", "cargo", "podman", "docker", "pwsh", "powershell")
 
@@ -45,6 +46,7 @@ def collect_node_capabilities(machine_label: str) -> dict[str, Any]:
         "schema_version": NODE_SCHEMA,
         **stable,
         "node_fingerprint": sha256_identity(stable),
+        "network_topology": collect_network_topology(machine_label),
         "captured_at": utc_now(),
     }
     return attach_identity(record, "record_id")
