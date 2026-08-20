@@ -224,6 +224,24 @@ against the current desired state.
 `resume` does not promote a previously certified worker to READY. It
 re-evaluates the predicate.
 
+If a worker misses an authorized restart deadline, the failed update record is
+retained. A later operator-requested certification may recover the worker only
+when the enrolled worker reports the exact expected Fabric version and the new
+health certification plus desired-state conformance satisfy the READY
+invariant. Fabric appends `FAILED -> CERTIFYING -> READY`; it does not rerun the
+package action, erase the deadline failure, or infer success from reachability.
+The recovery operation is explicit and uses the controller's operator socket:
+
+```bash
+mncs-fabric worker certify WORKER_ID \
+  --admin-socket ~/.local/state/mncs-fabric/controller-admin.sock \
+  --json
+```
+
+Verify both the returned management state and update-transaction state are
+`READY`. A different observed version, a failed health layer, or blocking
+desired-state conformance retains a non-ready result.
+
 ## Certification
 
 Certification tests layers the node actually has. A build node is not failed

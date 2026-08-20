@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Allow an operator-requested certification to recover a worker that returned
+  after an update reconnect deadline, but only after exact expected-version,
+  health-certification, and desired-state checks pass. The failed observation
+  remains in the append-only history and package apply is never repeated.
+
 ## 0.2.0a31 - transport topology observation
 
 - carry bounded passive network interface, route, and neighbor observations in

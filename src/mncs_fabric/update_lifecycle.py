@@ -45,7 +45,11 @@ _TRANSITIONS = {
     "ROLLBACK_APPLYING": {"RESTART_PENDING", "CERTIFYING", "FAILED", "QUARANTINED"},
     "READY": set(),
     "ROLLED_BACK": {"READY", "QUARANTINED"},
-    "FAILED": {"QUARANTINED", "UPDATE_PLANNED"},
+    # A later operator-requested certification may establish that the same
+    # enrolled worker is running the exact expected version after an
+    # observation deadline expired.  Recovery re-enters at CERTIFYING so it
+    # cannot skip version verification, health certification, or conformance.
+    "FAILED": {"QUARANTINED", "UPDATE_PLANNED", "CERTIFYING"},
     "QUARANTINED": {"UPDATE_PLANNED"},
 }
 RECONNECT_OBSERVATIONS = frozenset({
