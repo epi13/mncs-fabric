@@ -2,7 +2,19 @@ from __future__ import annotations
 
 import unittest
 
+from mncs_fabric import __version__
+from mncs_fabric.canonical import attach_identity
+from mncs_fabric.certify import certify_inventory
 from mncs_fabric.errors import ValidationError
+from mncs_fabric.fleet_ops import FleetManager
+from mncs_fabric.management import ManagementStore
+from mncs_fabric.rollout import (
+    build_rollout_plan,
+    canary_succeeded,
+    execute_rollout,
+    select_canaries,
+    validate_rollout,
+)
 from mncs_fabric.update_lifecycle import (
     build_update_transaction,
     can_transition_update,
@@ -14,9 +26,7 @@ from mncs_fabric.update_lifecycle import (
     validate_update_transaction,
     version_matches_expected,
 )
-from mncs_fabric.fleet_ops import FleetManager
-from mncs_fabric.management import ManagementStore
-from mncs_fabric.rollout import build_rollout_plan, canary_succeeded, execute_rollout, select_canaries, validate_rollout
+from tests.test_inventory import sample_inventory
 
 
 class UpdateLifecycleTests(unittest.TestCase):
@@ -78,6 +88,89 @@ class UpdateLifecycleTests(unittest.TestCase):
         self.assertFalse(can_transition_update("UPDATE_PLANNED", "DISCONNECT_EXPECTED"))
         self.assertFalse(can_transition_update("UPDATE_APPLIED", "READY"))
         self.assertFalse(can_transition_update("VERSION_VERIFYING", "READY"))
+        self.assertTrue(can_transition_update("FAILED", "CERTIFYING"))
+
+    def test_certification_recovers_late_expected_version_without_reapply(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        inventory = sample_inventory(harness="0.1.0")
+        inventory = dict(inventory)
+        inventory.pop("inventory_identity")
+        inventory["fabric"] = {**inventory["fabric"], "worker_version": __version__}
+        inventory = attach_identity(inventory, "inventory_identity")
+        certification = certify_inventory(
+            inventory,
+            profiles=["mncs-linux-worker", "mncs-inference-worker"],
+            inference_probe={"status": "PASS", "detail": "bounded test probe passed"},
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            manager.store.record(
+                "management.update-transaction",
+                build_update_transaction(
+                    worker_id="worker-a",
+                    state="FAILED",
+                    expected_version=__version__,
+                    previous_version=__version__,
+                    artifact_identity=None,
+                    previous_artifact_identity=None,
+                    deadline="2026-08-15T00:00:00Z",
+                    reason="worker did not reconnect before the authorized restart deadline",
+                ),
+            )
+
+            recovered = manager.certify(
+                "worker-a",
+                inventory,
+                certification=certification,
+            )
+
+            self.assertEqual(recovered["update_transaction"]["state"], "READY")
+            self.assertEqual(recovered["update_transaction"]["observed_version"], __version__)
+            self.assertEqual(recovered["management"]["state"], "READY")
+            history = [
+                entry["record"]["state"]
+                for entry in manager.store.ledger.all_records(record_type="management.update-transaction")
+            ]
+            self.assertEqual(history, ["FAILED", "CERTIFYING", "READY"])
+
+    def test_certification_does_not_recover_failed_update_at_wrong_version(self) -> None:
+        import tempfile
+        from pathlib import Path
+
+        inventory = sample_inventory(harness="0.1.0")
+        certification = certify_inventory(
+            inventory,
+            profiles=["mncs-linux-worker", "mncs-inference-worker"],
+            inference_probe={"status": "PASS", "detail": "bounded test probe passed"},
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            manager = FleetManager(ManagementStore(Path(directory) / "mgmt.jsonl"), controller_id="c")
+            manager.store.record(
+                "management.update-transaction",
+                build_update_transaction(
+                    worker_id="worker-a",
+                    state="FAILED",
+                    expected_version=__version__,
+                    previous_version="0.2.0a20",
+                    artifact_identity=None,
+                    previous_artifact_identity=None,
+                    deadline="2026-08-15T00:00:00Z",
+                    reason="worker did not reconnect before the authorized restart deadline",
+                ),
+            )
+
+            retained = manager.certify(
+                "worker-a",
+                inventory,
+                certification=certification,
+            )
+
+            self.assertEqual(retained["update_transaction"]["state"], "FAILED")
+            self.assertEqual(retained["management"]["state"], "DEGRADED")
 
     def test_expected_disconnect_and_reconnect_before_deadline(self) -> None:
         txn = build_update_transaction(

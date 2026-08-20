@@ -459,6 +459,26 @@ class FleetManager:
         self.store.record("management.certification", result)
         self.store.record("management.conformance", conformance)
         open_txn = self.store.latest("management.update-transaction", worker_id)
+        observed_version = (certified_inventory.get("fabric") or {}).get("worker_version")
+        prior_failure_reason = str((open_txn or {}).get("reason") or "").lower()
+        recovering_failed_update = bool(
+            open_txn
+            and open_txn.get("state") == "FAILED"
+            and "did not reconnect before" in prior_failure_reason
+            and "deadline" in prior_failure_reason
+            and result.get("disposition") == "CERTIFIED"
+            and version_matches_expected(
+                str(observed_version) if observed_version else None,
+                str(open_txn.get("expected_version") or ""),
+            )
+        )
+        if recovering_failed_update:
+            open_txn = self._advance_update(
+                open_txn,
+                "CERTIFYING",
+                "operator certification observed the expected version after the prior update failure",
+                observed_version=str(observed_version),
+            )
         decision = self._ready_decision(
             worker_id,
             certification=result,
@@ -478,11 +498,24 @@ class FleetManager:
             last_inventory_identity=certified_inventory["inventory_identity"],
             last_certification_identity=result["certification_identity"],
         )
+        if recovering_failed_update and open_txn is not None:
+            if decision["ready"]:
+                open_txn = self._advance_update(
+                    open_txn,
+                    "READY",
+                    "late worker return recovered after exact version verification and health certification",
+                    observed_version=str(observed_version),
+                )
+            elif decision["state"] == "QUARANTINED":
+                open_txn = self._fail_update(open_txn, decision["reason"], quarantined=True)
+            else:
+                open_txn = self._fail_update(open_txn, decision["reason"])
         return {
             "certification": result,
             "certified_inventory": certified_inventory,
             "conformance": conformance,
             "management": self.store.state(worker_id),
+            "update_transaction": open_txn,
         }
 
     def _expected_version(self, actions: Iterable[Mapping[str, Any]], inventory: Mapping[str, Any]) -> str:
