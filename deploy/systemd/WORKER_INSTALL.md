@@ -67,11 +67,14 @@ TLS/listener values together. The Fabric-native controller identity defaults to
    manager before continuing. The worker private key is generated and remains only
    below its worker-local state root.
 
-Rerunning the installer upgrades the isolated environment and restarts the unit
-without deleting the private key, trust ledger, installation identity, or worker
-execution ledger. A Git checkout also produces a protected
-`~/.local/share/mncs-fabric/fabric-revision.txt` acceptance marker. Uninstall is
-deliberately not implicit.
+Rerunning either installer upgrades the isolated environment and restarts the
+unit without deleting the private key, trust ledger, installation identity, or
+worker execution ledger. A Git checkout also produces a protected
+`~/.local/share/mncs-fabric/fabric-revision.txt` acceptance marker for both the
+controller and worker. This prevents a same-version controller update from
+silently retaining stale source provenance. The controller installer also
+refreshes its installer-owned `MNCS_FABRIC_SOURCE_COMMIT` line while preserving
+all operator rendezvous settings. Uninstall is deliberately not implicit.
 
 Enabling a user unit does not by itself prove boot-before-login behavior. If the
 deployment requires the worker to reconnect before interactive login, the
