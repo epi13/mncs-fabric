@@ -30,11 +30,11 @@ Physical deployments observed in 0.2.0a22:
 
 - Linux `fabric-worker-01` uses systemd-user unit `mncs-fabric-worker.service`
   under `/home/fabric/mncs-fabric-worker/current` with linger enabled.
-- Windows `collamore02-windows` uses a current-user Scheduled Task
-  `MNCS-Fabric-Worker` plus the existing detached launcher. The task is
-  registered without elevation. Starting it from a non-interactive SSH
-  session is unreliable; AtLogOn and the detached launcher are the
-  supported restart paths.
+- Windows `collamore02-windows` uses the current-user Scheduled Task
+  `MNCS-Fabric-Worker` and the repository launcher described in
+  [WINDOWS_WORKER.md](WINDOWS_WORKER.md). The task is registered without
+  elevation and has one `AtLogOn` trigger; explicit/manual startup is an
+  operation, not a second repeating trigger.
 
 The following path is implemented and unit-tested in-process and over
 `InProcessTransport`. Classifications:
@@ -52,41 +52,25 @@ inspect → desired state → plan → drain → apply typed actions
 
 This closure pass is **implemented + unit-tested + CI-tested**.
 
-Live claim levels after the a23→a25 bootstrap exception, Fabric-native a25→a27
-proof, and Windows Git recovery on a27:
+Live claim levels after the a23→a25 bootstrap exception and Fabric-native a25→a27 proof:
 
-| Capability | Unit | CI | Live Linux | Live Windows | Controller restart | Host reboot |
-| --- | --- | --- | --- | --- | --- | --- |
-| READY invariant | yes | yes | READY on a27 | READY on a27 after Git install + recertify | classify+resume unit-tested | no |
-| Artifact transfer | yes | yes | controller→worker mTLS PASS | controller→worker mTLS PASS | n/a | no |
-| Package activation | yes | yes | Fabric reconcile `--force` a27 | bootstrap exception + watch recover | no second apply on resume | no |
-| Restart / reconnect | yes | yes | PID 257275→275899→280312 | process recycled; identity preserved | resume_observation implemented | no |
-| Version verification | yes | yes | observed 0.2.0a27 | observed 0.2.0a27 | recovery skip to VERSION_VERIFYING | no |
-| Certified-inventory bind | yes | yes | a25 live bug fixed in a26/a27 | recertify used worker-returned inventory | same contract | no |
-| Rollback | yes | yes | not physically exercised | not physically exercised | mutation-phase fail-closed | no |
-| Canary barrier | yes | yes | plan-only live; mutating canary is a28 target | a27 READY; mutating canary is a28 target | durable rollout persist unit-tested | no |
-| Artifact GC | yes | yes | not live-required | not live-required | reference-aware retain | n/a |
-| Controller update | partial | n/a | local venv + systemd a23→a27 | n/a | transaction resume implemented | no |
-| Scheduler return-to-service | yes | yes | eligible | eligible after Git recertify; small job PASS | n/a | no |
+| Capability | Unit | CI | Live Linux | Live Windows | Reboot |
+| --- | --- | --- | --- | --- | --- |
+| READY invariant | yes | yes | READY on a27 | DEGRADED (blocking `tool:git`) | no |
+| Artifact transfer | yes | yes | controller→worker mTLS PASS | controller→worker mTLS PASS | no |
+| Package activation | yes | yes | Fabric reconcile `--force` a27 | bootstrap exception + watch recover | no |
+| Restart / reconnect | yes | yes | PID 257275→275899→280312 | process recycled; identity preserved | no |
+| Version verification | yes | yes | observed 0.2.0a27 | observed 0.2.0a27 | no |
+| Rollback | yes | yes | not physically exercised | not physically exercised | no |
+| Canary barrier | yes | yes | plan-only live; not mutating | would be first canary (DEGRADED) | no |
+| Controller update | partial | n/a | local venv + systemd a23→a27 | n/a | no |
 
 The a23→a25 hop is a **BOOTSTRAP EXCEPTION**. After both ends spoke a25,
 a27 was transferred and staged by `worker.artifact.stage` over mTLS with no
 SSH. Linux apply/restart after that hop was controller-native.
 
-Windows Git is now **installed and visible to the persistent worker** at
-`C:\Program Files\Git\cmd\git.exe` (`git version 2.55.0.windows.3`). The
-a27 worker discovered it through existing environment-relative extra-path
-lookup without a restart. A later recertify bound READY to the new
-inventory identity. Package deploy success and scheduler READY remain
-separate.
-
-Distinguish three Git facts:
-
-```text
-Git physically installed  → operator observation
-Git available to worker   → worker-observed inventory tool record
-Git satisfies desired state → conformance has no blocking tool:git
-```
+Windows Git is **not installed** (not a stale PATH). That remains blocking
+nonconformance. Package deploy success and scheduler READY are separate.
 
 Live CLI against the current process:
 
@@ -224,24 +208,6 @@ against the current desired state.
 `resume` does not promote a previously certified worker to READY. It
 re-evaluates the predicate.
 
-If a worker misses an authorized restart deadline, the failed update record is
-retained. A later operator-requested certification may recover the worker only
-when the enrolled worker reports the exact expected Fabric version and the new
-health certification plus desired-state conformance satisfy the READY
-invariant. Fabric appends `FAILED -> CERTIFYING -> READY`; it does not rerun the
-package action, erase the deadline failure, or infer success from reachability.
-The recovery operation is explicit and uses the controller's operator socket:
-
-```bash
-mncs-fabric worker certify WORKER_ID \
-  --admin-socket ~/.local/state/mncs-fabric/controller-admin.sock \
-  --json
-```
-
-Verify both the returned management state and update-transaction state are
-`READY`. A different observed version, a failed health layer, or blocking
-desired-state conformance retains a non-ready result.
-
 ## Certification
 
 Certification tests layers the node actually has. A build node is not failed
@@ -316,18 +282,6 @@ inspected without executing package code and must match
 bytes remain content-addressed; that provenance gap is recorded, not
 invented.
 
-Staged bytes remain content-addressed (`{digest}.whl` / `{digest}.tar.gz`).
-Apply copies a digest-named wheel to the descriptor or PEP 427 filename
-in the same directory before `pip install`. Filenames stay untrusted;
-digest and metadata checks still bind the bytes. A digest-named sdist is
-already pip-installable and is left in place.
-
-Missing `local-harness` is advisory. It is recorded as `SKIPPED` /
-`PRIVILEGE_REQUIRED` and does not FAIL the receipt or roll back a Fabric
-package apply. The controller keeps that verify off the worker apply list
-so pre-0.2.0a30 workers do not treat `tool not present` as a blocking
-class A failure.
-
 The worker verifies the digest before apply and returns `restart_required`
 **before** the process exits.
 
@@ -350,10 +304,11 @@ become READY.
 Linux uses `mncs-fabric-worker-upgrade.service` (no `ProtectHome`) to rewrite
 the worker venv, then `systemctl --user restart mncs-fabric-worker.service`.
 
-Windows uses current-user Scheduled Tasks `MNCS-Fabric-Worker` (AtLogOn) and
-`MNCS-Fabric-Worker-Watch` (1-minute idempotent start) plus
-`windows_worker_launcher.py` (detached / `CREATE_BREAKAWAY_FROM_JOB`).
-`schtasks /Run` from SSH is not the supported restart path.
+Windows uses the current-user Scheduled Task `MNCS-Fabric-Worker` (AtLogOn and
+manual invocation) plus the config-driven `fabric_worker.ps1` launcher. There
+is no repeating watch task. The launcher verifies the expected process and
+port owner before reporting success and refuses to kill unrelated port
+owners. See [WINDOWS_WORKER.md](WINDOWS_WORKER.md).
 
 The first time a pre-0.2.0a21 worker is brought onto this path, the staged
 package must be copied onto the host once. After that, the controller can
@@ -409,37 +364,3 @@ inventory, planning, verification, certification, or user-level repairs.
 | worker stays `QUARANTINED` | cert failed or rollback failed; inspect receipt, repair, certify |
 | `fleet inspect` without backend | persistent controller has no worker backend configured |
 
-## IP link topology and USB-connected workers
-
-Fabric treats the worker network as an IP fabric rather than assuming one flat
-Ethernet LAN. Worker descriptions include a bounded `network_topology`
-observation containing local interfaces, link medium, observed speed, addresses,
-routes, and passive neighbor entries. The controller surfaces the observation
-and its `topology_identity` through worker/fleet status.
-
-This makes USB networking a first-class link medium without adding USB-specific
-execution semantics. A USB gadget link, USB Ethernet adapter, USB4/Thunderbolt
-IP link, conventional Ethernet, or Wi-Fi link can all carry the same mutually
-authenticated Fabric protocol once the operating system exposes IP reachability.
-The link is described as `medium: usb` when the local OS can identify the
-interface as USB-backed.
-
-The responsibility boundary is deliberate:
-
-- the host OS or provisioning layer configures interface addresses, forwarding,
-  persistent routes, firewall policy, and any USB gadget/device mode;
-- Fabric passively observes those links and routes and carries them as
-  identity-bound worker evidence;
-- controller/rendezvous status exposes the current observation without claiming
-  that a route is continuously reachable or that reported bandwidth is
-  guaranteed;
-- direct worker-to-worker edges can be derived from matching passive neighbor
-  and interface evidence with `build_topology_snapshot`;
-- execution continues to use the normal TLS/IP transport. There is no
-  USB-specific scheduler fallback and no unauthenticated transport path.
-
-A chained cluster can therefore use a topology such as
-`controller -> worker-a -> worker-b -> worker-c` over routed point-to-point USB
-IP links. The intermediate hosts must provide the required OS routing/forwarding;
-Fabric does not silently modify host networking or bypass its authenticated
-protocol to make an unreachable worker appear reachable.
