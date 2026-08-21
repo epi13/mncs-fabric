@@ -22,18 +22,14 @@ foreach ($name in @("certs\ca.pem", "certs\worker.pem", "certs\worker.key", "tru
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "state\upgrade") | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $Root "logs") | Out-Null
 
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -File `"$launcher`""
+$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -NonInteractive -WindowStyle Hidden -File `"$launcher`""
 $logon = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$watch = New-ScheduledTaskTrigger -Once -At ((Get-Date).AddMinutes(1)) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
 $principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Limited
-Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger @($logon, $watch) -Settings $settings -Principal $principal -Force | Out-Null
-
-$watchPython = $Python
-$watchLauncher = Join-Path $Root "launcher\windows_worker_launcher.py"
-$watchState = Join-Path $Root "state\launcher.json"
-$watchAction = New-ScheduledTaskAction -Execute $watchPython -Argument "-u `"$watchLauncher`" start --state `"$watchState`" --worker-id $WorkerId --stdout `"$Root\logs\worker.stdout.log`" --stderr `"$Root\logs\worker.stderr.log`" --cwd `"$Root`""
-Register-ScheduledTask -TaskName "MNCS-Fabric-Worker-Watch" -Action $watchAction -Trigger $watch -Settings $settings -Principal $principal -Force | Out-Null
+Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $logon -Settings $settings -Principal $principal -Force | Out-Null
+# Older installs created a second timer-driven watcher. Remove only that
+# duplicate task; the single hidden task above remains the supervisor.
+Unregister-ScheduledTask -TaskName "MNCS-Fabric-Worker-Watch" -Confirm:$false -ErrorAction SilentlyContinue
 
 $result = [ordered]@{
     worker_id = $WorkerId

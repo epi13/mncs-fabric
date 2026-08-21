@@ -14,8 +14,19 @@ from .desired_state import diff_desired_state, validate_desired_state
 from .errors import ValidationError
 from .inventory import validate_worker_inventory
 from .node import utc_now
-from .conformance import ADVISORY_PACKAGES
+from .conformance import ADVISORY_PACKAGES, ADVISORY_TOOLS
 from .providers import apply_action, plan_action_from_change, rollback_action, validate_action
+
+
+def _advisory_maintenance_target(target: object) -> bool:
+    """Return whether a maintenance target is observation-only.
+
+    Advisory packages and tools remain visible on the plan and receipt, but a
+    missing or failed verify must not fail, roll back, or quarantine a Fabric
+    package update. Windows inference workers commonly lack ``gh``.
+    """
+
+    return target in ADVISORY_PACKAGES or target in ADVISORY_TOOLS
 
 PLAN_SCHEMA = "mncs-fabric.maintenance-plan.v0.1"
 RECEIPT_SCHEMA = "mncs-fabric.maintenance-receipt.v0.1"
@@ -109,7 +120,7 @@ def partition_apply_actions(actions: Iterable[Mapping[str, Any]]) -> tuple[list[
     advisory: list[dict[str, Any]] = []
     for action in actions:
         item = dict(action)
-        if item.get("target") in ADVISORY_PACKAGES and item.get("action") in {"inspect", "verify"}:
+        if _advisory_maintenance_target(item.get("target")) and item.get("action") in {"inspect", "verify"}:
             advisory.append(item)
         else:
             applied.append(item)
@@ -233,7 +244,7 @@ def apply_maintenance_plan(
         result = apply_action(action, checked_inventory)
         results.append(result)
         if result["disposition"] == "FAIL":
-            if result.get("target") in ADVISORY_PACKAGES:
+            if _advisory_maintenance_target(result.get("target")):
                 continue
             failed = True
             failure_class = result.get("failure_class") or "VALIDATION_FAILURE"
@@ -324,7 +335,7 @@ def complete_receipt(
     if disposition is None:
         blocking_failures = [
             item for item in results
-            if item.get("disposition") == "FAIL" and item.get("target") not in ADVISORY_PACKAGES
+            if item.get("disposition") == "FAIL" and not _advisory_maintenance_target(item.get("target"))
         ]
         if not results and not plan.get("actions"):
             disposition = "NO_CHANGES"

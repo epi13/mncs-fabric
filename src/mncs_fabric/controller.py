@@ -185,9 +185,12 @@ class LocalController:
         inspected = self.inventory_via(transport, worker_id=worker_id)
         desired = self.fleet_manager.desired_for(worker_id, inspected, profiles=profiles)
         certified = self.certify_via(transport, worker_id=worker_id, profiles=list(desired["profiles"]))
-        if certified.get("inventory") is None:
-            raise ProtocolError("remote certification did not return the inventory that was certified")
-        inventory = certified["inventory"]
+        inventory = certified.get("inventory")
+        if inventory is None:
+            # Pre-0.2.0a30 workers certify health without echoing inventory.
+            # Bind the inspect that selected the profiles rather than failing closed
+            # on a protocol additive field.
+            inventory = inspected
         return self.fleet_manager.certify(worker_id, inventory, profiles=profiles, certification=certified["certification"])
 
     def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:

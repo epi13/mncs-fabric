@@ -84,6 +84,7 @@ def _controller_config(args: argparse.Namespace) -> ControllerConfig:
     return ControllerConfig(
         args.controller_id,
         args.state,
+        capability_refresh_seconds=getattr(args, "capability_refresh_seconds", 240.0),
         worker_registry_path=getattr(args, "registry", None),
         worker_state_path=getattr(args, "worker_state", None),
         execution_bundle_root=getattr(args, "execution_bundle_root", None),
@@ -429,6 +430,12 @@ def build_parser() -> argparse.ArgumentParser:
     controller_service_sub = controller_service.add_subparsers(dest="service_command", required=True)
     controller_run = controller_service_sub.add_parser("run", help="run until SIGTERM/SIGINT or a bounded test deadline")
     controller_run.add_argument("--max-seconds", type=float)
+    controller_run.add_argument(
+        "--capability-refresh-seconds",
+        type=float,
+        default=240.0,
+        help="bounded background interval for refreshing worker capability evidence",
+    )
     controller_run.add_argument("--json", action="store_true")
     controller_status.add_argument("--state", type=_path, default=default_lifecycle_path())
     controller_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
