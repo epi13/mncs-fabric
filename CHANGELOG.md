@@ -6,6 +6,16 @@
   after an update reconnect deadline, but only after exact expected-version,
   health-certification, and desired-state checks pass. The failed observation
   remains in the append-only history and package apply is never repeated.
+- Refresh worker capability evidence in the background on a bounded interval
+  shorter than capability observation age, so inventories do not go stale
+  merely because no client asked.
+- Make the Windows worker scheduled-task install idempotent: one logon-triggered
+  hidden supervisor, no duplicate timer watcher, and a bundled inspect/repair
+  script that restores `MNCS-Fabric-Worker` without elevation.
+- Treat missing `gh` as advisory, matching `local-harness`: do not FAIL a
+  Windows inference-worker maintenance receipt or roll back a Fabric apply.
+- When a pre-0.2.0a30 worker certifies without echoing inventory, bind the
+  inspect that selected the profiles instead of failing the certification.
 
 ## 0.2.0a31 - transport topology observation
 

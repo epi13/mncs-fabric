@@ -43,8 +43,11 @@ from .targets import (
 from .target_index import TargetEvidenceIndex
 from .transport import TLSRendezvousServer
 
-CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.3"
+CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.4"
 CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
+MIN_CAPABILITY_REFRESH_SECONDS = 30.0
+BACKGROUND_REFRESH_OPERATION_DEADLINE_SECONDS = 90.0
+BACKGROUND_REFRESH_PER_WORKER_DEADLINE_SECONDS = 60.0
 
 
 class _DetachedSubmissionExists(Exception):
@@ -56,6 +59,7 @@ class ControllerConfig:
     controller_id: str
     lifecycle_state: Path
     heartbeat_seconds: float = 5.0
+    capability_refresh_seconds: float = 240.0
     service_log: Path | None = None
     socket_path: Path | None = None
     admin_socket_path: Path | None = None
@@ -76,6 +80,10 @@ class ControllerConfig:
             raise ValidationError("controller_id is invalid")
         if not 0.5 <= self.heartbeat_seconds <= 60:
             raise ValidationError("controller heartbeat is outside the bounded range")
+        if not MIN_CAPABILITY_REFRESH_SECONDS <= self.capability_refresh_seconds < MAX_CAPABILITY_AGE_SECONDS:
+            raise ValidationError(
+                "capability refresh interval must be at least 30 seconds and shorter than the capability observation age"
+            )
         if self.rendezvous_port is not None and not 0 <= self.rendezvous_port <= 65535:
             raise ValidationError("rendezvous port is outside the bounded range")
         rendezvous = (
@@ -99,6 +107,7 @@ class ControllerConfig:
             "controller_id": self.controller_id,
             "lifecycle_state": str(self.lifecycle_state),
             "heartbeat_seconds": self.heartbeat_seconds,
+            "capability_refresh_seconds": self.capability_refresh_seconds,
             "service_log": str(self.service_log_path),
             "socket_path": str(self.socket_path_value),
             "admin_socket_path": str(self.admin_socket_path_value),
@@ -182,6 +191,8 @@ class ControllerService:
             self.target_ledger, self.config.target_evidence_index_value
         )
         self._stop = Event()
+        self._capability_refresh_lock = Lock()
+        self._capability_refresh_thread: Thread | None = None
         self._worker_client: Any | None = None
         self._worker_registry_report: dict[str, Any] | None = None
         self._rendezvous: RendezvousCoordinator | None = None
@@ -603,6 +614,70 @@ class ControllerService:
         return self._apply_capability_inventory(
             self._apply_membership_precedence([dict(worker) for worker in workers])
         ), self._worker_registry_report
+
+    def _refresh_capability_inventory_once(self) -> None:
+        """Refresh worker capability evidence without blocking service reads.
+
+        A background probe updates the durable worker observation ledger through
+        the same classified fleet-refresh API used by ``fleet.refresh``. A
+        failed or skipped probe only records diagnostics; the normal projection
+        still marks old observations stale or unknown.
+        """
+
+        if self._worker_client is None:
+            return
+        refresher = getattr(self._worker_client, "refresh_fleet", None)
+        if not callable(refresher) or not self._capability_refresh_lock.acquire(blocking=False):
+            return
+        try:
+            report = dict(
+                refresher(
+                    operation_deadline=BACKGROUND_REFRESH_OPERATION_DEADLINE_SECONDS,
+                    per_worker_deadline=BACKGROUND_REFRESH_PER_WORKER_DEADLINE_SECONDS,
+                )
+            )
+            workers = []
+            for worker in report.get("workers") or []:
+                if isinstance(worker, dict):
+                    workers.append(
+                        {
+                            "worker_id": worker.get("worker_id"),
+                            "availability": worker.get("availability"),
+                            "refresh": worker.get("refresh"),
+                            "diagnostic": worker.get("diagnostic"),
+                        }
+                    )
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "background_refresh": {
+                    "observed_at": utc_now(),
+                    "outcome": report.get("outcome", "UNKNOWN"),
+                    "workers": workers,
+                },
+            }
+        except Exception as exc:
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "background_refresh": {
+                    "observed_at": utc_now(),
+                    "outcome": "UNKNOWN",
+                    "diagnostic": str(exc),
+                },
+            }
+        finally:
+            self._capability_refresh_lock.release()
+
+    def _capability_refresh_loop(self) -> None:
+        """Keep capability observations inside their bounded freshness window."""
+
+        # Let the service socket become available before the first remote
+        # probe. This also avoids making startup depend on a slow worker.
+        if self._stop.wait(min(5.0, self.config.capability_refresh_seconds)):
+            return
+        while not self._stop.is_set():
+            self._refresh_capability_inventory_once()
+            if self._stop.wait(self.config.capability_refresh_seconds):
+                return
 
     def _apply_capability_inventory(self, workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Project durable capability evidence onto every public worker view.
@@ -1451,11 +1526,22 @@ class ControllerService:
                 # consumer socket, so a Windows consumer fallback must not
                 # suppress a configured rendezvous listener.
                 rendezvous_server = None
+            if self._worker_client is not None:
+                self._capability_refresh_thread = Thread(
+                    target=self._capability_refresh_loop,
+                    daemon=True,
+                    name="mncs-fabric-capability-refresh",
+                )
+                self._capability_refresh_thread.start()
             while not self._stop.is_set():
                 if max_seconds is not None and time.monotonic() - started >= max_seconds:
                     break
                 time.sleep(min(self.config.heartbeat_seconds, 0.25))
         finally:
+            self._stop.set()
+            if self._capability_refresh_thread is not None:
+                self._capability_refresh_thread.join(timeout=5.0)
+                self._capability_refresh_thread = None
             if rendezvous_server is not None:
                 rendezvous_server.close()
                 self._rendezvous_server = None

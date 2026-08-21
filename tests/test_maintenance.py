@@ -223,6 +223,58 @@ class MaintenanceTests(unittest.TestCase):
         )
         self.assertEqual(receipt["disposition"], "PASS")
 
+    def test_missing_gh_is_advisory_and_does_not_fail_receipt(self) -> None:
+        inventory = sample_inventory()
+        payload = {key: value for key, value in inventory.items() if key != "inventory_identity"}
+        payload["tools"] = [item for item in payload["tools"] if item.get("name") != "gh"]
+        from mncs_fabric.inventory import build_worker_inventory
+
+        rebuilt = build_worker_inventory(
+            worker_id=payload["worker_identity"],
+            identity=payload["identity"],
+            hardware=payload["hardware"],
+            fabric=payload["fabric"],
+            tools=payload["tools"],
+            runtimes=payload["runtimes"],
+            repositories=payload["repositories"],
+            services=payload["services"],
+            health=payload["health"],
+            credentials=payload["credentials"],
+            captured_at=payload["captured_at"],
+        )
+        gh = validate_action({
+            "action": "verify",
+            "target": "gh",
+            "update_class": "B",
+            "provider": "tool.gh",
+            "disruptive": False,
+            "rollback": "unsupported",
+            "authorization": "privilege",
+            "current": "absent",
+            "desired": "supported-current",
+            "reason": "tool not present",
+        })
+        from mncs_fabric.maintenance import partition_apply_actions
+
+        worker_actions, advisory = partition_apply_actions([gh])
+        self.assertEqual(worker_actions, [])
+        self.assertEqual([item["target"] for item in advisory], ["gh"])
+        result = apply_action(gh, rebuilt)
+        self.assertEqual(result["disposition"], "SKIPPED")
+        receipt = complete_receipt(
+            {
+                "actions": [gh],
+                "plan_identity": "sha256:" + ("ab" * 32),
+                "worker_identity": "worker-a",
+                "controller_identity": "controller",
+                "desired_state_identity": "sha256:" + ("cd" * 32),
+            },
+            rebuilt,
+            [result],
+            mode="apply",
+        )
+        self.assertNotEqual(receipt["disposition"], "FAIL")
+
     def test_commons_knowledge_only_for_unusual_discoveries(self) -> None:
         systemd = sample_inventory(ollama_manager="systemd-system")
         process = sample_inventory(ollama_manager="process")

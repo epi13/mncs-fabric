@@ -20,7 +20,7 @@ from mncs_fabric.contracts import ConsumerContext
 from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
-from mncs_fabric.errors import ProtocolError
+from mncs_fabric.errors import ProtocolError, ValidationError
 from mncs_fabric.lifecycle import LifecycleStore
 from mncs_fabric.models import validate_job_plan
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
@@ -30,6 +30,32 @@ from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.canonical import attach_identity, sha256_identity
 from tests.test_transport import _certificates
+
+
+class _BackgroundRefreshBackend:
+    def __init__(self) -> None:
+        self.calls: list[tuple[float | None, float | None]] = []
+
+    def refresh_fleet(
+        self,
+        *,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((operation_deadline, per_worker_deadline))
+        return {
+            "outcome": "PASS",
+            "workers": [
+                {
+                    "worker_id": "background-worker",
+                    "availability": "AVAILABLE",
+                    "refresh": "PASS",
+                }
+            ],
+        }
+
+    def close(self) -> None:
+        return None
 
 
 @unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
@@ -58,6 +84,26 @@ class ServiceTransportTests(unittest.TestCase):
         self.service.request_stop()
         self.thread.join(timeout=3.0)
         self.temp.cleanup()
+
+    def test_background_capability_refresh_uses_classified_fleet_probe(self) -> None:
+        backend = _BackgroundRefreshBackend()
+        self.service._worker_client = backend
+        self.service._refresh_capability_inventory_once()
+        self.assertEqual(len(backend.calls), 1)
+        self.assertEqual(backend.calls[0], (90.0, 60.0))
+        report = self.service._worker_registry_report or {}
+        self.assertEqual(report["background_refresh"]["outcome"], "PASS")
+        self.assertEqual(
+            self.service.config.public_dict()["capability_refresh_seconds"], 240.0
+        )
+
+    def test_capability_refresh_interval_must_expire_before_observation_age(self) -> None:
+        with self.assertRaises(ValidationError):
+            ControllerConfig(
+                "invalid-refresh-interval",
+                Path(self.temp.name) / "invalid.jsonl",
+                capability_refresh_seconds=300.0,
+            )
 
     def test_consumer_and_admin_surfaces_are_distinct(self) -> None:
         consumer = FabricClient.connect(self.config.socket_path_value, client_identity="harness")

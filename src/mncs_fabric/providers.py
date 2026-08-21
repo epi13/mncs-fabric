@@ -144,7 +144,7 @@ def apply_inspect_tool(action: Mapping[str, Any], inventory: Mapping[str, Any]) 
 def apply_verify_gh(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
     tool = inventory_tool(inventory, "gh")
     if not tool or not tool.get("present") or not tool.get("path"):
-        return action_result(action=action, disposition="FAIL", failure_class="VALIDATION_FAILURE", detail="gh is not present", changed=False)
+        return _skipped(action, "advisory gh is not present; not blocking apply", "PRIVILEGE_REQUIRED")
     probed = run_argv([str(tool["path"]), "auth", "status"], timeout=5.0)
     output = redact_text((probed["stdout"] or "") + "\n" + (probed["stderr"] or ""))
     if probed["returncode"] == 0 and "Logged in" in output:
