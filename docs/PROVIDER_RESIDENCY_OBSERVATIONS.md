@@ -18,6 +18,17 @@ cost without Fabric assigning semantic meaning to those facts.
 
 ## Boundary
 
+The implemented Harness lifecycle uses this boundary today: Harness submits a
+bounded exact-target provider-loopback warm or release job, Fabric persists its
+execution/receipt evidence, and Harness publishes the resulting provider model
+inventory as a capability observation. Fabric still does not hold a model lease,
+choose a keep-alive value, or decide when another model should be evicted. The
+provider's `/api/ps`-equivalent observation, not dispatch completion or wall-clock
+latency, establishes loaded/absent state.
+
+Conversation state remains outside this contract. Messages, KV/session semantics,
+tool results, and experiment handoffs are not reconstructed from loaded weights.
+
 Fabric may answer questions such as:
 
 - Which worker/runtime reported this model as installed or loaded?
