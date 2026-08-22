@@ -25,7 +25,8 @@ The persistent client can submit a bounded archive and job to one exact current
 target with no fallback, returning identity-addressed admission and execution
 evidence. Fabric does not choose tools, resident models, semantic routes, or result
 acceptance; MNCS Harness and other consumers own those policies. See
-[`docs/TARGET_EXECUTION.md`](docs/TARGET_EXECUTION.md).
+[`docs/TARGET_EXECUTION.md`](docs/TARGET_EXECUTION.md) and
+[`docs/PROVIDER_RESIDENCY_OBSERVATIONS.md`](docs/PROVIDER_RESIDENCY_OBSERVATIONS.md).
 
 `FabricClient.submit_execution()` persists a detached workload before returning.
 The persistent controller owns dispatch after the submitting client disconnects;
