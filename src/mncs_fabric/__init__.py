@@ -21,6 +21,7 @@ from .targets import (
     validate_target_execution_evidence,
 )
 from .inventory import INVENTORY_SCHEMA
+from .receipts import build_family_execution_reference
 from .desired_state import DESIRED_STATE_SCHEMA, PROFILE_SCHEMA
 from .management import MANAGEMENT_STATE_SCHEMA
 from .maintenance import PLAN_SCHEMA, RECEIPT_SCHEMA
@@ -47,6 +48,7 @@ __all__ = [
     "TARGET_EXECUTION_EVIDENCE_SCHEMA", "ExecutionTargetReference",
     "validate_target_admission", "validate_target_execution_evidence",
     "INVENTORY_SCHEMA", "DESIRED_STATE_SCHEMA", "PROFILE_SCHEMA",
+    "build_family_execution_reference",
     "MANAGEMENT_STATE_SCHEMA", "PLAN_SCHEMA", "RECEIPT_SCHEMA",
     "CERTIFICATION_SCHEMA",
     "CONFORMANCE_SCHEMA",

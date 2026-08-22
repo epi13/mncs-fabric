@@ -1,6 +1,15 @@
 # Experiment Record Transport Boundary
 
-Status: architecture proposal / non-normative
+Status: bootstrap execution reference implemented / non-normative authority
+
+## Implemented Family Record reference
+
+`build_family_execution_reference` projects one Fabric-owned execution attempt as
+`mncs-fabric.family-execution-reference.v0.1`. It preserves record/request/job/receipt identities,
+worker/node/environment, backend and target, attempt number, retry/recovery links, timing,
+resources, bundle reference, and exact source `PASS`/`FAIL`/`UNKNOWN`. The companion record makes
+no Concept Experiment, scientific, assurance, or conformance verdict. Commons stores a reference
+to this producer-native record rather than absorbing Fabric semantics.
 
 ## Purpose
 
