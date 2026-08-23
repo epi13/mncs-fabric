@@ -563,24 +563,30 @@ class ServiceTransportTests(unittest.TestCase):
                 workers = client.refresh_workers()
                 self.assertEqual(workers[0]["worker_id"], "worker-service")
                 self.assertEqual(workers[0]["availability"], "AVAILABLE")
-                observation = client.ingest_capability_observation(
-                    "worker-service",
-                    [
-                        {
-                            "kind": "runtime",
-                            "namespace": "system",
-                            "name": "python",
-                            "attributes": {"status": "ready"},
-                        },
-                        {
-                            "kind": "tool",
-                            "namespace": "test",
-                            "name": "persistent-service-probe",
-                            "attributes": {"status": "ready"},
-                        }
-                    ],
-                )
+                admin = FabricAdminClient.connect(config.admin_socket_path_value)
+                try:
+                    observation = admin.ingest_capability_observation(
+                        "worker-service",
+                        [
+                            {
+                                "kind": "runtime",
+                                "namespace": "system",
+                                "name": "python",
+                                "attributes": {"status": "ready"},
+                            },
+                            {
+                                "kind": "tool",
+                                "namespace": "test",
+                                "name": "persistent-service-probe",
+                                "attributes": {"status": "ready"},
+                            }
+                        ],
+                        observation_class="operator-asserted",
+                    )
+                finally:
+                    admin.close()
                 self.assertEqual(observation["availability"], "AVAILABLE")
+                self.assertEqual(observation["observation_class"], "operator-asserted")
                 self.assertEqual(
                     client.capability_inventory("worker-service")["status"], "CURRENT"
                 )
@@ -629,10 +635,19 @@ class ServiceTransportTests(unittest.TestCase):
                 before_missing_capability = len(
                     worker.ledger.records(record_type="execution.record")
                 )
-                client.ingest_capability_observation(
-                    "worker-service",
-                    [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                # Only an operator (admin connection) can revise trusted
+                # capability evidence; a consumer re-ingest is inert.
+                admin_downgrade = FabricAdminClient.connect(
+                    config.admin_socket_path_value
                 )
+                try:
+                    admin_downgrade.ingest_capability_observation(
+                        "worker-service",
+                        [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                        observation_class="operator-asserted",
+                    )
+                finally:
+                    admin_downgrade.close()
                 missing_capability_target = client.execute_target(
                     target,
                     plan,

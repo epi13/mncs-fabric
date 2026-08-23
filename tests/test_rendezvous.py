@@ -261,10 +261,16 @@ class RendezvousTests(unittest.TestCase):
             self.assertTrue(status["fleet"]["workers"], diagnostic)
             self.assertEqual(status["fleet"]["workers"][0]["worker_id"], worker.worker_id)
             self.assertEqual(consumer.fleet()[0]["availability"], "AVAILABLE")
-            observation = consumer.ingest_capability_observation(
-                worker.worker_id,
-                [{"kind": "runtime", "namespace": "system", "name": "python"}],
-            )
+            admin_for_capabilities = FabricAdminClient.connect(config.admin_socket_path_value)
+            try:
+                observation = admin_for_capabilities.ingest_capability_observation(
+                    worker.worker_id,
+                    [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                    observation_class="operator-asserted",
+                )
+            finally:
+                admin_for_capabilities.close()
+            self.assertEqual(observation["observation_class"], "operator-asserted")
             context = ConsumerContext(
                 source_project="rendezvous-integration",
                 consumer_workload_identity="sha256:" + "d" * 64,

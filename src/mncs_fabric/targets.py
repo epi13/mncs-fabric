@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from typing import Any, Iterable, Mapping
 
 from .canonical import attach_identity, is_sha256_identity, sha256_identity, verify_identity
-from .capabilities import validate_capability_observation
+from .capabilities import validate_capability_observation, observation_admission_trusted
 from .contracts import validate_consumer_context
 from .errors import ValidationError
 
@@ -38,6 +38,7 @@ TARGET_ADMISSION_CODES = frozenset({
     "TARGET_LIVENESS_STALE",
     "TARGET_CAPABILITIES_STALE",
     "TARGET_CAPABILITY_MISSING",
+    "TARGET_CAPABILITY_UNVERIFIED",
     "TARGET_RUNTIME_MISMATCH",
     "TARGET_TOOL_CAPABILITY_MISMATCH",
     "TARGET_CONTEXT_MISMATCH",
@@ -48,6 +49,7 @@ TARGET_ADMISSION_DISPOSITIONS = {
     "TARGET_ADMITTED": "PASS",
     "TARGET_REVOKED": "DENIED",
     "TARGET_CAPABILITY_MISSING": "DENIED",
+    "TARGET_CAPABILITY_UNVERIFIED": "DENIED",
     "TARGET_RUNTIME_MISMATCH": "DENIED",
     "TARGET_TOOL_CAPABILITY_MISMATCH": "DENIED",
     "TARGET_CONTEXT_MISMATCH": "DENIED",
@@ -428,6 +430,13 @@ def evaluate_target_admission(
             )
         except ValidationError:
             checked_capability = None
+    if checked_capability is not None and not observation_admission_trusted(checked_capability):
+        # Consumer-declared or legacy observations are retained as context but
+        # can never prove that the worker possesses a required capability.
+        checks["capability_provenance"] = "FAIL"
+        reason_code, disposition = "TARGET_CAPABILITY_UNVERIFIED", "DENIED"
+    elif checked_capability is not None:
+        checks["capability_provenance"] = "PASS"
     if checked_capability is not None:
         captured = _instant(checked_capability.get("captured_at"))
         if captured is not None:

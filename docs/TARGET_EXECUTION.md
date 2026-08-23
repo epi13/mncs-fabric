@@ -50,11 +50,28 @@ ages, individual checks, and `TARGET_ADMITTED`. Non-passing requests use stable
 codes:
 
 - `DENIED`: `TARGET_REVOKED`, `TARGET_CAPABILITY_MISSING`,
-  `TARGET_RUNTIME_MISMATCH`, `TARGET_TOOL_CAPABILITY_MISMATCH`,
-  `TARGET_CONTEXT_MISMATCH`, or `TARGET_AUTHORIZATION_BINDING_INVALID`;
+  `TARGET_CAPABILITY_UNVERIFIED`, `TARGET_RUNTIME_MISMATCH`,
+  `TARGET_TOOL_CAPABILITY_MISMATCH`, `TARGET_CONTEXT_MISMATCH`, or
+  `TARGET_AUTHORIZATION_BINDING_INVALID`;
 - `UNKNOWN`: `TARGET_UNKNOWN`, `TARGET_DISCONNECTED`,
   `TARGET_LIVENESS_STALE`, `TARGET_CAPABILITIES_STALE`, or
   `TARGET_BECAME_UNAVAILABLE`.
+
+## Capability provenance
+
+Capability observations carry an explicit provenance class:
+
+- `worker-observed` — reserved for worker-authenticated reporting;
+- `operator-asserted` — published over the admin surface by the operator;
+- `consumer-declared` — published by consumers; retained as bounded context.
+
+Exact-target admission trusts only worker-observed and operator-asserted
+observations. A consumer cannot bootstrap the capability evidence that later
+admits its own request: consumer-side ingestion is always recorded as
+consumer-declared, legacy observations without a class are treated as
+consumer-declared, and admission selects the newest *trusted* observation
+rather than the newest observation of any class. Untrusted-but-fresh evidence
+fails admission with `TARGET_CAPABILITY_UNVERIFIED`.
 
 The authorization identity is opaque consumer-provided provenance. Its SHA-256
 shape is not semantic permission. Fabric's narrow guarantee is that the

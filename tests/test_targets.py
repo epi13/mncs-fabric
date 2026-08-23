@@ -6,6 +6,7 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 
+from mncs_fabric.canonical import attach_identity, sha256_identity
 from mncs_fabric.capabilities import build_capability_observation
 from mncs_fabric.canonical import sha256_identity
 from mncs_fabric.contracts import ConsumerContext
@@ -40,6 +41,7 @@ class ExecutionTargetReferenceTests(unittest.TestCase):
                 {"kind": "tool", "namespace": "system", "name": "git", "version": "2.51"},
             ],
             captured_at=now.isoformat().replace("+00:00", "Z"),
+            observation_class="operator-asserted",
         )
         tool_identity = next(
             item["capability_identity"]
@@ -303,12 +305,14 @@ class ExecutionTargetReferenceTests(unittest.TestCase):
             worker_identity="worker-a",
             capabilities=[{"kind": "runtime", "namespace": "system", "name": "python"}],
             captured_at=(now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"),
+            observation_class="operator-asserted",
         )
         cases.append(("TARGET_CAPABILITIES_STALE", {**kwargs, "capability_observation": stale_capability}))
         missing = build_capability_observation(
             worker_identity="worker-a",
             capabilities=[{"kind": "runtime", "namespace": "system", "name": "python"}],
             captured_at=now.isoformat().replace("+00:00", "Z"),
+            observation_class="operator-asserted",
         )
         cases.append(("TARGET_CAPABILITY_MISSING", {**kwargs, "capability_observation": missing}))
         wrong_runtime = {**kwargs["worker_state"], "description": {"runtime_profile": {"runtime_profile_identity": "sha256:" + "0" * 64}}}
@@ -329,6 +333,84 @@ class ExecutionTargetReferenceTests(unittest.TestCase):
             self.assertEqual(admission["reason_code"], expected)
             self.assertNotEqual(admission["disposition"], "PASS")
             self.assertEqual(selected_target["fallback_policy"], "NONE")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class CapabilityProvenanceTests(unittest.TestCase):
+    """Consumer-declared capability evidence can never authorize a target."""
+
+    def _inputs(self, observation_class=None):
+        fixture = ExecutionTargetReferenceTests()
+        target, kwargs, now = fixture._admission_inputs()
+        if observation_class is None:
+            # Simulate a true legacy record: strip the provenance field and
+            # re-derive the identity exactly as pre-upgrade writers did.
+            legacy = {
+                key: value
+                for key, value in kwargs["capability_observation"].items()
+                if key not in {"observation_class", "capability_observation_identity"}
+            }
+            kwargs["capability_observation"] = attach_identity(
+                legacy, "capability_observation_identity"
+            )
+        else:
+            raw_entries = [
+                {key: value for key, value in entry.items() if key != "capability_identity"}
+                for entry in kwargs["capability_observation"]["capabilities"]
+            ]
+            trusted = build_capability_observation(
+                worker_identity="worker-a",
+                capabilities=raw_entries,
+                captured_at=kwargs["capability_observation"]["captured_at"],
+                observation_class=observation_class,
+            )
+            kwargs["capability_observation"] = trusted
+            target["tool_capability_identity"] = next(
+                item["capability_identity"]
+                for item in trusted["capabilities"]
+                if item["kind"] == "tool"
+            )
+            target["target_identity"] = sha256_identity(
+                {key: value for key, value in target.items() if key != "target_identity"}
+            )
+        return {"target": target, **kwargs}
+
+    def test_fresh_consumer_declared_observation_is_denied_as_unverified(self) -> None:
+        inputs = self._inputs("consumer-declared")
+        admission = evaluate_target_admission(**inputs)
+        self.assertEqual(admission["reason_code"], "TARGET_CAPABILITY_UNVERIFIED")
+        self.assertEqual(admission["disposition"], "DENIED")
+        self.assertEqual(admission["checks"]["capability_provenance"], "FAIL")
+        self.assertEqual(inputs["target"]["fallback_policy"], "NONE")
+
+    def test_legacy_observation_without_class_is_treated_as_consumer_declared(self) -> None:
+        inputs = self._inputs(None)
+        self.assertNotIn("observation_class", inputs["capability_observation"])
+        admission = evaluate_target_admission(**inputs)
+        self.assertEqual(admission["reason_code"], "TARGET_CAPABILITY_UNVERIFIED")
+        self.assertEqual(admission["disposition"], "DENIED")
+
+    def test_operator_asserted_and_worker_observed_are_trusted(self) -> None:
+        for trusted in ("operator-asserted", "worker-observed"):
+            inputs = self._inputs(trusted)
+            admission = evaluate_target_admission(**inputs)
+            self.assertEqual(
+                admission["reason_code"],
+                "TARGET_ADMITTED",
+                msg=f"class={trusted}: {admission['reason_code']}",
+            )
+            self.assertEqual(admission["checks"]["capability_provenance"], "PASS")
+
+    def test_invalid_class_is_rejected_at_build_time(self) -> None:
+        with self.assertRaises(ValidationError):
+            build_capability_observation(
+                worker_identity="worker-a",
+                capabilities=[{"kind": "runtime", "namespace": "system", "name": "python"}],
+                observation_class="self-declared",
+            )
 
 
 if __name__ == "__main__":

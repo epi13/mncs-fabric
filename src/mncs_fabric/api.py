@@ -16,6 +16,7 @@ from typing import Any, Mapping
 
 from . import __version__
 from .capabilities import (
+    DEFAULT_OBSERVATION_CLASS,
     MAX_CAPABILITY_AGE_SECONDS,
     build_capability_observation,
     capability_observation_is_fresh,
@@ -505,22 +506,31 @@ class FabricClient:
         captured_at: str | None = None,
         observation_source: str = "consumer-bounded-worker-probe",
         status_reason: str | None = None,
+        observation_class: str | None = None,
     ) -> dict[str, Any]:
-        """Validate and durably retain one worker-bound capability observation."""
+        """Validate and durably retain one worker-bound capability observation.
+
+        ``observation_class`` records provenance.  Consumers may only publish
+        consumer-declared observations; the controller clamps any higher class
+        requested over a consumer connection.  Operator-asserted observations
+        require the admin connection (see :class:`FabricAdminClient`).
+        """
 
         if self._service_transport is not None:
+            arguments = {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "captured_at": captured_at,
+                "observation_source": observation_source,
+                "status_reason": status_reason,
+            }
+            if observation_class is not None:
+                arguments["observation_class"] = observation_class
             return dict(
-                self._service_payload(
-                    "worker.capability.ingest",
-                    {
-                        "worker_id": worker_id,
-                        "capabilities": [dict(item) for item in capabilities],
-                        "availability": availability,
-                        "captured_at": captured_at,
-                        "observation_source": observation_source,
-                        "status_reason": status_reason,
-                    },
-                ).get("observation", {})
+                self._service_payload("worker.capability.ingest", arguments).get(
+                    "observation", {}
+                )
             )
 
         ledger = self._capability_ledger(worker_id)
@@ -531,6 +541,7 @@ class FabricClient:
             captured_at=captured_at,
             observation_source=observation_source,
             status_reason=status_reason,
+            observation_class=observation_class or DEFAULT_OBSERVATION_CLASS,
         )
         validate_capability_observation(observation, expected_worker_id=worker_id)
         ledger.append("worker.capability-observation", observation)
@@ -1322,6 +1333,59 @@ class FabricAdminClient:
 
     def submit_enrollment(self, request: Mapping[str, Any], token: str) -> dict[str, Any]:
         return self._request("enrollment.submit", {"request": dict(request), "token": token})
+
+    def ingest_capability_observation(
+        self,
+        worker_id: str,
+        capabilities: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *,
+        availability: str = "AVAILABLE",
+        observation_source: str = "consumer-bounded-worker-probe",
+        observation_class: str = "operator-asserted",
+    ) -> dict[str, Any]:
+        """Publish one capability observation over the admin connection.
+
+        Admin-role ingestion may assert ``operator-asserted`` provenance.
+        ``worker-observed`` remains reserved for worker-authenticated
+        reporting and is rejected by the controller.
+        """
+
+        return dict(self._request(
+            "worker.capability.ingest",
+            {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "observation_source": observation_source,
+                "observation_class": observation_class,
+            },
+        ).get("observation", {}))
+
+    def assert_worker_capability(
+        self,
+        worker_id: str,
+        capabilities: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *,
+        availability: str = "AVAILABLE",
+        observation_source: str = "operator-asserted-capability",
+    ) -> dict[str, Any]:
+        """Publish one operator-asserted capability observation.
+
+        This is the operator analogue of the consumer ingest path.  Only the
+        admin connection may publish operator-asserted observations, and
+        worker-observed remains reserved for worker-authenticated reporting.
+        """
+
+        return self._request(
+            "worker.capability.ingest",
+            {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "observation_source": observation_source,
+                "observation_class": "operator-asserted",
+            },
+        )
 
     def revoke_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
         return self._request("worker.revoke", {"worker_id": worker_id, "reason": reason})
