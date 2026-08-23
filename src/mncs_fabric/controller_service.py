@@ -21,9 +21,11 @@ from typing import Any, Mapping
 
 from .canonical import attach_identity, is_sha256_identity, sha256_identity
 from .capabilities import (
+    DEFAULT_OBSERVATION_CLASS,
     MAX_CAPABILITY_AGE_SECONDS,
     build_capability_observation,
     capability_observation_is_fresh,
+    observation_admission_trusted,
     validate_capability_observation,
 )
 from .contracts import CONSUMER_RESULT_SCHEMA
@@ -943,7 +945,29 @@ class ControllerService:
         self._load_latest_capability_cache()
         return self._latest_capability_cache.get(worker_id)
 
-    def _ingest_capability_observation(self, worker_id: str, args: Mapping[str, Any]) -> dict[str, Any]:
+    def _admission_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        """Newest admission-trusted observation for one exact worker.
+
+        Exact-target admission must rest on worker-observed or operator-asserted
+        evidence.  Consumer-declared observations may be more recent, but letting
+        them shadow trusted observations would let a consumer bootstrap the
+        capability facts that admit its own request.
+        """
+
+        self._load_latest_capability_cache()
+        for record in reversed(self.capability_ledger.records(record_type="worker.capability-observation")):
+            observation = record.get("record") or record
+            if not isinstance(observation, Mapping):
+                continue
+            if str(observation.get("worker_identity")) != worker_id:
+                continue
+            if observation_admission_trusted(observation):
+                return dict(observation)
+        return None
+
+    def _ingest_capability_observation(
+        self, worker_id: str, args: Mapping[str, Any], *, role: str
+    ) -> dict[str, Any]:
         worker = next(
             (item for item in self._worker_backend_status()[0] if item.get("worker_id") == worker_id),
             None,
@@ -955,6 +979,17 @@ class ControllerService:
         capabilities = args.get("capabilities")
         if not isinstance(capabilities, list):
             raise ValidationError("capabilities must be an array")
+        requested_class = args.get("observation_class", DEFAULT_OBSERVATION_CLASS)
+        if role != "admin":
+            # Consumers may contribute bounded context about a worker, but the
+            # provenance class of their statements is always consumer-declared:
+            # a consumer cannot self-authorize the capability evidence that
+            # exact-target admission later relies on.
+            requested_class = DEFAULT_OBSERVATION_CLASS
+        elif requested_class == "worker-observed":
+            raise ValidationError(
+                "worker-observed capability class is reserved for worker-authenticated reporting"
+            )
         observation = build_capability_observation(
             worker_identity=worker_id,
             capabilities=capabilities,
@@ -962,6 +997,7 @@ class ControllerService:
             captured_at=args.get("captured_at"),
             observation_source=str(args.get("observation_source", "consumer-bounded-worker-probe")),
             status_reason=args.get("status_reason"),
+            observation_class=requested_class,
         )
         self.capability_ledger.append("worker.capability-observation", observation)
         self._latest_capability_cache[worker_id] = observation
@@ -1280,7 +1316,7 @@ class ControllerService:
                 admission = evaluate_target_admission(
                     target,
                     worker_state=worker,
-                    capability_observation=self._latest_capability_observation(target["worker_identity"]),
+                    capability_observation=self._admission_capability_observation(target["worker_identity"]),
                     consumer_context=args.get("consumer_context"),
                     consumer_authorization_identity=args.get("consumer_authorization_identity"),
                     authenticated_client_identity=authenticated_client_identity,
@@ -1355,7 +1391,7 @@ class ControllerService:
                     raise ProtocolError("persistent capability backend is not configured")
                 worker_id = str(args.get("worker_id", ""))
                 payload = {
-                    "observation": self._ingest_capability_observation(worker_id, args),
+                    "observation": self._ingest_capability_observation(worker_id, args, role=role),
                     "fleet_authority": "persistent-controller",
                 }
             elif operation == "worker.capability.observations":

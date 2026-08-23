@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Add provenance classes to worker capability observations
+  (`worker-observed`, `operator-asserted`, `consumer-declared`). Exact-target
+  admission now trusts only worker-observed and operator-asserted evidence:
+  consumer-declared observations (and legacy records without the field) remain
+  retained context but can never prove that a worker possesses a capability
+  required by an execution target (`TARGET_CAPABILITY_UNVERIFIED`). Consumers
+  may only publish consumer-declared observations; operator-asserted requires
+  the admin surface; worker-observed is reserved for worker-authenticated
+  reporting. Target admission selects the newest trusted observation rather
+  than the newest observation of any class.
+
 - Allow an operator-requested certification to recover a worker that returned
   after an update reconnect deadline, but only after exact expected-version,
   health-certification, and desired-state checks pass. The failed observation
