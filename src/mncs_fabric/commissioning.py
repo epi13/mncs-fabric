@@ -326,7 +326,22 @@ def issue_worker_credentials(
             raise ProtocolError("issued certificate does not preserve the approved worker key")
         worker_pem = _pem(certificate.read_text(encoding="ascii"), "worker certificate")
     fingerprint = certificate_fingerprint_pem(worker_pem)
-    TrustStore(controller_trust_state).enroll(
+    controller_trust = TrustStore(controller_trust_state)
+    current_worker = controller_trust.lookup("worker", worker_id)
+    if (
+        current_worker is not None
+        and current_worker.get("active")
+        and current_worker.get("certificate_fingerprint") != fingerprint
+    ):
+        # Re-issuance for an approved re-enrollment of the same worker key is
+        # the explicit operator decision (certificate rotation); keep the old
+        # binding as revocation history rather than failing the rotation.
+        controller_trust.revoke(
+            "worker",
+            worker_id,
+            reason="worker certificate rotated via credential issuance",
+        )
+    controller_trust.enroll(
         "worker", worker_id, fingerprint, metadata={"request_id": request["request_id"]}
     )
     return attach_identity(
@@ -394,14 +409,31 @@ def activate_worker_credentials(value: Mapping[str, Any], *, state_root: Path) -
     _write_private(worker_cert, worker_pem)
     _write_private(ca_cert, ca_pem)
     _write_private(controller_cert, controller_pem)
-    TrustStore(root / "worker-trust.jsonl").enroll(
-        "controller", controller_id, str(value["controller_certificate_fingerprint"])
-    )
+    worker_trust = TrustStore(root / "worker-trust.jsonl")
+    current_controller = worker_trust.lookup("controller", controller_id)
+    new_fingerprint = str(value["controller_certificate_fingerprint"])
+    if (
+        current_controller is not None
+        and current_controller.get("active")
+        and current_controller.get("certificate_fingerprint") != new_fingerprint
+    ):
+        # Re-activating against a rotated controller certificate is an
+        # explicit operator decision expressed by the credential document
+        # itself: the document is identity-bound and its full chain has just
+        # been verified above.  Retain the old binding as revocation history
+        # instead of forcing operators to hand-edit trust ledgers.
+        worker_trust.revoke(
+            "controller",
+            controller_id,
+            reason="controller certificate rotated via credential activation",
+        )
+    worker_trust.enroll("controller", controller_id, new_fingerprint)
     environment_values = {
         "controller_id": controller_id,
         "controller_host": controller_host,
         "controller_port": controller_port,
         "bundle_root": root / "bundles",
+        "bundle_cache": root / "bundles" / "cache",
         "worker_state": root / "worker.jsonl",
         "trust_state": root / "worker-trust.jsonl",
         "ca": ca_cert,
@@ -417,6 +449,7 @@ def activate_worker_credentials(value: Mapping[str, Any], *, state_root: Path) -
             f"MNCS_FABRIC_CONTROLLER_HOST={environment_values['controller_host']}",
             f"MNCS_FABRIC_CONTROLLER_PORT={environment_values['controller_port']}",
             f"MNCS_FABRIC_BUNDLE_ROOT={environment_values['bundle_root']}",
+            f"MNCS_FABRIC_BUNDLE_CACHE={environment_values['bundle_cache']}",
             f"MNCS_FABRIC_WORKER_STATE={environment_values['worker_state']}",
             f"MNCS_FABRIC_TRUST_STATE={environment_values['trust_state']}",
             f"MNCS_FABRIC_CA={environment_values['ca']}",

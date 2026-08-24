@@ -103,6 +103,17 @@ class ExecutorTests(unittest.TestCase):
         self.assertEqual(record["termination_reason"], "CONTAINMENT_UNAVAILABLE")
 
     @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap is not installed")
+    def test_bubblewrap_user_namespace_probe_detects_capability(self):
+        provider = BubblewrapProvider()
+        # The probe must bind a root filesystem into the namespace; earlier
+        # versions exec'd /bin/true against an empty root and always failed,
+        # forcing every required-containment worker into CONTAINMENT_UNAVAILABLE.
+        self.assertTrue(
+            provider.user_namespace_available(),
+            "bwrap user namespace probe failed; see containment.py probe argv",
+        )
+
+    @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap is not installed")
     def test_bubblewrap_confines_filesystem_and_offline_network(self):
         provider = BubblewrapProvider()
         if not provider.user_namespace_available():

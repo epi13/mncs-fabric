@@ -109,9 +109,33 @@ These are distinct operator actions:
 - `deploy/systemd/uninstall-controller.sh` removes the local controller unit while
   preserving Fabric configuration/state and does not revoke any worker.
 
-Do not edit registry JSON for a rendezvous-enrolled worker. SSH may transfer the
-file-mediated enrollment documents or assist diagnostics, but Fabric mTLS remains
-the only job transport.
+Do not edit registry JSON for a rendezvous-enrolled worker. SSH may transfer
+the file-mediated enrollment documents or assist diagnostics, but Fabric mTLS
+remains the only job transport.
+
+## Operator CA requirements and rotation
+
+The rendezvous operator CA must carry the standard CA extensions; Python's TLS
+stack rejects CAs without them and the worker fails closed at session open:
+
+```bash
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 \
+  -keyout ca.key -out ca.pem -days 1825 -nodes \
+  -subj "/CN=fabric-rendezvous-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
+```
+
+Rotating the controller certificate (or the whole operator CA) re-issues the
+worker credential against the same worker private key:
+
+1. `mncs-fabric worker revoke WORKER --reason ... --admin-socket ...`
+2. Re-run `enrollment create` with the new controller certificate, then the
+   worker `join` → `submit` → `approve` sequence.
+3. Stop the controller, run `enrollment issue` with the new CA, restart it.
+4. Re-run `worker activate` on the worker: activation revokes the stale
+   controller binding in its local trust ledger automatically and enrolls the
+   rotated fingerprint. Then rerun the worker installer.
 
 ## Physical reboot acceptance
 
