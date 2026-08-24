@@ -183,6 +183,8 @@ class ControllerService:
         self.detached_ledger = FabricLedger(
             self.config.service_log_path.with_name("detached-execution.jsonl")
         )
+        self._detached_history_cache: list[dict[str, Any]] = []
+        self._detached_history_token: tuple[int, int] = (-1, -1)
         self.schedule_ledger = FabricLedger(
             self.config.service_log_path.with_name("scheduled-work.jsonl")
         )
@@ -234,21 +236,39 @@ class ControllerService:
     def worker_backend_enabled(self) -> bool:
         return self._worker_client is not None or self._rendezvous is not None
 
+    def _detached_history(self) -> list[dict[str, Any]]:
+        """Complete detached-execution history, memoized on ledger identity.
+
+        Status decisions need the full history (the submit record is the only
+        one carrying job_id, and a bounded read would silently hide it once
+        later state events push it past the read window).  Batch operations
+        project many work items per request, so the full read is cached on
+        (size, mtime) and refreshed whenever the ledger file changes.
+        """
+
+        path = self.detached_ledger.path
+        if not path.exists():
+            self._detached_history_cache = []
+            self._detached_history_token = (-1, -1)
+            return self._detached_history_cache
+        stat = path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if self._detached_history_token != token:
+            self._detached_history_cache = [
+                dict(entry["record"])
+                for entry in self.detached_ledger.all_records(record_type="detached.execution")
+            ]
+            self._detached_history_token = token
+        return self._detached_history_cache
+
     def _detached_records(self, work_id: str | None = None) -> list[dict[str, Any]]:
-        records = [
-            dict(entry["record"])
-            for entry in self.detached_ledger.records(record_type="detached.execution")
-        ]
+        records = self._detached_history()
         if work_id is not None:
             records = [record for record in records if record.get("work_id") == work_id]
         return records
 
-    def _detached_status(self, work_id: str) -> dict[str, Any]:
-        if not is_sha256_identity(work_id):
-            raise ValidationError("detached work identity is invalid")
-        history = self._detached_records(work_id)
-        if not history:
-            raise ValidationError("detached work identity is unknown")
+    @staticmethod
+    def _project_detached_status(work_id: str, history: list[dict[str, Any]]) -> dict[str, Any]:
         submitted = history[0]
         latest = history[-1]
         return {
@@ -271,6 +291,26 @@ class ControllerService:
                 for record in history
             ],
         }
+
+    def _detached_status(self, work_id: str) -> dict[str, Any]:
+        if not is_sha256_identity(work_id):
+            raise ValidationError("detached work identity is invalid")
+        history = self._detached_records(work_id)
+        if not history:
+            raise ValidationError("detached work identity is unknown")
+        return self._project_detached_status(work_id, history)
+
+    def _detached_statuses(self, work_ids: list[str]) -> list[dict[str, Any]]:
+        by_work: dict[str, list[dict[str, Any]]] = {}
+        for record in self._detached_records():
+            by_work.setdefault(str(record.get("work_id")), []).append(record)
+        statuses = []
+        for work_id in work_ids:
+            history = by_work.get(work_id)
+            if not history:
+                raise ValidationError("detached work identity is unknown")
+            statuses.append(self._project_detached_status(work_id, history))
+        return statuses
 
     def _append_detached_event(
         self,
@@ -934,7 +974,10 @@ class ControllerService:
     def _load_latest_capability_cache(self) -> None:
         if self._capability_cache_loaded:
             return
-        for entry in self.capability_ledger.records(record_type="worker.capability-observation"):
+        # Latest-observation projection must see the full ledger: a bounded
+        # read would drop workers whose newest observation is older than the
+        # read window (for example a resident worker that was offline).
+        for entry in self.capability_ledger.all_records(record_type="worker.capability-observation"):
             record = validate_capability_observation(
                 entry["record"], expected_worker_id=entry["record"].get("worker_identity")
             )
@@ -955,7 +998,9 @@ class ControllerService:
         """
 
         self._load_latest_capability_cache()
-        for record in reversed(self.capability_ledger.records(record_type="worker.capability-observation")):
+        for record in reversed(
+            self.capability_ledger.all_records(record_type="worker.capability-observation")
+        ):
             observation = record.get("record") or record
             if not isinstance(observation, Mapping):
                 continue
@@ -1264,7 +1309,7 @@ class ControllerService:
                         work_ids.append(work_id)
                     if len(work_ids) >= limit:
                         break
-                payload = {"work": [self._detached_status(work_id) for work_id in work_ids]}
+                payload = {"work": self._detached_statuses(work_ids)}
             elif operation == "schedule.enqueue":
                 payload = self.work_queue.enqueue(args, client_identity=request["client_identity"])
             elif operation == "schedule.list":

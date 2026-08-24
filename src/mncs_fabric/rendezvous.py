@@ -271,7 +271,9 @@ class RendezvousCoordinator:
         return make_envelope("worker.heartbeat.ack", controller_id=self.controller_id, worker_id=session.worker_id, request_id="ack-" + session.session_id, job_id="worker-session", nonce=sha256_identity({"session": session.session_id, "seen": session.last_seen})[7:39], payload={"session_id": session.session_id, "generation": session.generation, "command": command}, created_at=utc_now(), expires_at=_expiry(60))
 
     def _generation(self, worker_id: str) -> int:
-        values = [entry["record"].get("generation", 0) for entry in self.ledger.records(record_type="worker.rendezvous") if entry["record"].get("worker_id") == worker_id]
+        # Session generations must never regress, so the maximum has to come
+        # from the complete ledger instead of a bounded read window.
+        values = [entry["record"].get("generation", 0) for entry in self.ledger.all_records(record_type="worker.rendezvous") if entry["record"].get("worker_id") == worker_id]
         return max((int(value) for value in values), default=0)
 
     def _known_workers(self) -> dict[str, Mapping[str, Any]]:

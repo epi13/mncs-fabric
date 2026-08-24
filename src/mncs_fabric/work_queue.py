@@ -24,7 +24,9 @@ class WorkQueue:
         self.ledger = ledger
 
     def records(self, work_id: str | None = None) -> list[dict[str, Any]]:
-        values = [dict(entry["record"]) for entry in self.ledger.records(record_type="scheduled.work")]
+        # Queue state is derived from complete work histories; a bounded read
+        # would silently drop older queued work and pause/resume transitions.
+        values = [dict(entry["record"]) for entry in self.ledger.all_records(record_type="scheduled.work")]
         if work_id is not None:
             values = [item for item in values if item.get("work_id") == work_id]
         return values
@@ -104,7 +106,7 @@ class WorkQueue:
 
     def paused(self) -> bool:
         paused = False
-        for entry in self.ledger.records(record_type="scheduled.control"):
+        for entry in self.ledger.all_records(record_type="scheduled.control"):
             state = entry["record"].get("state")
             if state == "PAUSED":
                 paused = True
