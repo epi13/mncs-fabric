@@ -40,7 +40,10 @@ class TrustStore:
         return self.ledger.append("trust.revocation", record)
 
     def lookup(self, identity_type: str, identity: str) -> dict[str, Any] | None:
-        values = [entry["record"] for entry in self.ledger.records() if entry["record"].get("identity_type") == identity_type and entry["record"].get("identity") == identity and entry["record"].get("event") in {"enrolled", "revoked"}]
+        # Authorization decisions require the complete trust ledger; a bounded
+        # read could hide an enrollment or revocation and fail open/closed for
+        # the wrong reason.
+        values = [entry["record"] for entry in self.ledger.all_records() if entry["record"].get("identity_type") == identity_type and entry["record"].get("identity") == identity and entry["record"].get("event") in {"enrolled", "revoked"}]
         return values[-1] if values else None
 
     def authorize(self, identity_type: str, identity: str, fingerprint: str) -> None:

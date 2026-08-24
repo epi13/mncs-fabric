@@ -56,7 +56,12 @@ from .runtime import (
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .targets import ExecutionTargetReference, validate_execution_target_reference
-from .service_transport import SERVICE_REQUEST_TTL_SECONDS, ServiceClientTransport
+from .service_transport import SERVICE_MAX_TIMEOUT_SECONDS, SERVICE_REQUEST_TTL_SECONDS, ServiceClientTransport
+
+# Worker-initiated rendezvous sessions deliver dispatch commands and results on
+# heartbeat boundaries, so a synchronous single-frame dispatch needs headroom
+# beyond the job's own execution bound for up to two heartbeat waits.
+EXECUTION_DISPATCH_OVERHEAD_SECONDS = 15.0
 from .worker import LocalWorker
 from .models import validate_job_plan
 from .scheduler import WorkerSlot, schedule
@@ -263,10 +268,16 @@ class FabricClient:
 
         self._service_transport = None
 
-    def _service_payload(self, operation: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def _service_payload(
+        self,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         if self._service_transport is None:
             raise ProtocolError("client is not connected to a persistent service")
-        return self._service_transport.request(operation, arguments)
+        return self._service_transport.request(operation, arguments, timeout=timeout)
 
     def _require_embedded(self, operation: str) -> None:
         if self._service_transport is not None:
@@ -692,7 +703,14 @@ class FabricClient:
 
         timeout_seconds = float(plan.get("timeout_seconds") or 0)
         if timeout_seconds <= SERVICE_REQUEST_TTL_SECONDS:
-            payload = self._service_payload("execution.dispatch", arguments)
+            # The control-plane TTL is too short for rendezvous workers: the
+            # command and its result each ride a heartbeat boundary, so bound
+            # the frame by the job's own deadline plus heartbeat headroom.
+            dispatch_wait = min(
+                SERVICE_MAX_TIMEOUT_SECONDS,
+                timeout_seconds + EXECUTION_DISPATCH_OVERHEAD_SECONDS,
+            )
+            payload = self._service_payload("execution.dispatch", arguments, timeout=dispatch_wait)
             return [dict(item) for item in payload.get("results", [])]
         try:
             return self._wait_for_detached_execution(arguments, timeout_seconds)

@@ -5,19 +5,30 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from mncs_fabric.api import FabricClient
+from mncs_fabric.api import (
+    EXECUTION_DISPATCH_OVERHEAD_SECONDS,
+    FabricClient,
+)
 from mncs_fabric.errors import ProtocolError, TransportTimeoutError
-from mncs_fabric.service_transport import SERVICE_REQUEST_TTL_SECONDS
+from mncs_fabric.service_transport import SERVICE_MAX_TIMEOUT_SECONDS, SERVICE_REQUEST_TTL_SECONDS
 
 
 class _FakeServiceTransport:
     def __init__(self, script: list[tuple[str, dict[str, object]]]) -> None:
         self.script = list(script)
         self.calls: list[tuple[str, dict[str, object]]] = []
+        self.timeouts: list[float | None] = []
 
-    def request(self, operation: str, arguments: dict[str, object] | None = None) -> dict[str, object]:
+    def request(
+        self,
+        operation: str,
+        arguments: dict[str, object] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, object]:
         payload = dict(arguments or {})
         self.calls.append((operation, payload))
+        self.timeouts.append(timeout)
         if not self.script:
             raise ProtocolError(f"unexpected service operation: {operation}")
         expected, response = self.script.pop(0)
@@ -44,6 +55,17 @@ class PersistentExecutionDeadlineTests(unittest.TestCase):
         )
         self.assertEqual(results[0]["disposition"], "EXECUTED")
         self.assertEqual([name for name, _ in transport.calls], ["execution.dispatch"])
+        # Synchronous dispatch must be bounded by the job's own deadline plus
+        # heartbeat headroom, never the short control-plane TTL.
+        self.assertEqual(
+            transport.timeouts,
+            [
+                min(
+                    SERVICE_MAX_TIMEOUT_SECONDS,
+                    SERVICE_REQUEST_TTL_SECONDS + EXECUTION_DISPATCH_OVERHEAD_SECONDS,
+                )
+            ],
+        )
 
     def test_long_jobs_submit_and_wait_for_observable_completion(self) -> None:
         client, transport = self._client(

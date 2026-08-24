@@ -63,6 +63,11 @@ class BubblewrapProvider:
                     "--die-with-parent",
                     "--unshare-user",
                     "--unshare-pid",
+                    # The namespace starts from an empty root filesystem, so
+                    # the probe binary must be bind-mounted to exist at all.
+                    "--ro-bind",
+                    "/",
+                    "/",
                     "/bin/true",
                 ],
                 check=False,

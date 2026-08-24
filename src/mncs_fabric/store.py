@@ -77,15 +77,50 @@ def _exclusive_lock(path: Path) -> Iterator[None]:
 
 
 class FabricLedger:
-    """Append immutable records; repair is explicit and only applies to a tail."""
+    """Append immutable records; repair is explicit and only applies to a tail.
+
+    Reads re-verify the full hash chain, so parsed records are memoized on the
+    ledger file's (size, mtime_ns).  Ledgers are append-only and fsync'd on
+    every write, so any mutation — including one from another process —
+    changes that identity and forces a fresh validated parse.
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._read_cache_token: tuple[int, int] | None = None
+        self._read_cache_records: list[dict[str, Any]] = []
+        self._read_cache_diagnostics: list[LedgerDiagnostic] = []
+        self._read_cache_partial = False
+
+    def _publish_read_cache_after_append(
+        self, records: list[dict[str, Any]], new_entries: list[dict[str, Any]]
+    ) -> None:
+        """Extend the validated-read cache after an append under the file lock.
+
+        The caller read ``records`` through ``_read_unlocked`` while holding
+        the exclusive lock and wrote exactly ``new_entries`` afterwards, so no
+        other writer can have intervened and the resulting identity is exact.
+        """
+
+        stat = self.path.stat()
+        self._read_cache_token = (stat.st_size, stat.st_mtime_ns)
+        self._read_cache_records = [*records, *new_entries]
+        self._read_cache_diagnostics = []
+        self._read_cache_partial = False
 
     def _read_unlocked(self) -> tuple[list[dict[str, Any]], list[LedgerDiagnostic], bool]:
         if not self.path.exists():
+            self._read_cache_token = None
             return [], [], False
+        stat = self.path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if token == self._read_cache_token:
+            return (
+                self._read_cache_records,
+                self._read_cache_diagnostics,
+                self._read_cache_partial,
+            )
         raw = self.path.read_bytes()
         if not raw:
             return [], [], False
@@ -107,6 +142,10 @@ class FabricLedger:
             records.append(value)
         if trailing_partial and records and not diagnostics:
             diagnostics.append(LedgerDiagnostic("TRAILING_NEWLINE_MISSING", "valid final ledger entry is missing its newline", len(records)))
+        self._read_cache_token = token
+        self._read_cache_records = records
+        self._read_cache_diagnostics = diagnostics
+        self._read_cache_partial = trailing_partial
         return records, diagnostics, trailing_partial
 
     @staticmethod
@@ -154,6 +193,8 @@ class FabricLedger:
                         stream.flush()
                         os.fsync(stream.fileno())
                 repaired = True
+        if repaired:
+            self._read_cache_token = None
         return {"record_count": len(records), "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics], "repaired": repaired, "outcome": "PASS" if not diagnostics or repaired else "UNKNOWN"}
 
     def append(self, record_type: str, record: dict[str, Any]) -> dict[str, Any]:
@@ -183,6 +224,7 @@ class FabricLedger:
                 stream.write(canonical_json_bytes(entry) + b"\n")
                 stream.flush()
                 os.fsync(stream.fileno())
+            self._publish_read_cache_after_append(records, [entry])
             return entry
 
     def append_if(
@@ -225,6 +267,7 @@ class FabricLedger:
                 stream.write(canonical_json_bytes(entry) + b"\n")
                 stream.flush()
                 os.fsync(stream.fileno())
+            self._publish_read_cache_after_append(records, [entry])
             return entry
 
     def append_many_if(
@@ -276,6 +319,7 @@ class FabricLedger:
                         stream.write(canonical_json_bytes(entry) + b"\n")
                     stream.flush()
                     os.fsync(stream.fileno())
+                self._publish_read_cache_after_append(records, new_entries)
             return entries
 
     def records(self, *, record_type: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
