@@ -165,6 +165,25 @@ def build_parser() -> argparse.ArgumentParser:
     record_verify = record_sub.add_parser("verify", help="verify a record's self-identity")
     record_verify.add_argument("record", type=_path)
 
+    provenance = sub.add_parser(
+        "provenance", help="rights & provenance evidence operations"
+    )
+    provenance_sub = provenance.add_subparsers(dest="provenance_command", required=True)
+    provenance_emit = provenance_sub.add_parser(
+        "emit",
+        help=(
+            "project an execution record into a rights/provenance evidence "
+            "record (process evidence only; no legal conclusions)"
+        ),
+    )
+    provenance_emit.add_argument("record", type=_path)
+    provenance_emit.add_argument("--receipt", type=_path, default=None)
+    provenance_emit.add_argument("--output", type=_path)
+    provenance_emit.add_argument("--run-id", dest="run_id")
+    provenance_emit.add_argument("--task-id", dest="task_id")
+    provenance_emit.add_argument("--consumer-context-identity", dest="consumer_context_identity")
+    provenance_emit.add_argument("--rights-manifest-reference", dest="rights_manifest_reference")
+
     reconcile = sub.add_parser("reconcile", help="reconcile execution records")
     reconcile.add_argument("records", nargs="+", type=_path)
     reconcile.add_argument("--output", type=_path)
@@ -885,6 +904,20 @@ def main(argv: list[str] | None = None) -> int:
             result = _SERVICE.verify_record(value)
             write_json(None, result)
             return _status_code(result["outcome"])
+        if args.command == "provenance" and args.provenance_command == "emit":
+            from .provenance import build_provenance_evidence
+
+            receipt = load_json(args.receipt) if getattr(args, "receipt", None) else None
+            evidence = build_provenance_evidence(
+                load_json(args.record),
+                receipt=receipt,
+                run_id=args.run_id,
+                task_id=args.task_id,
+                consumer_context_identity=args.consumer_context_identity,
+                rights_manifest_reference=args.rights_manifest_reference,
+            )
+            write_json(args.output, evidence)
+            return 0
         if args.command == "reconcile":
             cohort = _SERVICE.reconcile([load_json(path) for path in args.records], require_distinct_nodes=not args.allow_repeated_node)
             write_json(args.output, cohort)
