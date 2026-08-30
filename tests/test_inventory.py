@@ -9,7 +9,9 @@ from pathlib import Path
 from mncs_fabric.errors import ValidationError
 from mncs_fabric.inventory import (
     INVENTORY_SCHEMA,
+    TOOL_SPECS,
     build_worker_inventory,
+    collect_credentials,
     collect_worker_inventory,
     discover_search_path,
     discover_service,
@@ -84,7 +86,6 @@ def sample_inventory(worker_id: str = "worker-a", *, ollama_manager: str = "proc
         },
         credentials=[
             {"name": "github-cli", "available": True, "detail": "authenticated"},
-            {"name": "joern", "available": False, "detail": "absent"},
             {"name": "forge", "available": False, "detail": "absent"},
         ],
         captured_at="2026-08-14T00:00:00Z",
@@ -92,6 +93,10 @@ def sample_inventory(worker_id: str = "worker-a", *, ollama_manager: str = "proc
 
 
 class InventoryTests(unittest.TestCase):
+    def test_retired_analysis_tool_is_not_in_inventory_contract(self) -> None:
+        self.assertNotIn("joern", {name for name, _ in TOOL_SPECS})
+        self.assertNotIn("joern", {item["name"] for item in collect_credentials()})
+
     def test_collect_and_validate_local_inventory(self) -> None:
         inventory = collect_worker_inventory("local-inventory")
         checked = validate_worker_inventory(inventory, expected_worker_id="local-inventory")

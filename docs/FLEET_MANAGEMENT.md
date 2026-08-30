@@ -105,7 +105,7 @@ The worker collects:
 - identity and OS/distribution facts
 - CPU, RAM, disk, accelerators
 - Fabric/harness versions
-- tools (`git`, `gh`, Python, pip, uv, rustc, cargo, gcc/clang, Joern, Forge, Ollama)
+- tools (`git`, `gh`, Python, pip, uv, rustc, cargo, gcc/clang, Forge, Ollama)
 - runtimes with **discovered** install/service type
 - configured or nearby Git repositories (never a blind `git pull`)
 - services without assuming systemd
@@ -213,8 +213,8 @@ re-evaluates the predicate.
 Certification tests layers the node actually has. A build node is not failed
 for missing models. An installer exit code is never treated as certification.
 
-Layers: connectivity, execution, repository access, GitHub, Forge, Joern,
-Ollama, model discovery, inference, harness.
+Layers: connectivity, execution, repository access, GitHub, Forge, Ollama,
+model discovery, inference, harness.
 
 Inference generate is model-agnostic: first discovered local model, prompt
 `ping`. It runs only when an inference profile is assigned.

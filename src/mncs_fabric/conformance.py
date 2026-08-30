@@ -37,7 +37,7 @@ ADVISORY_PACKAGES = frozenset({"local-harness"})
 ADVISORY_TOOLS = frozenset({"gh"})
 _ADVISORY_PACKAGES = ADVISORY_PACKAGES
 _ADVISORY_TOOLS = ADVISORY_TOOLS
-_BUILD_ONLY_TOOLS = frozenset({"gcc", "rustc", "cargo", "joern", "forge"})
+_BUILD_ONLY_TOOLS = frozenset({"gcc", "rustc", "cargo", "forge"})
 
 
 def _text(value: object, field: str, maximum: int = 256) -> str:
