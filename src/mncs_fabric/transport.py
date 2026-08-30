@@ -595,6 +595,11 @@ class TLSRendezvousWorker:
         self.session_id: str | None = None
         self.generation = 0
         self._stop_event = threading.Event()
+        # A rendezvous session carries one content-addressed worker
+        # description.  Heartbeats are liveness messages; rebuilding the
+        # timestamped description on every heartbeat would turn them into
+        # durable description-change events and grow controller storage.
+        self._session_description: dict[str, object] | None = None
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=str(ca_file))
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
@@ -606,6 +611,7 @@ class TLSRendezvousWorker:
             raise ValueError("max_seconds must be positive")
         started = time.monotonic()
         self._stop_event.clear()
+        self._session_description = None
         try:
             with socket.create_connection((self.host, self.port), timeout=self.timeout) as raw:
                 raw.settimeout(self.timeout)
@@ -642,7 +648,13 @@ class TLSRendezvousWorker:
         self._stop_event.set()
 
     def _description_payload(self) -> dict[str, object]:
-        return {"protocol_version": "mncs-fabric.protocol.v0.1", "service_contract": "mncs-fabric.controller-service.v0.1", "description": self.worker.description()}  # type: ignore[attr-defined]
+        if self._session_description is None:
+            self._session_description = dict(self.worker.description())  # type: ignore[attr-defined]
+        return {
+            "protocol_version": "mncs-fabric.protocol.v0.1",
+            "service_contract": "mncs-fabric.controller-service.v0.1",
+            "description": self._session_description,
+        }
 
     def _envelope(self, message_type: str, payload: dict[str, object], *, request_id: str) -> dict[str, object]:
         from .canonical import sha256_identity

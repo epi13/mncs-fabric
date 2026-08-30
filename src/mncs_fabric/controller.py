@@ -28,7 +28,7 @@ from .protocol import dispatch_request_identity, make_envelope, validate_envelop
 from .resources import validate_admission, validate_resource_snapshot, validate_placement_request
 from .runtime import validate_runtime_capability_observation, validate_runtime_observation
 from .scheduler import WorkerSlot, schedule
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 from .transport import EnvelopeTransport, InProcessTransport
 from .worker import LocalWorker
 from .worker_state import (
@@ -474,12 +474,14 @@ class NetworkController(LocalController):
         request = request_id or "describe-" + sha256_identity({"controller_id": self.controller_id, "worker_id": worker_id, "scope": "current-worker-description"})[7:]
         scope_identity = sha256_identity({"protocol_version": "mncs-fabric.protocol.v0.1", "message_type": "worker.describe.request", "controller_id": self.controller_id, "worker_id": worker_id, "request_id": request, "scope": "current-worker-description"})
         envelope = make_envelope("worker.describe.request", controller_id=self.controller_id, worker_id=worker_id, request_id=request, job_id="worker-description", nonce="describe-" + sha256_identity({"request": request, "worker": worker_id})[7:55], payload={"description_request_identity": scope_identity}, created_at=created, expires_at=expires)
-        self.ledger.append("worker.description.request", envelope)
         response = validate_envelope(self._transport_request(transport, envelope, timeout=timeout))
         if response.get("message_type") != "worker.describe.result" or response.get("worker_id") != worker_id or response.get("controller_id") != self.controller_id:
             raise ProtocolError("worker description response identity is invalid")
         description = validate_worker_description(response["payload"].get("description"), expected_worker_id=worker_id)
-        self.ledger.append("worker.description", description)
+        current = self.remote_descriptions.get(worker_id)
+        if current is None or current.get("description_identity") != description.get("description_identity"):
+            self.ledger.append("worker.description.request", envelope)
+            self.ledger.append("worker.description", description)
         return description
 
     @staticmethod
@@ -496,6 +498,11 @@ class NetworkController(LocalController):
             raise ProtocolError(f"worker is not registered: {worker_id}")
         with self._remote_lock:
             transport, slot = self.remote_workers[worker_id]
+            current_desc = self.remote_descriptions.get(worker_id)
+            desc_changed = description is not None and (
+                current_desc is None
+                or current_desc.get("description_identity") != description.get("description_identity")
+            )
             liveness = build_liveness_observation(worker_id=worker_id, state=state, observed_at=utc_now(), description_identity=description.get("description_identity") if description else (self.remote_liveness.get(worker_id, {}).get("description_identity")), lease_seconds=DESCRIPTION_LEASE_SECONDS, last_failure=failure)
             self.remote_liveness[worker_id] = liveness
             if description is not None:
@@ -514,7 +521,14 @@ class NetworkController(LocalController):
                     current_capability = None
                 slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime, runtime_capability_observation=current_capability)
                 self.remote_workers[worker_id] = (transport, slot)
-                self.ledger.append("worker.state", {"worker_id": worker_id, "description": description, "liveness": liveness})
+                if desc_changed:
+                    # The immutable description is already persisted by
+                    # describe_via. State carries only its content identity;
+                    # embedding the same multi-KB object here doubled every
+                    # description change in the controller ledger.
+                    self.ledger.append("worker.state", {"worker_id": worker_id, "description_identity": description["description_identity"], "liveness": liveness})
+                else:
+                    self.ledger.append("worker.liveness", liveness)
             else:
                 slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation)
                 self.remote_workers[worker_id] = (transport, slot)
@@ -746,18 +760,24 @@ class NetworkController(LocalController):
 
         update_recovery = self.fleet_manager.recover_unresolved_updates(resume=_resume)
 
+        latest_description: dict[str, dict[str, Any]] = {}
         latest_state: dict[str, dict[str, Any]] = {}
-        for entry in self.ledger.all_records(record_type="worker.state"):
-            record = entry["record"]
-            worker_id = record.get("worker_id")
-            if isinstance(worker_id, str) and worker_id in self.remote_workers:
-                latest_state[worker_id] = record
         latest_liveness: dict[str, dict[str, Any]] = {}
-        for entry in self.ledger.all_records(record_type="worker.liveness"):
-            record = entry["record"]
-            worker_id = record.get("worker_identity") or record.get("worker_id")
-            if isinstance(worker_id, str) and worker_id in self.remote_workers:
-                latest_liveness[worker_id] = record
+        for entry in iter_ledger_records(self.ledger):
+            rtype = entry.get("record_type")
+            record = entry.get("record", {})
+            if rtype == "worker.description":
+                wid = record.get("worker_identity") or record.get("worker_id")
+                if isinstance(wid, str) and wid in self.remote_workers:
+                    latest_description[wid] = record
+            elif rtype == "worker.state":
+                wid = record.get("worker_id")
+                if isinstance(wid, str) and wid in self.remote_workers:
+                    latest_state[wid] = record
+            elif rtype == "worker.liveness":
+                wid = record.get("worker_identity") or record.get("worker_id")
+                if isinstance(wid, str) and wid in self.remote_workers:
+                    latest_liveness[wid] = record
         restored = 0
         with self._remote_lock:
             for worker_id in self.remote_workers:
@@ -765,7 +785,7 @@ class NetworkController(LocalController):
                 description = None
                 liveness = None
                 if record is not None:
-                    raw_description = record.get("description")
+                    raw_description = record.get("description") or latest_description.get(worker_id)
                     raw_liveness = record.get("liveness")
                     if isinstance(raw_description, dict):
                         try:
@@ -777,6 +797,11 @@ class NetworkController(LocalController):
                             liveness = validate_liveness(raw_liveness, expected_worker_id=worker_id)
                         except Exception:
                             liveness = None
+                elif worker_id in latest_description:
+                    try:
+                        description = validate_worker_description(latest_description[worker_id], expected_worker_id=worker_id)
+                    except Exception:
+                        description = None
                 if liveness is None and worker_id in latest_liveness:
                     try:
                         liveness = validate_liveness(latest_liveness[worker_id], expected_worker_id=worker_id)

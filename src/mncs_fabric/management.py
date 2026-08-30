@@ -13,7 +13,7 @@ from typing import Any, Mapping
 from .canonical import attach_identity, verify_identity
 from .errors import ProtocolError, ValidationError
 from .node import utc_now
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 
 MANAGEMENT_STATE_SCHEMA = "mncs-fabric.management-state.v0.1"
 MANAGEMENT_STATES = frozenset({
@@ -151,15 +151,56 @@ class ManagementStore:
 
     def __init__(self, path: Path) -> None:
         self.ledger = FabricLedger(Path(path))
+        self._state_cache: dict[str, dict[str, Any]] = {}
+        self._desired_cache: dict[str, dict[str, Any]] = {}
+        self._latest_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+        self._unscoped_cache: dict[str, dict[str, Any]] = {}
+        self._worker_ids_cache: list[str] = []
+        self._cache_token: tuple[int, int] | None = None
+
+    def _ensure_cache(self) -> None:
+        if not self.ledger.path.exists():
+            self._state_cache = {}
+            self._desired_cache = {}
+            self._latest_cache = {}
+            self._unscoped_cache = {}
+            self._worker_ids_cache = []
+            self._cache_token = None
+            return
+        stat = self.ledger.path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if token != self._cache_token:
+            state_cache: dict[str, dict[str, Any]] = {}
+            desired_cache: dict[str, dict[str, Any]] = {}
+            latest_cache: dict[tuple[str, str, str], dict[str, Any]] = {}
+            unscoped_cache: dict[str, dict[str, Any]] = {}
+            found: set[str] = set()
+            for entry in iter_ledger_records(self.ledger):
+                rtype = entry.get("record_type")
+                record = entry.get("record", {})
+                wid = record.get("worker_identity") or record.get("worker_id")
+                if isinstance(wid, str) and wid:
+                    found.add(wid)
+                if rtype == "management.state" and isinstance(wid, str):
+                    state_cache[wid] = record
+                elif rtype == "management.desired-state" and isinstance(wid, str):
+                    desired_cache[wid] = record
+                if rtype and isinstance(wid, str):
+                    for id_field in ("worker_identity", "worker_id"):
+                        if record.get(id_field) == wid:
+                            latest_cache[(str(rtype), wid, id_field)] = record
+                if rtype:
+                    unscoped_cache[str(rtype)] = record
+            self._state_cache = state_cache
+            self._desired_cache = desired_cache
+            self._latest_cache = latest_cache
+            self._unscoped_cache = unscoped_cache
+            self._worker_ids_cache = sorted(found)
+            self._cache_token = token
 
     def state(self, worker_id: str) -> dict[str, Any] | None:
-        latest = None
-        for entry in self.ledger.all_records():
-            if entry["record_type"] != "management.state":
-                continue
-            record = entry["record"]
-            if record.get("worker_identity") == worker_id:
-                latest = record
+        self._ensure_cache()
+        latest = self._state_cache.get(worker_id)
         return validate_management_state(latest, expected_worker_id=worker_id) if latest else None
 
     def ensure(self, worker_id: str, *, reason: str = "initialized") -> dict[str, Any]:
@@ -168,6 +209,10 @@ class ManagementStore:
             return current
         created = build_management_state(worker_id=worker_id, state="READY", reason=reason, certification_status="UNKNOWN")
         self.ledger.append("management.state", created)
+        self._ensure_cache()
+        self._state_cache[worker_id] = created
+        if worker_id not in self._worker_ids_cache:
+            self._worker_ids_cache = sorted(set(self._worker_ids_cache) | {worker_id})
         return created
 
     def assign_desired_state(self, desired: Mapping[str, Any]) -> dict[str, Any]:
@@ -175,40 +220,43 @@ class ManagementStore:
 
         checked = validate_desired_state(desired)
         self.ledger.append("management.desired-state", dict(checked))
+        self._ensure_cache()
+        wid = checked.get("worker_identity")
+        if isinstance(wid, str):
+            self._desired_cache[wid] = dict(checked)
+            if wid not in self._worker_ids_cache:
+                self._worker_ids_cache = sorted(set(self._worker_ids_cache) | {wid})
         return dict(checked)
 
     def desired_state(self, worker_id: str) -> dict[str, Any] | None:
-        latest = None
-        for entry in self.ledger.all_records():
-            if entry["record_type"] != "management.desired-state":
-                continue
-            record = entry["record"]
-            if record.get("worker_identity") == worker_id:
-                latest = record
+        self._ensure_cache()
+        latest = self._desired_cache.get(worker_id)
         return dict(latest) if latest is not None else None
 
     def set_state(self, worker_id: str, *, state: str, reason: str, **updates: Any) -> dict[str, Any]:
         current = self.ensure(worker_id)
         nxt = transition_management_state(current, state=state, reason=reason, **updates)
         self.ledger.append("management.state", nxt)
+        self._ensure_cache()
+        self._state_cache[worker_id] = nxt
         return nxt
 
     def record(self, record_type: str, value: Mapping[str, Any]) -> dict[str, Any]:
         payload = dict(value)
         self.ledger.append(record_type, payload)
+        self._cache_token = None
         return payload
 
     def worker_ids(self) -> list[str]:
-        found: set[str] = set()
-        for entry in self.ledger.all_records():
-            record = entry["record"]
-            worker_id = record.get("worker_identity") or record.get("worker_id")
-            if isinstance(worker_id, str) and worker_id:
-                found.add(worker_id)
-        return sorted(found)
+        self._ensure_cache()
+        return list(self._worker_ids_cache)
 
     def latest(self, record_type: str, worker_id: str, identity_field: str = "worker_identity") -> dict[str, Any] | None:
-        latest = None
+        self._ensure_cache()
+        latest = self._latest_cache.get((record_type, worker_id, identity_field))
+        if latest is not None:
+            return dict(latest)
+        # Fallback to streaming search if not cached by that identity_field
         for entry in self.ledger.all_records():
             if entry["record_type"] != record_type:
                 continue
@@ -218,9 +266,6 @@ class ManagementStore:
         return dict(latest) if latest is not None else None
 
     def latest_unscoped(self, record_type: str) -> dict[str, Any] | None:
-        latest = None
-        for entry in self.ledger.all_records():
-            if entry["record_type"] != record_type:
-                continue
-            latest = entry["record"]
+        self._ensure_cache()
+        latest = self._unscoped_cache.get(record_type)
         return dict(latest) if latest is not None else None

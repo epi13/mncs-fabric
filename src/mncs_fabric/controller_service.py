@@ -10,16 +10,18 @@ worker-initiated rendezvous session owned by this runtime.
 from __future__ import annotations
 
 import base64
+import json
 import signal
 import time
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Mapping
 
-from .canonical import attach_identity, is_sha256_identity, sha256_identity
+from .canonical import attach_identity, canonical_json_bytes, is_sha256_identity, sha256_identity
 from .capabilities import (
     DEFAULT_OBSERVATION_CLASS,
     MAX_CAPABILITY_AGE_SECONDS,
@@ -30,11 +32,11 @@ from .capabilities import (
 )
 from .contracts import CONSUMER_RESULT_SCHEMA
 from .bundle_transfer import BundleCache
-from .errors import FabricError, ProtocolError, ValidationError
+from .errors import FabricError, ProtocolError, StorageError, ValidationError
 from .lifecycle import LifecycleStore, default_lifecycle_path, default_state_dir
 from .node import utc_now
 from .models import validate_job_plan
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 from .enrollment import TrustStore
 from .rendezvous import RendezvousCoordinator
 from .targets import (
@@ -50,10 +52,110 @@ CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
 MIN_CAPABILITY_REFRESH_SECONDS = 30.0
 BACKGROUND_REFRESH_OPERATION_DEADLINE_SECONDS = 90.0
 BACKGROUND_REFRESH_PER_WORKER_DEADLINE_SECONDS = 60.0
+SERVICE_REPLAY_SCHEMA = "mncs-fabric.service-replay.v0.1"
+SERVICE_REPLAY_MAX_ENTRIES = 10000
 
 
 class _DetachedSubmissionExists(Exception):
     """Internal signal used to suppress an atomic duplicate submission append."""
+
+
+class _ServiceReplayCache:
+    """Bounded, time-windowed replay protection for controller service requests."""
+
+    def __init__(self, state_path: Path | None = None) -> None:
+        self._lock = Lock()
+        self._state_path = Path(state_path).expanduser() if state_path is not None else None
+        self._entries: dict[str, float] = {}  # request_id -> expires_timestamp
+        self._loaded = False
+
+    def _load_locked(self) -> None:
+        if self._loaded or self._state_path is None:
+            self._loaded = True
+            return
+        self._loaded = True
+        if not self._state_path.exists():
+            return
+        try:
+            value = json.loads(self._state_path.read_text(encoding="utf-8"))
+            entries = value.get("entries") if isinstance(value, dict) else None
+            if not isinstance(value, dict) or value.get("schema_version") != SERVICE_REPLAY_SCHEMA or not isinstance(entries, dict):
+                raise ValueError("replay state schema is invalid")
+            for request_id, expires in entries.items():
+                if (
+                    not isinstance(request_id, str)
+                    or not request_id
+                    or not isinstance(expires, (int, float))
+                    or isinstance(expires, bool)
+                    or expires <= 0
+                ):
+                    raise ValueError("replay state entry is invalid")
+                self._entries[request_id] = float(expires)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise StorageError("service replay state is corrupt") from exc
+
+    def _persist_locked(self) -> None:
+        if self._state_path is None:
+            return
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        value = {
+            "schema_version": SERVICE_REPLAY_SCHEMA,
+            "entries": dict(sorted(self._entries.items())),
+        }
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=self._state_path.name + ".", dir=self._state_path.parent
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(canonical_json_bytes(value))
+                stream.write(b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self._state_path)
+        finally:
+            try:
+                Path(temporary).unlink()
+            except FileNotFoundError:
+                pass
+
+    def check_and_record(self, request_id: str, expires_at_iso: str) -> None:
+        try:
+            expires = datetime.fromisoformat(expires_at_iso.replace("Z", "+00:00")).timestamp()
+        except Exception as exc:
+            raise ValidationError("invalid expires_at timestamp") from exc
+        now = time.time()
+        if expires <= now:
+            raise ValidationError("service request has expired")
+        with self._lock:
+            self._load_locked()
+            expired = [k for k, exp in self._entries.items() if exp <= now]
+            for k in expired:
+                del self._entries[k]
+            if expired:
+                self._persist_locked()
+            if request_id in self._entries:
+                raise ProtocolError("service request replay detected")
+            if len(self._entries) >= SERVICE_REPLAY_MAX_ENTRIES:
+                raise ProtocolError("service replay protection capacity is exhausted")
+            self._entries[request_id] = expires
+            try:
+                self._persist_locked()
+            except BaseException:
+                self._entries.pop(request_id, None)
+                raise
+
+    @property
+    def count(self) -> int:
+        with self._lock:
+            self._load_locked()
+            now = time.time()
+            expired = [k for k, exp in self._entries.items() if exp <= now]
+            for k in expired:
+                del self._entries[k]
+            if expired:
+                self._persist_locked()
+            return len(self._entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,15 +278,16 @@ class ControllerService:
         # use the same controller-owned record stream.
         self.capability_ledger = FabricLedger(self.config.worker_state_path_value)
         self._latest_capability_cache: dict[str, dict[str, Any]] = {}
-        self._capability_cache_loaded = False
+        self._admission_capability_cache: dict[str, dict[str, Any]] = {}
+        self._capability_cache_token: tuple[int, int] | None = None
         self.target_ledger = FabricLedger(
             self.config.worker_state_path_value.with_name("target-execution.jsonl")
         )
         self.detached_ledger = FabricLedger(
             self.config.service_log_path.with_name("detached-execution.jsonl")
         )
-        self._detached_history_cache: list[dict[str, Any]] = []
-        self._detached_history_token: tuple[int, int] = (-1, -1)
+        self._detached_index: dict[str, dict[str, Any]] = {}
+        self._detached_index_token: tuple[int, int] | None = None
         self.schedule_ledger = FabricLedger(
             self.config.service_log_path.with_name("scheduled-work.jsonl")
         )
@@ -193,6 +296,9 @@ class ControllerService:
         self.work_queue = WorkQueue(self.schedule_ledger)
         self._target_evidence_index = TargetEvidenceIndex(
             self.target_ledger, self.config.target_evidence_index_value
+        )
+        self._replay_cache = _ServiceReplayCache(
+            self.config.service_log_path.with_name("controller-service-replay.json")
         )
         self._stop = Event()
         self._capability_refresh_lock = Lock()
@@ -236,80 +342,210 @@ class ControllerService:
     def worker_backend_enabled(self) -> bool:
         return self._worker_client is not None or self._rendezvous is not None
 
-    def _detached_history(self) -> list[dict[str, Any]]:
-        """Complete detached-execution history, memoized on ledger identity.
+    def _save_detached_result(self, result: dict[str, Any]) -> str:
+        import json
+        import secrets
 
-        Status decisions need the full history (the submit record is the only
-        one carrying job_id, and a bounded read would silently hide it once
-        later state events push it past the read window).  Batch operations
-        project many work items per request, so the full read is cached on
-        (size, mtime) and refreshed whenever the ledger file changes.
+        result_identity = sha256_identity(result)
+        results_dir = self.config.service_log_path.parent / "detached-results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        target = results_dir / f"{result_identity[7:]}.json"
+        if not target.exists():
+            from .canonical import canonical_json_bytes
+
+            raw = canonical_json_bytes(result)
+            temp = target.with_name(f"{target.name}.tmp.{secrets.token_hex(4)}")
+            temp.write_bytes(raw)
+            temp.replace(target)
+        return result_identity
+
+    def _load_detached_result(self, result_identity: str) -> dict[str, Any] | None:
+        import json
+
+        results_dir = self.config.service_log_path.parent / "detached-results"
+        target = results_dir / f"{result_identity[7:]}.json"
+        if target.exists():
+            try:
+                return json.loads(target.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return None
+
+    def _get_detached_result(self, work_id: str) -> dict[str, Any] | None:
+        item = self._detached_projection({work_id}).get(work_id)
+        if item is None:
+            return None
+        if item.get("result") is not None:
+            return item["result"]
+        if item.get("result_identity"):
+            return self._load_detached_result(str(item["result_identity"]))
+        return None
+
+    def _ensure_detached_index(self) -> dict[str, dict[str, Any]]:
+        """Return only unfinished work needed for restart recovery.
+
+        Completed work remains authoritative in the append-only ledger and is
+        projected on demand by ``_detached_projection``. Keeping every job's
+        arguments and history here would recreate the unbounded resident graph
+        that this storage design is intended to remove.
         """
 
         path = self.detached_ledger.path
         if not path.exists():
-            self._detached_history_cache = []
-            self._detached_history_token = (-1, -1)
-            return self._detached_history_cache
+            self._detached_index = {}
+            self._detached_index_token = None
+            return self._detached_index
         stat = path.stat()
         token = (stat.st_size, stat.st_mtime_ns)
-        if self._detached_history_token != token:
-            self._detached_history_cache = [
-                dict(entry["record"])
-                for entry in self.detached_ledger.all_records(record_type="detached.execution")
-            ]
-            self._detached_history_token = token
-        return self._detached_history_cache
+        if self._detached_index_token != token:
+            active: dict[str, dict[str, Any]] = {}
+            for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+                rec = entry.get("record", {})
+                wid = rec.get("work_id")
+                if not isinstance(wid, str) or not wid:
+                    continue
+                state = rec.get("state", "QUEUED")
+                if state in {"COMPLETED", "FAILED", "CANCELLED"}:
+                    active.pop(wid, None)
+                    continue
+                item = active.setdefault(wid, {
+                    "work_id": wid,
+                    "job_id": rec.get("job_id"),
+                    "request_identity": rec.get("request_identity"),
+                    "arguments": rec.get("arguments"),
+                    "submitted_at": rec.get("observed_at"),
+                    "worker_id": rec.get("worker_id"),
+                    "model": rec.get("model"),
+                    "state": state,
+                    "attempt": rec.get("attempt", 1),
+                    "updated_at": rec.get("observed_at"),
+                })
+                item["state"] = state
+                item["attempt"] = rec.get("attempt", item["attempt"])
+                item["updated_at"] = rec.get("observed_at", item["updated_at"])
+            self._detached_index = active
+            self._detached_index_token = token
+        return self._detached_index
+
+    def _detached_projection(
+        self, work_ids: set[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Build a bounded projection for explicitly requested work IDs."""
+
+        projection: dict[str, dict[str, Any]] = {}
+        for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+            rec = entry.get("record", {})
+            wid = rec.get("work_id")
+            if not isinstance(wid, str) or (work_ids is not None and wid not in work_ids):
+                continue
+            item = projection.setdefault(wid, {
+                "work_id": wid,
+                "job_id": rec.get("job_id"),
+                "client_identity": rec.get("client_identity"),
+                "idempotency_key": rec.get("idempotency_key"),
+                "request_identity": rec.get("request_identity"),
+                "arguments": rec.get("arguments"),
+                "submitted_at": rec.get("observed_at"),
+                "worker_id": rec.get("worker_id"),
+                "model": rec.get("model"),
+                "state": rec.get("state", "QUEUED"),
+                "attempt": rec.get("attempt", 1),
+                "updated_at": rec.get("observed_at"),
+                "reason": rec.get("reason"),
+                "result": rec.get("result"),
+                "result_identity": rec.get("result_identity"),
+                "history": [],
+            })
+            item["state"] = rec.get("state", item["state"])
+            item["attempt"] = rec.get("attempt", item["attempt"])
+            item["updated_at"] = rec.get("observed_at", item["updated_at"])
+            if rec.get("reason") is not None:
+                item["reason"] = rec.get("reason")
+            if rec.get("result") is not None:
+                item["result"] = rec.get("result")
+            if rec.get("result_identity") is not None:
+                item["result_identity"] = rec.get("result_identity")
+            item["history"].append({
+                key: rec[key]
+                for key in ("state", "attempt", "observed_at", "reason")
+                if rec.get(key) is not None
+            })
+        return projection
+
+    def _detached_work_ids(self, *, limit: int) -> list[str]:
+        """Return the newest distinct work IDs using bounded memory."""
+
+        from collections import deque
+
+        recent: deque[str] = deque(maxlen=limit)
+        for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+            record = entry.get("record", {})
+            wid = record.get("work_id")
+            # Only the durable submission event is QUEUED. Later transitions
+            # for the same work ID therefore cannot create duplicates here.
+            if record.get("state") == "QUEUED" and isinstance(wid, str):
+                recent.append(wid)
+        return list(reversed(recent))
+
+    def _detached_job_count(self) -> int:
+        """Count accepted submissions without retaining their identities."""
+
+        return sum(
+            1
+            for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution")
+            if entry.get("record", {}).get("state") == "QUEUED"
+        )
 
     def _detached_records(self, work_id: str | None = None) -> list[dict[str, Any]]:
-        records = self._detached_history()
-        if work_id is not None:
-            records = [record for record in records if record.get("work_id") == work_id]
-        return records
-
-    @staticmethod
-    def _project_detached_status(work_id: str, history: list[dict[str, Any]]) -> dict[str, Any]:
-        submitted = history[0]
-        latest = history[-1]
-        return {
-            "work_id": work_id,
-            "job_id": submitted["job_id"],
-            "state": latest["state"],
-            "persistent": True,
-            "attempt": latest.get("attempt", 1),
-            "submitted_at": submitted["observed_at"],
-            "updated_at": latest["observed_at"],
-            "worker_id": submitted.get("worker_id"),
-            "model": submitted.get("model"),
-            "result_available": latest["state"] in {"COMPLETED", "FAILED"},
-            "history": [
-                {
-                    key: record.get(key)
-                    for key in ("state", "attempt", "observed_at", "reason")
-                    if record.get(key) is not None
-                }
-                for record in history
-            ],
-        }
+        return [
+            dict(entry["record"])
+            for entry in iter_ledger_records(
+                self.detached_ledger, record_type="detached.execution"
+            )
+            if work_id is None or entry.get("record", {}).get("work_id") == work_id
+        ]
 
     def _detached_status(self, work_id: str) -> dict[str, Any]:
         if not is_sha256_identity(work_id):
             raise ValidationError("detached work identity is invalid")
-        history = self._detached_records(work_id)
-        if not history:
+        index = self._detached_projection({work_id})
+        item = index.get(work_id)
+        if item is None:
             raise ValidationError("detached work identity is unknown")
-        return self._project_detached_status(work_id, history)
+        return {
+            "work_id": work_id,
+            "job_id": item["job_id"],
+            "state": item["state"],
+            "persistent": True,
+            "attempt": item["attempt"],
+            "submitted_at": item["submitted_at"],
+            "updated_at": item["updated_at"],
+            "worker_id": item["worker_id"],
+            "model": item["model"],
+            "result_available": item["state"] in {"COMPLETED", "FAILED"},
+            "history": list(item["history"]),
+        }
 
     def _detached_statuses(self, work_ids: list[str]) -> list[dict[str, Any]]:
-        by_work: dict[str, list[dict[str, Any]]] = {}
-        for record in self._detached_records():
-            by_work.setdefault(str(record.get("work_id")), []).append(record)
+        index = self._detached_projection(set(work_ids))
         statuses = []
         for work_id in work_ids:
-            history = by_work.get(work_id)
-            if not history:
+            item = index.get(work_id)
+            if item is None:
                 raise ValidationError("detached work identity is unknown")
-            statuses.append(self._project_detached_status(work_id, history))
+            statuses.append({
+                "work_id": work_id,
+                "job_id": item["job_id"],
+                "state": item["state"],
+                "persistent": True,
+                "attempt": item["attempt"],
+                "submitted_at": item["submitted_at"],
+                "updated_at": item["updated_at"],
+                "worker_id": item["worker_id"],
+                "model": item["model"],
+                "result_available": item["state"] in {"COMPLETED", "FAILED"},
+                "history": list(item["history"]),
+            })
         return statuses
 
     def _append_detached_event(
@@ -321,6 +557,9 @@ class ControllerService:
         reason: str | None = None,
         result: dict[str, Any] | None = None,
     ) -> None:
+        result_identity = None
+        if result is not None:
+            result_identity = self._save_detached_result(result)
         event = {
             "schema_version": "mncs-fabric.detached-execution.v0.1",
             "work_id": work_id,
@@ -328,11 +567,13 @@ class ControllerService:
             "attempt": attempt,
             "observed_at": utc_now(),
             "reason": reason,
-            "result": result,
+            "result_identity": result_identity,
+            "result": None,
         }
         self.detached_ledger.append(
             "detached.execution", attach_identity(event, "event_identity")
         )
+        self._ensure_detached_index()
 
     def _execute_dispatch_arguments(self, args: Mapping[str, Any]) -> dict[str, Any]:
         if self._worker_client is None and not self.rendezvous_ready:
@@ -516,33 +757,31 @@ class ControllerService:
             )
         except _DetachedSubmissionExists:
             pass
-        existing = self._detached_records(work_id)
-        if existing[0].get("request_identity") != request_identity:
+        index = self._detached_projection({work_id})
+        existing_item = index.get(work_id)
+        if existing_item is None or existing_item.get("request_identity") != request_identity:
             raise ProtocolError("detached execution idempotency key conflicts with prior work")
-        if existing[-1].get("state") in {"QUEUED", "RETRYING"}:
+        if existing_item.get("state") in {"QUEUED", "RETRYING"}:
             self._start_detached(
-                work_id, dict(existing[0]["arguments"]), int(existing[-1].get("attempt", 1))
+                work_id, dict(existing_item.get("arguments") or {}), int(existing_item.get("attempt", 1))
             )
         return {"accepted": True, **self._detached_status(work_id)}
 
     def _recover_detached(self) -> None:
-        by_work: dict[str, list[dict[str, Any]]] = {}
-        for record in self._detached_records():
-            by_work.setdefault(str(record.get("work_id")), []).append(record)
-        for work_id, history in by_work.items():
-            if history[-1].get("state") not in {"QUEUED", "RUNNING", "RETRYING"}:
+        index = self._ensure_detached_index()
+        for work_id, item in list(index.items()):
+            if item.get("state") not in {"QUEUED", "RUNNING", "RETRYING"}:
                 continue
-            attempt = int(history[-1].get("attempt", 1)) + int(
-                history[-1].get("state") == "RUNNING"
-            )
-            if history[-1].get("state") == "RUNNING":
+            attempt = int(item.get("attempt", 1)) + int(item.get("state") == "RUNNING")
+            if item.get("state") == "RUNNING":
                 self._append_detached_event(
                     work_id,
                     "RETRYING",
                     attempt=attempt,
                     reason="controller restarted before terminal result",
                 )
-            self._start_detached(work_id, dict(history[0]["arguments"]), attempt)
+            if item.get("arguments"):
+                self._start_detached(work_id, dict(item["arguments"]), attempt)
 
     def _approved_rendezvous_members(self) -> dict[str, dict[str, Any]]:
         return {
@@ -637,6 +876,38 @@ class ControllerService:
             self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
             workers = self._rendezvous.states()
+            if self._worker_client is not None:
+                # A configured rendezvous listener does not convert existing
+                # direct-registry workers into rendezvous workers. Prefer a
+                # live session, but retain the exact worker's validated
+                # direct endpoint when that session is absent.
+                from .worker_backend import list_backend_workers
+
+                direct_workers = {
+                    str(worker.get("worker_id")): worker
+                    for worker in list_backend_workers(self._worker_client, apply_lease=refresh)
+                    if worker.get("worker_id")
+                }
+                merged: list[dict[str, Any]] = []
+                seen: set[str] = set()
+                for worker in workers:
+                    worker_id = str(worker.get("worker_id") or "")
+                    if (
+                        worker_id
+                        and worker.get("availability") != "AVAILABLE"
+                        and worker_id in direct_workers
+                    ):
+                        merged.append(dict(direct_workers[worker_id]))
+                    else:
+                        merged.append(dict(worker))
+                    if worker_id:
+                        seen.add(worker_id)
+                merged.extend(
+                    dict(worker)
+                    for worker_id, worker in direct_workers.items()
+                    if worker_id not in seen
+                )
+                workers = merged
         elif self._worker_client is None:
             workers = self._rendezvous.states() if self._rendezvous is not None else []
         else:
@@ -972,17 +1243,32 @@ class ControllerService:
         return values
 
     def _load_latest_capability_cache(self) -> None:
-        if self._capability_cache_loaded:
+        path = self.capability_ledger.path
+        if not path.exists():
             return
-        # Latest-observation projection must see the full ledger: a bounded
-        # read would drop workers whose newest observation is older than the
-        # read window (for example a resident worker that was offline).
-        for entry in self.capability_ledger.all_records(record_type="worker.capability-observation"):
-            record = validate_capability_observation(
-                entry["record"], expected_worker_id=entry["record"].get("worker_identity")
-            )
-            self._latest_capability_cache[str(record["worker_identity"])] = record
-        self._capability_cache_loaded = True
+        stat = path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if self._capability_cache_token == token:
+            return
+        latest: dict[str, dict[str, Any]] = {}
+        trusted: dict[str, dict[str, Any]] = {}
+        for entry in iter_ledger_records(self.capability_ledger, record_type="worker.capability-observation"):
+            record = entry.get("record") or entry
+            if not isinstance(record, Mapping):
+                continue
+            wid = str(record.get("worker_identity") or "")
+            if not wid:
+                continue
+            try:
+                validated = validate_capability_observation(record, expected_worker_id=wid)
+                latest[wid] = validated
+                if observation_admission_trusted(validated):
+                    trusted[wid] = validated
+            except Exception:
+                continue
+        self._latest_capability_cache = latest
+        self._admission_capability_cache = trusted
+        self._capability_cache_token = token
 
     def _latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
         self._load_latest_capability_cache()
@@ -998,17 +1284,7 @@ class ControllerService:
         """
 
         self._load_latest_capability_cache()
-        for record in reversed(
-            self.capability_ledger.all_records(record_type="worker.capability-observation")
-        ):
-            observation = record.get("record") or record
-            if not isinstance(observation, Mapping):
-                continue
-            if str(observation.get("worker_identity")) != worker_id:
-                continue
-            if observation_admission_trusted(observation):
-                return dict(observation)
-        return None
+        return self._admission_capability_cache.get(worker_id)
 
     def _ingest_capability_observation(
         self, worker_id: str, args: Mapping[str, Any], *, role: str
@@ -1045,8 +1321,13 @@ class ControllerService:
             observation_class=requested_class,
         )
         self.capability_ledger.append("worker.capability-observation", observation)
+        self._load_latest_capability_cache()
         self._latest_capability_cache[worker_id] = observation
-        self._capability_cache_loaded = True
+        if observation_admission_trusted(observation):
+            self._admission_capability_cache[worker_id] = observation
+        if self.capability_ledger.path.exists():
+            stat = self.capability_ledger.path.stat()
+            self._capability_cache_token = (stat.st_size, stat.st_mtime_ns)
         return observation
 
     @staticmethod
@@ -1101,6 +1382,54 @@ class ControllerService:
         from .runtime_identity import collect_runtime_identity
 
         runtime_identity = collect_runtime_identity(role="controller")
+        storage_diag = {
+            "service_ledger": {
+                "path": str(self.service_ledger.path),
+                "size_bytes": self.service_ledger.path.stat().st_size if self.service_ledger.path.exists() else 0,
+                "record_count": self.service_ledger.verify().get("record_count", 0),
+            },
+            "replay_state": {
+                "path": str(self._replay_cache._state_path) if self._replay_cache._state_path is not None else None,
+                "size_bytes": self._replay_cache._state_path.stat().st_size if self._replay_cache._state_path is not None and self._replay_cache._state_path.exists() else 0,
+                "entry_count": self._replay_cache.count,
+            },
+            "lifecycle_ledger": {
+                "path": str(self.lifecycle.path),
+                "size_bytes": self.lifecycle.path.stat().st_size if self.lifecycle.path.exists() else 0,
+                "record_count": self.lifecycle.ledger.verify().get("record_count", 0),
+            },
+            "capability_ledger": {
+                "path": str(self.capability_ledger.path),
+                "size_bytes": self.capability_ledger.path.stat().st_size if self.capability_ledger.path.exists() else 0,
+                "record_count": self.capability_ledger.verify().get("record_count", 0),
+            },
+            "detached_ledger": {
+                "path": str(self.detached_ledger.path),
+                "size_bytes": self.detached_ledger.path.stat().st_size if self.detached_ledger.path.exists() else 0,
+                "record_count": self.detached_ledger.verify().get("record_count", 0),
+            },
+            "schedule_ledger": {
+                "path": str(self.schedule_ledger.path),
+                "size_bytes": self.schedule_ledger.path.stat().st_size if self.schedule_ledger.path.exists() else 0,
+                "record_count": self.schedule_ledger.verify().get("record_count", 0),
+            },
+            "rendezvous_ledger": (
+                {
+                    "path": str(self._rendezvous.ledger.path),
+                    "size_bytes": self._rendezvous.ledger.path.stat().st_size if self._rendezvous.ledger.path.exists() else 0,
+                    "record_count": self._rendezvous.ledger.verify().get("record_count", 0),
+                }
+                if self._rendezvous is not None
+                else None
+            ),
+            "projections": {
+                "active_workers": len(workers),
+                "active_sessions": len(self._rendezvous.sessions) if self._rendezvous is not None else 0,
+                "queued_jobs": len(self.work_queue.queued()),
+                "detached_jobs": self._detached_job_count(),
+                "replay_cache_size": self._replay_cache.count,
+            },
+        }
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
@@ -1131,6 +1460,7 @@ class ControllerService:
             },
             "service_features": service_features,
             "service_capabilities": service_capabilities,
+            "storage": storage_diag,
         }
 
     def doctor(self, *, now: str | None = None) -> dict[str, Any]:
@@ -1142,6 +1472,7 @@ class ControllerService:
             "administrative_listener": "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED",
             "worker_rendezvous": "PASS" if self.rendezvous_ready else "CONFIGURED_NOT_STARTED" if self._rendezvous is not None else "NOT_CONFIGURED",
             "persistent_service_execution": "CONTROLLER_MANAGED_ENDPOINTS" if self.worker_backend_enabled else "NOT_CONFIGURED",
+            "storage": "PASS",
         }
         return result
 
@@ -1163,22 +1494,7 @@ class ControllerService:
         expires = datetime.fromisoformat(request["expires_at"].replace("Z", "+00:00"))
         if expires <= now:
             return _response(request, self.config.controller_id, "UNKNOWN", error={"code": "REQUEST_EXPIRED", "message": "service request deadline has expired"})
-        event = {
-            "schema_version": CONTROLLER_SERVICE_SCHEMA,
-            "event": "request",
-            "request_id": request["request_id"],
-            "client_identity": request["client_identity"],
-            "role": role,
-            "peer_identity": peer_identity,
-            "operation": operation,
-            "observed_at": utc_now(),
-        }
-
-        def new_request(records: list[dict[str, Any]]) -> None:
-            if any(entry["record"].get("event") == "request" and entry["record"].get("request_id") == request["request_id"] for entry in records):
-                raise ProtocolError("service request replay detected")
-
-        self.service_ledger.append_if("controller.service-request", attach_identity(event, "service_event_id"), new_request)
+        self._replay_cache.check_and_record(request["request_id"], request["expires_at"])
         if operation in _ADMIN_OPERATIONS and role != "admin":
             return _response(request, self.config.controller_id, "FAIL", error={"code": "UNAUTHORIZED_ADMIN_OPERATION", "message": "administrative operation requires the operator service surface"})
         args = request["arguments"]
@@ -1290,25 +1606,21 @@ class ControllerService:
             elif operation == "execution.status":
                 payload = self._detached_status(str(args.get("work_id", "")))
             elif operation == "execution.result":
-                status = self._detached_status(str(args.get("work_id", "")))
-                history = self._detached_records(status["work_id"])
-                latest = history[-1]
+                work_id = str(args.get("work_id", ""))
+                status = self._detached_status(work_id)
+                result = self._get_detached_result(status["work_id"])
+                index = self._detached_projection({status["work_id"]})
+                item = index.get(status["work_id"], {})
                 payload = {
                     **status,
-                    "result": latest.get("result"),
-                    "reason": latest.get("reason"),
+                    "result": result,
+                    "reason": item.get("reason"),
                 }
             elif operation == "execution.list":
                 limit = int(args.get("limit", 100))
                 if not 1 <= limit <= 1000:
                     raise ValidationError("detached execution list limit is invalid")
-                work_ids: list[str] = []
-                for record in reversed(self._detached_records()):
-                    work_id = str(record.get("work_id", ""))
-                    if work_id not in work_ids:
-                        work_ids.append(work_id)
-                    if len(work_ids) >= limit:
-                        break
+                work_ids = self._detached_work_ids(limit=limit)
                 payload = {"work": self._detached_statuses(work_ids)}
             elif operation == "schedule.enqueue":
                 payload = self.work_queue.enqueue(args, client_identity=request["client_identity"])
@@ -1376,7 +1688,13 @@ class ControllerService:
                     payload = {"result": self._target_rejection(admission), "admission": admission}
                 else:
                     try:
-                        if self.rendezvous_ready and self._rendezvous is not None:
+                        rendezvous_admitted = (
+                            self.rendezvous_ready
+                            and self._rendezvous is not None
+                            and isinstance(admission.get("session_id"), str)
+                            and isinstance(admission.get("session_generation"), int)
+                        )
+                        if rendezvous_admitted:
                             results = self._rendezvous.dispatch(
                                 plan, manifest, worker_id=target["worker_identity"], replicas=1,
                                 request_id=str(execution_request_identity),
