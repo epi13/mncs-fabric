@@ -29,17 +29,36 @@ function Read-Config {
 
 function Get-ExpectedProcesses([object]$Settings) {
     $rootPattern = [regex]::Escape([string]$Settings.root)
-    $workerPattern = [regex]::Escape("--worker-id $($Settings.worker_id)")
-    $controllerPattern = [regex]::Escape("--controller-id $($Settings.controller_id)")
-    $portPattern = [regex]::Escape("--port $($Settings.port)")
-    @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+    $pythonPattern = [regex]::Escape([string]$Settings.python)
+    $servePattern = 'mncs_fabric.*worker.*serve'
+    $workerPattern = [regex]::Escape([string]$Settings.worker_id)
+    $controllerPattern = [regex]::Escape([string]$Settings.controller_id)
+    $portPattern = [regex]::Escape([string]$Settings.port)
+    $candidates = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
         $_.Name -match "^(python|pythonw)\.exe$" -and $_.CommandLine -and
-        $_.CommandLine -match "-m\s+mncs_fabric\s+worker\s+serve" -and
+        $_.CommandLine -match $servePattern -and
         $_.CommandLine -match $rootPattern -and
+        $_.CommandLine -match "--worker-id" -and
         $_.CommandLine -match $workerPattern -and
+        $_.CommandLine -match "--controller-id" -and
         $_.CommandLine -match $controllerPattern -and
+        $_.CommandLine -match "--port" -and
         $_.CommandLine -match $portPattern
     })
+    $expected = @($candidates | Where-Object { $_.CommandLine -match $pythonPattern })
+    foreach ($candidate in $candidates) {
+        if (@($expected | Where-Object { [int]$_.ProcessId -eq [int]$candidate.ProcessId }).Count -gt 0) { continue }
+        $parentId = [int]$candidate.ParentProcessId
+        $lineageMatch = $false
+        for ($depth = 0; $depth -lt 8 -and $parentId -gt 0; $depth++) {
+            $parent = @($candidates | Where-Object { [int]$_.ProcessId -eq $parentId } | Select-Object -First 1)
+            if ($parent.Count -eq 0) { break }
+            if ($parent[0].CommandLine -match $pythonPattern) { $lineageMatch = $true; break }
+            $parentId = [int]$parent[0].ParentProcessId
+        }
+        if ($lineageMatch) { $expected += $candidate }
+    }
+    @($expected | Sort-Object ProcessId -Unique)
 }
 
 function Get-PortOwners([int]$Port) {

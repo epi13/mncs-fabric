@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import json
 import os
 import time
@@ -21,6 +22,20 @@ class LedgerDiagnostic:
     code: str
     message: str
     line: int | None = None
+
+
+def iter_ledger_records(
+    ledger: "FabricLedger", *, record_type: str | None = None
+) -> Iterator[dict[str, Any]]:
+    """Use streaming ledger reads while supporting legacy test adapters."""
+
+    iterator = getattr(ledger, "iter_records", None)
+    if callable(iterator):
+        yield from iterator(record_type=record_type)
+    else:
+        # Older injected ledger adapters expose only all_records(). They are
+        # compatibility shims; the production FabricLedger path is streaming.
+        yield from ledger.all_records(record_type=record_type)
 
 
 @contextmanager
@@ -79,86 +94,124 @@ def _exclusive_lock(path: Path) -> Iterator[None]:
 class FabricLedger:
     """Append immutable records; repair is explicit and only applies to a tail.
 
-    Reads re-verify the full hash chain, so parsed records are memoized on the
-    ledger file's (size, mtime_ns).  Ledgers are append-only and fsync'd on
-    every write, so any mutation — including one from another process —
-    changes that identity and forces a fresh validated parse.
+    Validation is streaming and memory-bounded: verification checks the full
+    hash-chain without retaining historical records in RAM.  Bounded metadata
+    (size, mtime_ns, sequence, head identity) is memoized on the ledger file's
+    stat token.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._read_cache_token: tuple[int, int] | None = None
-        self._read_cache_records: list[dict[str, Any]] = []
-        self._read_cache_diagnostics: list[LedgerDiagnostic] = []
-        self._read_cache_partial = False
+        self._verified_token: tuple[int, int] | None = None
+        self._record_count: int = 0
+        self._last_entry: dict[str, Any] | None = None
+        self._diagnostics: list[LedgerDiagnostic] = []
+        self._partial: bool = False
 
-    def _publish_read_cache_after_append(
-        self, records: list[dict[str, Any]], new_entries: list[dict[str, Any]]
-    ) -> None:
-        """Extend the validated-read cache after an append under the file lock.
-
-        The caller read ``records`` through ``_read_unlocked`` while holding
-        the exclusive lock and wrote exactly ``new_entries`` afterwards, so no
-        other writer can have intervened and the resulting identity is exact.
-        """
-
-        stat = self.path.stat()
-        self._read_cache_token = (stat.st_size, stat.st_mtime_ns)
-        self._read_cache_records = [*records, *new_entries]
-        self._read_cache_diagnostics = []
-        self._read_cache_partial = False
-
-    def _read_unlocked(self) -> tuple[list[dict[str, Any]], list[LedgerDiagnostic], bool]:
+    def _verify_unlocked(self) -> tuple[int, dict[str, Any] | None, list[LedgerDiagnostic], bool]:
         if not self.path.exists():
-            self._read_cache_token = None
-            return [], [], False
+            self._verified_token = None
+            self._record_count = 0
+            self._last_entry = None
+            self._diagnostics = []
+            self._partial = False
+            return 0, None, [], False
         stat = self.path.stat()
         token = (stat.st_size, stat.st_mtime_ns)
-        if token == self._read_cache_token:
+        if token == self._verified_token:
             return (
-                self._read_cache_records,
-                self._read_cache_diagnostics,
-                self._read_cache_partial,
+                self._record_count,
+                self._last_entry,
+                self._diagnostics,
+                self._partial,
             )
-        raw = self.path.read_bytes()
-        if not raw:
-            return [], [], False
-        trailing_partial = not raw.endswith(b"\n")
-        lines = raw.splitlines()
-        records: list[dict[str, Any]] = []
+        if stat.st_size == 0:
+            self._verified_token = token
+            self._record_count = 0
+            self._last_entry = None
+            self._diagnostics = []
+            self._partial = False
+            return 0, None, [], False
+
+        count = 0
+        previous_sequence = 0
+        previous_entry_identity: str | None = None
+        last_entry: dict[str, Any] | None = None
         diagnostics: list[LedgerDiagnostic] = []
-        for index, line in enumerate(lines, 1):
-            try:
-                value = json.loads(line.decode("utf-8"))
-            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                if trailing_partial and index == len(lines):
-                    diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", str(exc), index))
-                    continue
-                raise StorageError(f"ledger line {index} is corrupt: {exc}") from exc
-            if not isinstance(value, dict):
-                raise StorageError(f"ledger line {index} is not an object")
-            self._validate_entry(value, records[-1] if records else None, index)
-            records.append(value)
-        if trailing_partial and records and not diagnostics:
-            diagnostics.append(LedgerDiagnostic("TRAILING_NEWLINE_MISSING", "valid final ledger entry is missing its newline", len(records)))
-        self._read_cache_token = token
-        self._read_cache_records = records
-        self._read_cache_diagnostics = diagnostics
-        self._read_cache_partial = trailing_partial
-        return records, diagnostics, trailing_partial
+        trailing_partial = False
+
+        with self.path.open("rb") as stream:
+            line_number = 0
+            for line in stream:
+                line_number += 1
+                trailing_partial = not line.endswith(b"\n")
+                stripped = line.rstrip(b"\r\n")
+                if not stripped:
+                    if trailing_partial:
+                        diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", "empty line in partial tail", line_number))
+                        break
+                    raise StorageError(f"ledger line {line_number} is empty")
+                try:
+                    value = json.loads(stripped.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    if trailing_partial:
+                        diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", str(exc), line_number))
+                        break
+                    raise StorageError(f"ledger line {line_number} is corrupt: {exc}") from exc
+                if not isinstance(value, dict):
+                    raise StorageError(f"ledger line {line_number} is not an object")
+                self._validate_entry_fast(value, previous_sequence, previous_entry_identity, line_number)
+                previous_sequence = int(value["sequence"])
+                previous_entry_identity = str(value["entry_identity"])
+                last_entry = value
+                count += 1
+
+        if trailing_partial and last_entry is not None and not diagnostics:
+            diagnostics.append(
+                LedgerDiagnostic(
+                    "TRAILING_NEWLINE_MISSING",
+                    "valid final ledger entry is missing its newline",
+                    count,
+                )
+            )
+        self._verified_token = token
+        self._record_count = count
+        self._last_entry = last_entry
+        self._diagnostics = diagnostics
+        self._partial = trailing_partial
+        return count, last_entry, diagnostics, trailing_partial
 
     @staticmethod
     def _validate_entry(value: dict[str, Any], previous: dict[str, Any] | None, line: int) -> None:
+        prev_seq = int(previous["sequence"]) if previous else 0
+        prev_id = str(previous["entry_identity"]) if previous else None
+        FabricLedger._validate_entry_fast(value, prev_seq, prev_id, line)
+
+    @staticmethod
+    def _validate_entry_fast(
+        value: dict[str, Any],
+        previous_sequence: int,
+        previous_identity: str | None,
+        line: int,
+    ) -> None:
         if value.get("schema_version") != LEDGER_SCHEMA:
             raise StorageError(f"ledger line {line} uses an unsupported schema version")
-        required = {"schema_version", "sequence", "previous_identity", "record_type", "record", "record_identity", "entry_identity"}
+        required = {
+            "schema_version",
+            "sequence",
+            "previous_identity",
+            "record_type",
+            "record",
+            "record_identity",
+            "entry_identity",
+        }
         if set(value) != required:
             raise StorageError(f"ledger line {line} has an unexpected field set")
         sequence = value.get("sequence")
-        if not isinstance(sequence, int) or sequence != (previous["sequence"] + 1 if previous else 1):
+        expected_seq = previous_sequence + 1 if previous_sequence > 0 else 1
+        if not isinstance(sequence, int) or sequence != expected_seq:
             raise StorageError(f"ledger sequence is invalid at line {line}")
-        previous_identity = previous["entry_identity"] if previous else None
         if value.get("previous_identity") != previous_identity:
             raise StorageError(f"ledger hash linkage is invalid at line {line}")
         record = value.get("record")
@@ -168,14 +221,34 @@ class FabricLedger:
         if value.get("entry_identity") != sha256_identity(material):
             raise StorageError(f"ledger entry identity is invalid at line {line}")
 
+    def _stream_unlocked(self) -> Iterator[dict[str, Any]]:
+        if not self.path.exists():
+            return
+        with self.path.open("rb") as stream:
+            for line in stream:
+                stripped = line.rstrip(b"\r\n")
+                if not stripped:
+                    continue
+                try:
+                    value = json.loads(stripped.decode("utf-8"))
+                except Exception:
+                    continue
+                if isinstance(value, dict):
+                    yield value
+
     def verify(self) -> dict[str, Any]:
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
-        return {"schema_version": LEDGER_SCHEMA, "record_count": len(records), "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics], "outcome": "UNKNOWN" if diagnostics else "PASS"}
+            count, _, diagnostics, _ = self._verify_unlocked()
+        return {
+            "schema_version": LEDGER_SCHEMA,
+            "record_count": count,
+            "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics],
+            "outcome": "UNKNOWN" if diagnostics else "PASS",
+        }
 
     def recover(self, *, repair_truncated_tail: bool = False) -> dict[str, Any]:
         with _exclusive_lock(self.path):
-            records, diagnostics, partial = self._read_unlocked()
+            count, _, diagnostics, partial = self._verify_unlocked()
             repaired = False
             if partial and repair_truncated_tail:
                 if diagnostics and diagnostics[-1].code == "TRAILING_NEWLINE_MISSING":
@@ -193,28 +266,37 @@ class FabricLedger:
                         stream.flush()
                         os.fsync(stream.fileno())
                 repaired = True
-        if repaired:
-            self._read_cache_token = None
-        return {"record_count": len(records), "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics], "repaired": repaired, "outcome": "PASS" if not diagnostics or repaired else "UNKNOWN"}
+                self._verified_token = None
+                count, _, diagnostics, _ = self._verify_unlocked()
+        return {
+            "record_count": count,
+            "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics],
+            "repaired": repaired,
+            "outcome": "PASS" if not diagnostics or repaired else "UNKNOWN",
+        }
 
     def append(self, record_type: str, record: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(record_type, str) or not record_type:
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked()
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             record_identity = sha256_identity(record)
-            for existing in records:
-                if existing["record_identity"] == record_identity:
-                    if existing["record_type"] != record_type or existing["record"] != record:
+            if last_entry is not None and last_entry.get("record_identity") == record_identity:
+                if last_entry.get("record_type") != record_type or last_entry.get("record") != record:
+                    raise StorageError("conflicting duplicate record identity")
+                return last_entry
+            for existing in self._stream_unlocked():
+                if existing.get("record_identity") == record_identity:
+                    if existing.get("record_type") != record_type or existing.get("record") != record:
                         raise StorageError("conflicting duplicate record identity")
                     return existing
-            previous = records[-1] if records else None
+            previous_identity = last_entry["entry_identity"] if last_entry else None
             entry: dict[str, Any] = {
                 "schema_version": LEDGER_SCHEMA,
-                "sequence": len(records) + 1,
-                "previous_identity": previous["entry_identity"] if previous else None,
+                "sequence": count + 1,
+                "previous_identity": previous_identity,
                 "record_type": record_type,
                 "record": record,
                 "record_identity": record_identity,
@@ -224,7 +306,12 @@ class FabricLedger:
                 stream.write(canonical_json_bytes(entry) + b"\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            self._publish_read_cache_after_append(records, [entry])
+            stat = self.path.stat()
+            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            self._record_count = count + 1
+            self._last_entry = entry
+            self._diagnostics = []
+            self._partial = False
             return entry
 
     def append_if(
@@ -236,28 +323,29 @@ class FabricLedger:
         """Append one record while checking a state predicate under the lock.
 
         Lifecycle authorization is intentionally a read/decision/write
-        operation.  Keeping the predicate in the ledger critical section
+        operation. Keeping the predicate in the ledger critical section
         prevents two controller processes from consuming the same one-time
         authorization.
         """
         if not isinstance(record_type, str) or not record_type:
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked()
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
+            records = list(self._stream_unlocked())
             predicate(records)
             record_identity = sha256_identity(record)
             for existing in records:
-                if existing["record_identity"] == record_identity:
-                    if existing["record_type"] != record_type or existing["record"] != record:
+                if existing.get("record_identity") == record_identity:
+                    if existing.get("record_type") != record_type or existing.get("record") != record:
                         raise StorageError("conflicting duplicate record identity")
                     return existing
-            previous = records[-1] if records else None
+            previous_identity = last_entry["entry_identity"] if last_entry else None
             entry: dict[str, Any] = {
                 "schema_version": LEDGER_SCHEMA,
-                "sequence": len(records) + 1,
-                "previous_identity": previous["entry_identity"] if previous else None,
+                "sequence": count + 1,
+                "previous_identity": previous_identity,
                 "record_type": record_type,
                 "record": record,
                 "record_identity": record_identity,
@@ -267,7 +355,12 @@ class FabricLedger:
                 stream.write(canonical_json_bytes(entry) + b"\n")
                 stream.flush()
                 os.fsync(stream.fileno())
-            self._publish_read_cache_after_append(records, [entry])
+            stat = self.path.stat()
+            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            self._record_count = count + 1
+            self._last_entry = entry
+            self._diagnostics = []
+            self._partial = False
             return entry
 
     def append_many_if(
@@ -278,7 +371,7 @@ class FabricLedger:
         """Append a bounded batch after one locked state check.
 
         This is used when an authorization consumption and its enrollment
-        request must become one durable controller decision.  The batch is
+        request must become one durable controller decision. The batch is
         small and all records are prepared before any bytes are written.
         """
         if not records_to_append or len(records_to_append) > 8:
@@ -286,24 +379,25 @@ class FabricLedger:
         if any(not isinstance(record_type, str) or not record_type for record_type, _ in records_to_append):
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked()
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
+            records = list(self._stream_unlocked())
             predicate(records)
             entries: list[dict[str, Any]] = []
-            previous = records[-1] if records else None
+            previous = last_entry
             for record_type, record in records_to_append:
                 record_identity = sha256_identity(record)
                 for existing in records + entries:
-                    if existing["record_identity"] == record_identity:
-                        if existing["record_type"] != record_type or existing["record"] != record:
+                    if existing.get("record_identity") == record_identity:
+                        if existing.get("record_type") != record_type or existing.get("record") != record:
                             raise StorageError("conflicting duplicate record identity")
                         entries.append(existing)
                         break
                 else:
                     entry = {
                         "schema_version": LEDGER_SCHEMA,
-                        "sequence": len(records) + len(entries) + 1,
+                        "sequence": count + len(entries) + 1,
                         "previous_identity": previous["entry_identity"] if previous else None,
                         "record_type": record_type,
                         "record": record,
@@ -319,28 +413,55 @@ class FabricLedger:
                         stream.write(canonical_json_bytes(entry) + b"\n")
                     stream.flush()
                     os.fsync(stream.fileno())
-                self._publish_read_cache_after_append(records, new_entries)
+                stat = self.path.stat()
+                self._verified_token = (stat.st_size, stat.st_mtime_ns)
+                self._record_count = count + len(new_entries)
+                self._last_entry = new_entries[-1]
+                self._diagnostics = []
+                self._partial = False
             return entries
 
     def records(self, *, record_type: str | None = None, limit: int = 1000) -> list[dict[str, Any]]:
         if not isinstance(limit, int) or limit < 0 or limit > 100000:
             raise StorageError("ledger read limit is outside the bounded range")
+        if limit == 0:
+            return []
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
-        if diagnostics:
-            raise StorageError("ledger has an unrepaired truncated tail")
-        values = [item for item in records if record_type is None or item["record_type"] == record_type]
-        return values[-limit:] if limit else []
+            _, _, diagnostics, _ = self._verify_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            window: collections.deque[dict[str, Any]] = collections.deque(maxlen=limit)
+            for entry in self._stream_unlocked():
+                if record_type is None or entry.get("record_type") == record_type:
+                    window.append(entry)
+            return list(window)
+
+    def iter_records(self, *, record_type: str | None = None) -> Iterator[dict[str, Any]]:
+        """Stream the validated ledger without retaining its history.
+
+        The file lock is held for the lifetime of the iterator so callers can
+        safely derive bounded state from a stable, fully verified ledger. Use
+        ``all_records`` only when the caller explicitly needs a materialized
+        historical result.
+        """
+
+        with _exclusive_lock(self.path):
+            _, _, diagnostics, _ = self._verify_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            for entry in self._stream_unlocked():
+                if record_type is None or entry.get("record_type") == record_type:
+                    yield entry
 
     def all_records(self, *, record_type: str | None = None) -> list[dict[str, Any]]:
         """Read the full authoritative ledger for deterministic derived-state rebuilds."""
 
         with _exclusive_lock(self.path):
-            records, diagnostics, _ = self._read_unlocked()
-        if diagnostics:
-            raise StorageError("ledger has an unrepaired truncated tail")
-        return [
-            item
-            for item in records
-            if record_type is None or item["record_type"] == record_type
-        ]
+            _, _, diagnostics, _ = self._verify_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            return [
+                entry
+                for entry in self._stream_unlocked()
+                if record_type is None or entry.get("record_type") == record_type
+            ]

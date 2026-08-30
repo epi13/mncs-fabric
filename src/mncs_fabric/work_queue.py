@@ -13,7 +13,7 @@ from .availability import evaluate_availability, validate_availability_policy
 from .canonical import attach_identity, sha256_identity
 from .errors import ValidationError
 from .node import utc_now
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 
 SCHEDULED_WORK_SCHEMA = "mncs-fabric.scheduled-work.v0.1"
 _TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
@@ -22,6 +22,40 @@ _TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
 class WorkQueue:
     def __init__(self, ledger: FabricLedger) -> None:
         self.ledger = ledger
+        self._state_cache: tuple[dict[str, dict[str, Any]], bool] | None = None
+        self._state_token: tuple[int, int] | None = None
+
+    def _ensure_state(self) -> tuple[dict[str, dict[str, Any]], bool]:
+        if not self.ledger.path.exists():
+            self._state_cache = ({}, False)
+            self._state_token = None
+            return self._state_cache
+        stat = self.ledger.path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if token != self._state_token:
+            latest: dict[str, dict[str, Any]] = {}
+            paused = False
+            for entry in iter_ledger_records(self.ledger):
+                rtype = entry.get("record_type")
+                rec = entry.get("record", {})
+                if rtype == "scheduled.work":
+                    wid = rec.get("work_id")
+                    if wid:
+                        state = rec.get("state")
+                        if state in _TERMINAL:
+                            latest.pop(str(wid), None)
+                        else:
+                            latest[str(wid)] = dict(rec)
+                elif rtype == "scheduled.control":
+                    st = rec.get("state")
+                    if st == "PAUSED":
+                        paused = True
+                    elif st == "RESUMED":
+                        paused = False
+            self._state_cache = (latest, paused)
+            self._state_token = token
+        assert self._state_cache is not None
+        return self._state_cache
 
     def records(self, work_id: str | None = None) -> list[dict[str, Any]]:
         # Queue state is derived from complete work histories; a bounded read
@@ -32,10 +66,20 @@ class WorkQueue:
         return values
 
     def latest(self, work_id: str) -> dict[str, Any]:
-        history = self.records(work_id)
-        if not history:
+        latest_map, _ = self._ensure_state()
+        current = latest_map.get(work_id)
+        if current is not None:
+            return dict(current)
+        # Terminal work is intentionally not retained in the live projection;
+        # resolve it from the canonical history only when explicitly asked.
+        latest: dict[str, Any] | None = None
+        for entry in iter_ledger_records(self.ledger, record_type="scheduled.work"):
+            record = entry.get("record", {})
+            if record.get("work_id") == work_id:
+                latest = dict(record)
+        if latest is None:
             raise ValidationError("scheduled work identity is unknown")
-        return history[-1]
+        return latest
 
     def enqueue(self, value: Mapping[str, Any], *, client_identity: str) -> dict[str, Any]:
         if not isinstance(client_identity, str) or not client_identity:
@@ -82,6 +126,11 @@ class WorkQueue:
             self.ledger.append_if("scheduled.work", attach_identity(submitted, "event_identity"), accept)
         except _DuplicateScheduledWork:
             return self.latest(work_id)
+        latest_map, paused = self._ensure_state()
+        latest_map[work_id] = submitted
+        if self.ledger.path.exists():
+            stat = self.ledger.path.stat()
+            self._state_token = (stat.st_size, stat.st_mtime_ns)
         return submitted
 
     def pause(self) -> dict[str, Any]:
@@ -92,6 +141,11 @@ class WorkQueue:
             "observed_at": utc_now(),
         }
         self.ledger.append("scheduled.control", attach_identity(event, "event_identity"))
+        latest_map, _ = self._ensure_state()
+        self._state_cache = (latest_map, True)
+        if self.ledger.path.exists():
+            stat = self.ledger.path.stat()
+            self._state_token = (stat.st_size, stat.st_mtime_ns)
         return {"paused": True}
 
     def resume(self) -> dict[str, Any]:
@@ -102,25 +156,22 @@ class WorkQueue:
             "observed_at": utc_now(),
         }
         self.ledger.append("scheduled.control", attach_identity(event, "event_identity"))
+        latest_map, _ = self._ensure_state()
+        self._state_cache = (latest_map, False)
+        if self.ledger.path.exists():
+            stat = self.ledger.path.stat()
+            self._state_token = (stat.st_size, stat.st_mtime_ns)
         return {"paused": False}
 
     def paused(self) -> bool:
-        paused = False
-        for entry in self.ledger.all_records(record_type="scheduled.control"):
-            state = entry["record"].get("state")
-            if state == "PAUSED":
-                paused = True
-            elif state == "RESUMED":
-                paused = False
+        _, paused = self._ensure_state()
         return paused
 
     def queued(self) -> list[dict[str, Any]]:
-        latest: dict[str, dict[str, Any]] = {}
-        for record in self.records():
-            latest[str(record["work_id"])] = record
+        latest_map, _ = self._ensure_state()
         return [
-            item
-            for item in latest.values()
+            dict(item)
+            for item in latest_map.values()
             if item.get("state") == "QUEUED" and item.get("work_id") != "operator-pause"
         ]
 
@@ -135,6 +186,14 @@ class WorkQueue:
             **fields,
         }
         self.ledger.append("scheduled.work", attach_identity(event, "event_identity"))
+        latest_map, paused = self._ensure_state()
+        if state in _TERMINAL:
+            latest_map.pop(work_id, None)
+        else:
+            latest_map[work_id] = event
+        if self.ledger.path.exists():
+            stat = self.ledger.path.stat()
+            self._state_token = (stat.st_size, stat.st_mtime_ns)
         return event
 
     def tick(
