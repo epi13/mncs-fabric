@@ -1,6 +1,6 @@
 """MNCS Fabric: bounded execution and evidence primitives."""
 
-__version__ = "0.2.0a16"
+__version__ = "0.2.0a31"
 
 from .api import ConsumerContext, FabricAdminClient, FabricClient, LocalWorkerConfig, RemoteWorkerConfig
 from .capabilities import CAPABILITY_OBSERVATION_SCHEMA
@@ -12,7 +12,27 @@ from .lifecycle import (
 )
 from .controller_service import CONTROLLER_CONFIG_SCHEMA, CONTROLLER_SERVICE_SCHEMA, ControllerConfig, ControllerService
 from .service_transport import SERVICE_REQUEST_SCHEMA, SERVICE_RESPONSE_SCHEMA
-from .targets import EXECUTION_TARGET_SCHEMA, ExecutionTargetReference
+from .targets import (
+    EXECUTION_TARGET_SCHEMA,
+    TARGET_ADMISSION_SCHEMA,
+    TARGET_EXECUTION_EVIDENCE_SCHEMA,
+    ExecutionTargetReference,
+    validate_target_admission,
+    validate_target_execution_evidence,
+)
+from .inventory import INVENTORY_SCHEMA
+from .receipts import build_family_execution_reference
+from .desired_state import DESIRED_STATE_SCHEMA, PROFILE_SCHEMA
+from .management import MANAGEMENT_STATE_SCHEMA
+from .maintenance import PLAN_SCHEMA, RECEIPT_SCHEMA
+from .certify import CERTIFICATION_SCHEMA
+from .conformance import CONFORMANCE_SCHEMA
+from .package_artifact import PACKAGE_ARTIFACT_SCHEMA
+from .update_lifecycle import UPDATE_TRANSACTION_SCHEMA
+from .topology import (
+    TOPOLOGY_SCHEMA, TOPOLOGY_SNAPSHOT_SCHEMA, build_topology_snapshot,
+    collect_network_topology, validate_network_topology,
+)
 
 __all__ = [
     "CAPABILITY_OBSERVATION_SCHEMA", "ConsumerContext", "FabricClient", "FabricAdminClient",
@@ -24,5 +44,16 @@ __all__ = [
     "ControllerConfig", "ControllerService",
     "CONTROLLER_CONFIG_SCHEMA", "CONTROLLER_SERVICE_SCHEMA",
     "SERVICE_REQUEST_SCHEMA", "SERVICE_RESPONSE_SCHEMA",
-    "EXECUTION_TARGET_SCHEMA", "ExecutionTargetReference",
+    "EXECUTION_TARGET_SCHEMA", "TARGET_ADMISSION_SCHEMA",
+    "TARGET_EXECUTION_EVIDENCE_SCHEMA", "ExecutionTargetReference",
+    "validate_target_admission", "validate_target_execution_evidence",
+    "INVENTORY_SCHEMA", "DESIRED_STATE_SCHEMA", "PROFILE_SCHEMA",
+    "build_family_execution_reference",
+    "MANAGEMENT_STATE_SCHEMA", "PLAN_SCHEMA", "RECEIPT_SCHEMA",
+    "CERTIFICATION_SCHEMA",
+    "CONFORMANCE_SCHEMA",
+    "PACKAGE_ARTIFACT_SCHEMA",
+    "UPDATE_TRANSACTION_SCHEMA",
+    "TOPOLOGY_SCHEMA", "TOPOLOGY_SNAPSHOT_SCHEMA",
+    "build_topology_snapshot", "collect_network_topology", "validate_network_topology",
 ]

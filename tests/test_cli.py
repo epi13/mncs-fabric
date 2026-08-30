@@ -85,6 +85,12 @@ class ControllerEnvironmentTests(unittest.TestCase):
             ), self.assertRaises(ValidationError):
                 _controller_config(self._args(root))
 
+    def test_controller_identity_has_fabric_owned_default(self) -> None:
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("MNCS_FABRIC_CONTROLLER_ID", None)
+            args = build_parser().parse_args(["controller", "status"])
+        self.assertEqual(args.controller_id, "mncs-fabric-controller")
+
     def test_enrollment_state_ownership_is_explicit(self) -> None:
         parser = build_parser()
         with self.assertRaises(SystemExit):

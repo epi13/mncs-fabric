@@ -73,7 +73,7 @@ runtime-capability contracts. The checked-in Windows sequential-offload record
 contains a synchronized CUDA probe, an Accelerate offload observation, exact
 runtime/placement/bundle/record/receipt identities, and a bounded full-CUDA
 comparison. The three-node evidence record validates the Fedora local,
-`fabric-worker-01`, and `collamore02-windows` collection and cross-OS
+`fabric-worker-01`, and `worker-01-windows` collection and cross-OS
 reconciliation. These are offline checks of operator-controlled development
 records, not independent physical verification.
 

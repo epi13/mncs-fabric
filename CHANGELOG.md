@@ -1,5 +1,223 @@
 # Changelog
 
+## Unreleased
+
+- Add provenance classes to worker capability observations
+  (`worker-observed`, `operator-asserted`, `consumer-declared`). Exact-target
+  admission now trusts only worker-observed and operator-asserted evidence:
+  consumer-declared observations (and legacy records without the field) remain
+  retained context but can never prove that a worker possesses a capability
+  required by an execution target (`TARGET_CAPABILITY_UNVERIFIED`). Consumers
+  may only publish consumer-declared observations; operator-asserted requires
+  the admin surface; worker-observed is reserved for worker-authenticated
+  reporting. Target admission selects the newest trusted observation rather
+  than the newest observation of any class.
+
+- Allow an operator-requested certification to recover a worker that returned
+  after an update reconnect deadline, but only after exact expected-version,
+  health-certification, and desired-state checks pass. The failed observation
+  remains in the append-only history and package apply is never repeated.
+- Refresh worker capability evidence in the background on a bounded interval
+  shorter than capability observation age, so inventories do not go stale
+  merely because no client asked.
+- Make the Windows worker scheduled-task install idempotent: one logon-triggered
+  hidden supervisor, no duplicate timer watcher, and a bundled inspect/repair
+  script that restores `MNCS-Fabric-Worker` without elevation.
+- Treat missing `gh` as advisory, matching `local-harness`: do not FAIL a
+  Windows inference-worker maintenance receipt or roll back a Fabric apply.
+- When a pre-0.2.0a30 worker certifies without echoing inventory, bind the
+  inspect that selected the profiles instead of failing the certification.
+
+## 0.2.0a31 - transport topology observation
+
+- carry bounded passive network interface, route, and neighbor observations in
+  node records without changing the v0.2 worker-description wire schema;
+- classify USB-backed IP interfaces as a first-class link medium while keeping
+  execution on the existing mutually authenticated TLS/IP transport;
+- surface topology evidence and identity in local, remote, and rendezvous fleet
+  status and derive direct worker links from matching passive neighbor evidence;
+- document the OS/Fabric responsibility boundary for routed USB node chains.
+
+## 0.2.0a30 - installable staged artifacts
+
+- copy a digest-named staged wheel to its descriptor/PEP 427 filename
+  before `pip install`, so Fabric-native apply no longer fails with
+  `Invalid wheel filename`;
+- treat missing `local-harness` as advisory: do not FAIL the maintenance
+  receipt or roll back a Fabric package apply;
+- keep advisory verifies on the controller so pre-0.2.0a30 workers do
+  not see a blocking `tool not present` during class A apply.
+
+## 0.2.0a29 - runtime build identity
+
+- report a process-local `runtime_identity` from controller status:
+  package, version, source commit, artifact digest, and build identity
+  when available;
+- keep that identity off inventory and conformance hashes so existing
+  CERTIFIED workers are not rotated by observation-only reporting;
+- project optional worker source commit / artifact digest on fleet
+  refresh when a worker advertises them.
+
+## 0.2.0a28 - self-recovering fleet updates
+
+- separate fleet-refresh concurrency unit tests from LocalWorker host
+  inventory time so a slow Windows WMI/tool probe cannot turn PARTIAL
+  into UNKNOWN;
+- wait for TLS listener readiness and keep connect timeout distinct from
+  the job execution deadline, so job-timeout tests do not race
+  `socket.create_connection()`;
+- make the certified-inventory invariant universal: reconcile,
+  post-maintenance verify, certify, update completion, and restart
+  recovery evaluate READY only against the inventory the worker actually
+  certified;
+- resume DISCONNECT_EXPECTED / RECONNECTING / VERSION_VERIFYING /
+  CERTIFYING transactions after controller restart without re-applying
+  packages; mutation-phase states fail closed with explicit uncertainty;
+- resolve `retain_identities` through a content-addressed object index so
+  GC keeps referenced non-current artifacts, not merely a returned list;
+- derive live artifact references from current/previous deployments,
+  unresolved transactions, and persisted rollouts;
+- persist sequential canary rollout progress so a controller restart
+  does not re-mutate a successful canary;
+- discover Windows tools from process PATH plus durable user/machine
+  PATH and environment-relative well-known layouts, without host-specific
+  hard-coded executable paths.
+
+## 0.2.0a27 - live Fabric-native transfer
+
+- expose `transfer_package_artifact` on the persistent FabricClient
+  backend so `worker.artifact.stage` can reach enrolled mTLS workers;
+- bind certification and conformance to the inventory the worker actually
+  certified, so READY cannot fail closed on two live inventory snapshots;
+- recover unresolved update transactions after controller restart without
+  re-applying packages;
+- garbage-collect unreferenced staged package artifacts while retaining
+  current and previous known-good identities;
+- distinguish rollout `deployment_succeeded` from scheduler READY.
+
+- close the 0.2.0a24 fleet-autonomy architecture before live canary:
+  GitHub Actions portability (UTC without tzdata, host-reachable fixture
+  paths, drain/resume READY predicate, fleet-refresh deadlines);
+- make READY a single `evaluate_ready` invariant bound to current
+  inventory, desired-state identity, certification, conformance, and any
+  unresolved update transaction;
+- walk Fabric updates through the full transaction
+  (`UPDATE_PLANNED` … `DISCONNECT_EXPECTED` … `VERSION_VERIFYING` …
+  `CERTIFYING` → `READY`) with evidence-backed reconnect observation;
+- require post-restart READY before a canary proceeds; stop the remainder
+  when `stop_on_failure` is set;
+- bind artifact transfer sessions to worker/controller/artifact/transfer
+  identity, expected sequences, digest, size, and expiry;
+- retain the previous content-addressed artifact for exact rollback and
+  quarantine when that artifact is missing or corrupt;
+- inspect wheel/sdist metadata without executing package code.
+
+## 0.2.0a24 - fleet autonomy architecture
+
+- separate health certification from desired-state conformance so a
+  required missing Git (or other blocking profile requirement) can no
+  longer yield CERTIFIED READY;
+- bind Fabric package updates to content-addressed artifacts with digest,
+  size, and version checks, transferred over the existing mTLS protocol;
+- record authorized restart as an explicit update transaction
+  (DISCONNECT_EXPECTED) instead of an unexplained outage;
+- add a bounded canary rollout planner with stop-on-failure;
+- treat GitHub AUTH_FAILURE as health SKIP / conformance AUTH_REQUIRED
+  (advisory) rather than a hard health failure.
+
+## 0.2.0a21 - desired-state fleet management
+
+- add a first-class desired-state fleet-management plane: worker inventory,
+  reusable profiles, typed maintenance actions, drain/resume/quarantine,
+  capability-aware certification, and append-only maintenance receipts
+  (`mncs-fabric worker inspect|plan|reconcile|certify|drain` and
+  `mncs-fabric fleet inspect|plan|reconcile|certify`);
+- discover how Ollama and other services are actually installed instead of
+  assuming `systemd` `*.service` units, and refuse to auto-apply privilege
+  or OS-class mutations;
+- keep management state separate from liveness so a worker in maintenance or
+  a failed certification cannot receive ordinary work;
+- emit Commons-shaped operational companions only for unusual discoveries,
+  without importing Commons or flooding routine success.
+
+## 0.2.0a21 - classified fleet refresh
+
+- `fleet.refresh` answers within the 30s service-frame TTL with classified
+  per-worker results instead of letting sequential worker probes expire the
+  persistent request as an ambiguous `UNKNOWN` timeout;
+- worker probes run concurrently with an explicit per-worker deadline, so one
+  slow or unreachable worker cannot discard another worker's completed
+  observation;
+- a worker `TIMEOUT` retains last-known availability and is distinct from
+  `UNAVAILABLE` (unreachable) and from `STALE` capability inventory;
+- fleet projections expose `worker_service_version` and
+  `description_captured_at` so an operator can verify the process serving a
+  worker after an in-place upgrade;
+- controller restart restores last-known worker descriptions from the network
+  ledger so refresh can resume against retained observations;
+- persistent `FabricClient.execute()` no longer holds the 30s service-frame
+  TTL open for jobs whose plan timeout exceeds that bound; those jobs submit
+  as detached work and poll `execution.status`/`execution.result` until the
+  job deadline, so controller request timeouts cannot expire before
+  legitimate worker execution;
+- advertise `persistent_execution_deadline_wait` so consumers can detect the
+  split between control-plane TTL and execution deadline without guessing
+  package versions;
+- bundle cache GC can evict unused published bundles under pressure, never
+  evicts in-use or pinned identities, and fails closed when safe reclamation
+  cannot free enough space (`mncs-fabric cache status|gc`);
+- 0.2.0a19 advertises `service_capabilities` including last-known status,
+  explicit `fleet.refresh`, detached execution, and a scheduled work queue so
+  clients can detect a stale running controller without trusting package
+  versions alone;
+- controller-owned worker backends may implement `workers()` without
+  `apply_lease`; last-known reads remain compatible with Control fixtures;
+- `controller.status`, `fleet.list`, and other service reads now project
+  last-known worker state without calling `refresh_workers()`; live describe
+  probes are explicit through `fleet.refresh` so a busy worker no longer
+  stalls unrelated persistent clients;
+- required Bubblewrap mode now fails closed with `CONTAINMENT_UNAVAILABLE` when
+  this process cannot create a user namespace, instead of reporting a generic
+  `FAIL` from a nested sandbox or kernel restriction;
+- the containment test still enforces filesystem and offline-network isolation
+  wherever user namespaces are available; and
+- Windows job cancellation uses `taskkill /T` so aborted inference does not
+  routinely leave a detached child tree.
+
+## 0.2.0a18 - reusable deployment, containment, and durable lookup
+
+- replace consumer-specific controller identity/state paths with Fabric-owned,
+  configurable systemd deployment plus idempotent controller/worker update and
+  explicit non-revoking uninstall helpers;
+- add an explicit worker containment provider boundary, fail-closed required mode,
+  and a concrete Fedora/Linux bubblewrap backend with bundle-only filesystem access,
+  ambient-home removal, and offline network namespace enforcement;
+- replace bounded retry scans with restart-rebuilt in-memory worker replay state and
+  an identity-validated, stale-detecting derived target-evidence index whose JSONL
+  ledger remains authoritative; and
+- publish additive containment feature flags and controller config v0.3 without
+  expanding the ordinary consumer authority surface.
+
+## 0.2.0a17 - persistent substrate hardening and exact-target execution
+
+- make lifecycle revocation authoritative over legacy registry entries, active
+  rendezvous sessions, direct dispatch, and configured transport trust while
+  retaining append-only history;
+- route online enrollment mutations through the operator service, make offline
+  signing explicit, and validate CA/controller/worker certificate, key, identity,
+  and pin bindings before issuance or activation;
+- add a two-phase Fedora reboot acceptance helper that verifies the Fabric consumer
+  projection before post-reboot SSH and preserves physical status as `UNKNOWN` until
+  a real reboot is completed;
+- add exact no-fallback persistent target dispatch with current membership,
+  authenticated presence, liveness, capability, runtime, context, and provenance
+  re-admission plus first-class identity-addressed evidence;
+- preserve deterministic worker-ledger idempotence across exact-target retry and
+  expose stable target failure codes; and
+- make rendezvous heartbeat deadlines tolerate the negotiated interval and declared
+  job bound while advancing multi-command verified bundle transfer without a full
+  heartbeat delay per chunk.
+
 ## 0.2.0a16 - persistent worker rendezvous and service execution
 
 - route bounded execution requests through the persistent controller-owned worker

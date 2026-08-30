@@ -44,6 +44,7 @@ class PublicContractTests(unittest.TestCase):
         self.assertTrue(first["features"]["native_bundle_transfer"])
         self.assertTrue(first["features"]["worker_capability_observation"])
         self.assertTrue(first["features"]["persistent_fleet_read"])
+        self.assertTrue(first["features"]["classified_fleet_refresh"])
         self.assertFalse(first["features"]["persistent_service_execution"])
         self.assertFalse(first["features"]["persistent_service_capability_ingestion"])
         self.assertFalse(first["features"]["worker_rendezvous"])

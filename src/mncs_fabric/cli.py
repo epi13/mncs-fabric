@@ -84,6 +84,7 @@ def _controller_config(args: argparse.Namespace) -> ControllerConfig:
     return ControllerConfig(
         args.controller_id,
         args.state,
+        capability_refresh_seconds=getattr(args, "capability_refresh_seconds", 240.0),
         worker_registry_path=getattr(args, "registry", None),
         worker_state_path=getattr(args, "worker_state", None),
         execution_bundle_root=getattr(args, "execution_bundle_root", None),
@@ -164,6 +165,25 @@ def build_parser() -> argparse.ArgumentParser:
     record_verify = record_sub.add_parser("verify", help="verify a record's self-identity")
     record_verify.add_argument("record", type=_path)
 
+    provenance = sub.add_parser(
+        "provenance", help="rights & provenance evidence operations"
+    )
+    provenance_sub = provenance.add_subparsers(dest="provenance_command", required=True)
+    provenance_emit = provenance_sub.add_parser(
+        "emit",
+        help=(
+            "project an execution record into a rights/provenance evidence "
+            "record (process evidence only; no legal conclusions)"
+        ),
+    )
+    provenance_emit.add_argument("record", type=_path)
+    provenance_emit.add_argument("--receipt", type=_path, default=None)
+    provenance_emit.add_argument("--output", type=_path)
+    provenance_emit.add_argument("--run-id", dest="run_id")
+    provenance_emit.add_argument("--task-id", dest="task_id")
+    provenance_emit.add_argument("--consumer-context-identity", dest="consumer_context_identity")
+    provenance_emit.add_argument("--rights-manifest-reference", dest="rights_manifest_reference")
+
     reconcile = sub.add_parser("reconcile", help="reconcile execution records")
     reconcile.add_argument("records", nargs="+", type=_path)
     reconcile.add_argument("--output", type=_path)
@@ -188,6 +208,7 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--max-concurrent-connections", type=int, default=1)
     serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
     serve.add_argument("--bundle-cache", type=_path, help="immutable EA-NEXT-002 bundle cache for native transfer")
+    serve.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
     rendezvous = worker_sub.add_parser("rendezvous", help="dial a persistent controller and maintain a worker session")
     rendezvous.add_argument("--worker-id", required=True)
     rendezvous.add_argument("--controller-id", required=True)
@@ -203,6 +224,7 @@ def build_parser() -> argparse.ArgumentParser:
     rendezvous.add_argument("--heartbeat-seconds", type=float, default=5.0)
     rendezvous.add_argument("--timeout", type=float, default=5.0)
     rendezvous.add_argument("--max-seconds", type=float)
+    rendezvous.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
     join = worker_sub.add_parser(
         "join", help="generate a durable local identity and protected enrollment request"
     )
@@ -319,16 +341,53 @@ def build_parser() -> argparse.ArgumentParser:
         help="operator-only lifecycle state; the controller service must be stopped",
     )
 
+    cache = sub.add_parser("cache", help="inspect or reclaim the controller bundle cache")
+    cache_sub = cache.add_subparsers(dest="cache_command", required=True)
+    cache_status = cache_sub.add_parser("status")
+    cache_status.add_argument("--json", action="store_true")
+    cache_gc = cache_sub.add_parser("gc")
+    cache_gc.add_argument("--json", action="store_true")
+    cache_gc.add_argument("--dry-run", action="store_true")
+    cache_gc.add_argument("--confirm", action="store_true")
+    for cache_command in (cache_status, cache_gc):
+        cache_command.add_argument(
+            "--root",
+            type=_path,
+            help="bundle cache root; defaults to the controller execution-bundle consumer cache",
+        )
+
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
-    fleet_list = fleet_sub.add_parser("list", help="list fleet members")
+    fleet_list = fleet_sub.add_parser("list", help="list last-known fleet members")
     fleet_list.add_argument("--json", action="store_true")
+    fleet_refresh = fleet_sub.add_parser("refresh", help="probe registered workers and update last-known state")
+    fleet_refresh.add_argument("--json", action="store_true")
+    fleet_refresh.add_argument("--worker", dest="worker_id", help="refresh one registered worker")
     fleet_status = fleet_sub.add_parser("status", help="show one member and current presence")
     fleet_status.add_argument("worker_id")
     fleet_status.add_argument("--json", action="store_true")
     fleet_doctor = fleet_sub.add_parser("doctor", help="verify lifecycle durability and status")
     fleet_doctor.add_argument("--json", action="store_true")
-    for fleet_command in (fleet_list, fleet_status, fleet_doctor):
+    fleet_inspect = fleet_sub.add_parser("inspect", help="collect normalized inventory from registered workers")
+    fleet_plan = fleet_sub.add_parser("plan", help="diff desired state for registered workers")
+    fleet_reconcile = fleet_sub.add_parser("reconcile", help="apply typed desired-state reconciliation")
+    fleet_reconcile.add_argument("--apply", action="store_true")
+    fleet_certify = fleet_sub.add_parser("certify", help="run capability-aware certification")
+    fleet_rollout = fleet_sub.add_parser("rollout", help="plan or apply a bounded canary rollout")
+    fleet_rollout.add_argument("--apply", action="store_true")
+    fleet_rollout.add_argument("--force", action="store_true")
+    fleet_rollout.add_argument("--canary-count", type=int, default=1)
+    fleet_rollout.add_argument("--stop-on-failure", action="store_true", default=True)
+    fleet_rollout.add_argument("--class", dest="update_class", default="A")
+    for fleet_filter in (fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify):
+        fleet_filter.add_argument("--json", action="store_true")
+        fleet_filter.add_argument("--profile")
+        fleet_filter.add_argument("--os", dest="platform")
+        fleet_filter.add_argument("--worker", dest="worker_id")
+        fleet_filter.add_argument("--class", dest="update_class", action="append", default=[])
+    fleet_rollout.add_argument("--json", action="store_true")
+    fleet_rollout.add_argument("--worker", dest="worker_id")
+    for fleet_command in (fleet_list, fleet_refresh, fleet_status, fleet_doctor, fleet_inspect, fleet_plan, fleet_reconcile, fleet_certify, fleet_rollout):
         fleet_command.add_argument("--state", type=_path, default=default_lifecycle_path())
         fleet_command.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
         fleet_command.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
@@ -348,9 +407,37 @@ def build_parser() -> argparse.ArgumentParser:
     worker_doctor.add_argument("--json", action="store_true")
     worker_doctor.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
     worker_revoke.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
+    worker_inspect = worker_sub.add_parser("inspect", help="collect normalized worker inventory")
+    worker_plan = worker_sub.add_parser("plan", help="diff this worker against desired state")
+    worker_reconcile = worker_sub.add_parser("reconcile", help="apply typed reconciliation")
+    worker_reconcile.add_argument("--apply", action="store_true")
+    worker_reconcile.add_argument("--force", action="store_true", help="apply staged Fabric reinstall even when versions already match")
+    worker_certify = worker_sub.add_parser("certify", help="run capability-aware certification")
+    worker_drain = worker_sub.add_parser("drain", help="stop new work before maintenance")
+    worker_resume = worker_sub.add_parser("resume", help="return a certified worker to READY")
+    worker_quarantine = worker_sub.add_parser("quarantine", help="keep a worker out of production")
+    worker_quarantine.add_argument("--reason", required=True)
+    worker_artifact = worker_sub.add_parser("artifact-stage", help="transfer a content-addressed Fabric package artifact")
+    worker_artifact.add_argument("worker_id")
+    worker_artifact.add_argument("--source", required=True, type=_path)
+    worker_artifact.add_argument("--version", required=True)
+    worker_artifact.add_argument("--json", action="store_true")
+    worker_artifact.add_argument("--admin-socket", type=_path, required=True)
+    for managed in (worker_inspect, worker_plan, worker_reconcile, worker_certify, worker_drain, worker_resume, worker_quarantine):
+        managed.add_argument("worker_id", nargs="?", help="registered worker identity; omit with --local")
+        managed.add_argument("--local", action="store_true", help="inspect the current process as a worker")
+        managed.add_argument("--json", action="store_true")
+        managed.add_argument("--socket", type=_path, help="use the persistent controller consumer socket")
+        managed.add_argument("--admin-socket", type=_path, help="use the persistent controller operator socket")
+        managed.add_argument("--profile", action="append", default=[])
+        managed.add_argument("--class", dest="update_class", action="append", default=[])
+        managed.add_argument("--label", help="local worker identity when using --local")
 
     controller = sub.add_parser("controller", help="inspect or run the persistent Fabric controller foundation")
-    controller.add_argument("--controller-id", default="local")
+    controller.add_argument(
+        "--controller-id",
+        default=os.environ.get("MNCS_FABRIC_CONTROLLER_ID", "mncs-fabric-controller"),
+    )
     controller_sub = controller.add_subparsers(dest="controller_command", required=True)
     controller_status = controller_sub.add_parser("status", help="inspect controller and lifecycle health")
     controller_status.add_argument("--json", action="store_true")
@@ -362,6 +449,12 @@ def build_parser() -> argparse.ArgumentParser:
     controller_service_sub = controller_service.add_subparsers(dest="service_command", required=True)
     controller_run = controller_service_sub.add_parser("run", help="run until SIGTERM/SIGINT or a bounded test deadline")
     controller_run.add_argument("--max-seconds", type=float)
+    controller_run.add_argument(
+        "--capability-refresh-seconds",
+        type=float,
+        default=240.0,
+        help="bounded background interval for refreshing worker capability evidence",
+    )
     controller_run.add_argument("--json", action="store_true")
     controller_status.add_argument("--state", type=_path, default=default_lifecycle_path())
     controller_doctor.add_argument("--state", type=_path, default=default_lifecycle_path())
@@ -586,6 +679,88 @@ def main(argv: list[str] | None = None) -> int:
                 raise AssertionError("unreachable enrollment command")
             write_json(None, result)
             return 0
+        if args.command == "cache":
+            from .bundle_transfer import BundleCache
+            from .lifecycle import default_state_dir
+
+            root = args.root or (default_state_dir() / "execution-bundles" / "consumer-cache")
+            cache = BundleCache(root)
+            if args.cache_command == "status":
+                result = cache.status()
+            else:
+                result = cache.gc(dry_run=args.dry_run or not args.confirm, confirm=args.confirm)
+            write_json(None, result)
+            return 0
+        if args.command == "worker" and args.worker_command == "artifact-stage":
+            admin = FabricAdminClient.connect(args.admin_socket, timeout=90.0)
+            result = admin.stage_artifact(args.worker_id, source=str(args.source), version=args.version)
+            admin.close()
+            write_json(None, result)
+            return 0
+        if args.command == "worker" and args.worker_command in {"inspect", "plan", "reconcile", "certify", "drain", "resume", "quarantine"}:
+            if getattr(args, "local", False) or not args.worker_id:
+                label = args.label or args.worker_id or "local-worker"
+                if args.worker_command == "inspect":
+                    result = _SERVICE.inventory(label)
+                elif args.worker_command == "plan":
+                    result = _SERVICE.plan_local(label, profiles=args.profile or None)
+                    if not args.json:
+                        print(_SERVICE.format_plan(result))
+                        return 0
+                elif args.worker_command == "certify":
+                    result = _SERVICE.certify_local(label, profiles=args.profile or None)
+                    if not args.json:
+                        print(_SERVICE.format_certification(result))
+                        return 0 if result["disposition"] == "CERTIFIED" else 1
+                else:
+                    raise SystemExit(f"{args.worker_command} against a live worker requires --socket/--admin-socket and a worker id")
+                write_json(None, result)
+                return 0
+            if args.admin_socket:
+                admin_timeout = 90.0 if args.worker_command in {"certify", "reconcile"} else 30.0
+                admin = FabricAdminClient.connect(args.admin_socket, timeout=admin_timeout)
+                if args.worker_command == "inspect":
+                    result = admin.inspect_worker(args.worker_id)
+                elif args.worker_command == "plan":
+                    result = admin.plan_worker(args.worker_id, profiles=args.profile or None, classes=args.update_class or None)
+                elif args.worker_command == "reconcile":
+                    result = admin.reconcile_worker(args.worker_id, apply=args.apply, profiles=args.profile or None, classes=args.update_class or None, force=getattr(args, "force", False))
+                elif args.worker_command == "certify":
+                    result = admin.certify_worker(args.worker_id, profiles=args.profile or None)
+                elif args.worker_command == "drain":
+                    result = admin.drain_worker(args.worker_id)
+                elif args.worker_command == "resume":
+                    result = admin.resume_worker(args.worker_id)
+                else:
+                    result = admin.quarantine_worker(args.worker_id, reason=args.reason)
+                admin.close()
+            elif args.socket:
+                if args.worker_command in {"reconcile", "certify", "drain", "resume", "quarantine"}:
+                    raise SystemExit(f"{args.worker_command} requires --admin-socket")
+                client = FabricClient.connect(args.socket)
+                if args.worker_command == "inspect":
+                    result = client.inspect_worker(args.worker_id)
+                else:
+                    result = client.plan_worker(args.worker_id, profiles=args.profile or None, classes=args.update_class or None)
+                client.close()
+            else:
+                raise SystemExit("worker management requires --local, --socket, or --admin-socket")
+            if not args.json and args.worker_command == "plan" and "actions" in result:
+                print(_SERVICE.format_plan(result))
+                return 0
+            cert = result.get("certification") if isinstance(result.get("certification"), dict) else result
+            if not args.json and args.worker_command == "certify" and isinstance(cert, dict) and "disposition" in cert:
+                print(_SERVICE.format_certification(cert))
+                conformance = result.get("conformance") if isinstance(result, dict) else None
+                if isinstance(conformance, dict):
+                    print("")
+                    print("Conformance", conformance.get("disposition"), conformance.get("blocking_failures") or [])
+                ready = (result.get("management") or {}).get("state") if isinstance(result, dict) else None
+                if ready:
+                    print("Management", ready)
+                return 0 if cert["disposition"] == "CERTIFIED" and not (isinstance(conformance, dict) and conformance.get("blocking_failures")) else 1
+            write_json(None, result)
+            return 0
         if args.command == "fleet":
             if args.fleet_command == "doctor" and args.admin_socket:
                 admin = FabricAdminClient.connect(args.admin_socket)
@@ -593,19 +768,65 @@ def main(argv: list[str] | None = None) -> int:
                 admin.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
+            if args.admin_socket and args.fleet_command in {"inspect", "plan", "reconcile", "certify", "rollout"}:
+                admin = FabricAdminClient.connect(args.admin_socket)
+                filters = {
+                    "profile": getattr(args, "profile", None),
+                    "platform": getattr(args, "platform", None),
+                    "worker_id": getattr(args, "worker_id", None),
+                }
+                if args.fleet_command == "inspect":
+                    result = admin.inspect_fleet(**filters)
+                elif args.fleet_command == "plan":
+                    result = admin.plan_fleet(**filters)
+                elif args.fleet_command == "reconcile":
+                    result = admin.reconcile_fleet(apply=getattr(args, "apply", False), **filters)
+                elif args.fleet_command == "rollout":
+                    result = admin.rollout_fleet(
+                        apply=getattr(args, "apply", False),
+                        force=getattr(args, "force", False),
+                        canary_count=getattr(args, "canary_count", 1),
+                        stop_on_failure=getattr(args, "stop_on_failure", True),
+                        update_class=getattr(args, "update_class", "A") or "A",
+                        worker_id=getattr(args, "worker_id", None),
+                    )
+                else:
+                    result = admin.certify_fleet(**filters)
+                admin.close()
+                write_json(None, result)
+                return 0
             if args.socket:
-                client = FabricClient.connect(args.socket)
+                from .service_transport import SERVICE_REQUEST_TTL_SECONDS
+
+                timeout = SERVICE_REQUEST_TTL_SECONDS if args.fleet_command == "refresh" else 5.0
+                client = FabricClient.connect(args.socket, timeout=timeout)
                 if args.fleet_command == "list":
                     result = {"outcome": "PASS", "workers": client.fleet()}
+                elif args.fleet_command == "refresh":
+                    result = client.refresh_fleet(
+                        worker_ids=[args.worker_id] if getattr(args, "worker_id", None) else None
+                    )
                 elif args.fleet_command == "status":
                     result = client.fleet_status(args.worker_id)
                 elif args.fleet_command == "doctor":
                     result = client.fleet_doctor()
+                elif args.fleet_command == "inspect":
+                    result = client.inspect_fleet(
+                        profile=getattr(args, "profile", None),
+                        platform=getattr(args, "platform", None),
+                        worker_id=getattr(args, "worker_id", None),
+                    )
+                elif args.fleet_command == "plan":
+                    result = client.plan_worker(args.worker_id) if getattr(args, "worker_id", None) else client.inspect_fleet()
+                elif args.fleet_command in {"reconcile", "certify"}:
+                    raise SystemExit(f"fleet {args.fleet_command} requires --admin-socket")
                 else:
                     raise AssertionError("unreachable service fleet command")
                 client.close()
                 write_json(None, result)
                 return _status_code(result.get("outcome", "PASS"))
+            if args.fleet_command == "refresh":
+                raise SystemExit("fleet refresh requires --socket to the persistent controller")
             lifecycle = LifecycleStore(args.state)
             if args.fleet_command == "list":
                 result = {"outcome": "PASS", "workers": lifecycle.memberships()}
@@ -683,12 +904,26 @@ def main(argv: list[str] | None = None) -> int:
             result = _SERVICE.verify_record(value)
             write_json(None, result)
             return _status_code(result["outcome"])
+        if args.command == "provenance" and args.provenance_command == "emit":
+            from .provenance import build_provenance_evidence
+
+            receipt = load_json(args.receipt) if getattr(args, "receipt", None) else None
+            evidence = build_provenance_evidence(
+                load_json(args.record),
+                receipt=receipt,
+                run_id=args.run_id,
+                task_id=args.task_id,
+                consumer_context_identity=args.consumer_context_identity,
+                rights_manifest_reference=args.rights_manifest_reference,
+            )
+            write_json(args.output, evidence)
+            return 0
         if args.command == "reconcile":
             cohort = _SERVICE.reconcile([load_json(path) for path in args.records], require_distinct_nodes=not args.allow_repeated_node)
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
         if args.command == "worker" and args.worker_command == "serve":
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
             endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
             if args.max_requests == 1 and args.idle_timeout is None and args.max_concurrent_connections == 1:
                 endpoint.serve_once()
@@ -699,7 +934,7 @@ def main(argv: list[str] | None = None) -> int:
             return _status_code(result["outcome"])
         if args.command == "worker" and args.worker_command == "rendezvous":
             from .transport import TLSRendezvousWorker
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache)
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
             endpoint = TLSRendezvousWorker(worker_service, args.controller_host, args.controller_port, ca_file=args.ca, client_cert=args.certificate, client_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), heartbeat_seconds=args.heartbeat_seconds, timeout=args.timeout)
             result = endpoint.run(max_seconds=args.max_seconds)
             write_json(None, result)

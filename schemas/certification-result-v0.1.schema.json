@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.certification-result.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "inventory_identity", "profiles", "layers", "disposition", "failing_layer", "created_at", "claim_boundary", "certification_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.certification-result.v0.1"},
+    "worker_identity": {"type": "string"},
+    "inventory_identity": {"type": "string"},
+    "profiles": {"type": "array"},
+    "layers": {"type": "array"},
+    "disposition": {"enum": ["CERTIFIED", "FAILED", "UNKNOWN"]},
+    "failing_layer": {"type": ["string", "null"]},
+    "created_at": {"type": "string"},
+    "claim_boundary": {"type": "string"},
+    "certification_identity": {"type": "string"}
+  }
+}

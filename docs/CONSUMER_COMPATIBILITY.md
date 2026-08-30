@@ -63,12 +63,32 @@ route from retained observations whose status is `STALE`, `UNKNOWN`, or `UNAVAIL
 Older consumers remain compatible because the public contract and worker records are
 extended additively. Consumers that require this API should pin `mncs-fabric>=0.2.0a11`.
 
+Classified fleet refresh (added in `0.2.0a20`): `FabricClient.refresh_fleet()`
+returns a payload whose `outcome` may be `PASS`, `PARTIAL`, or `UNKNOWN`. The
+persistent service frame stays `PASS` when the controller answered inside the
+30s control-plane TTL. Per-worker `refresh` is `PASS`, `TIMEOUT`,
+`UNAVAILABLE`, or `UNKNOWN`. `TIMEOUT` retains last-known availability and is
+not a contact failure. Capability inventory `STALE` remains a distinct
+freshness observation. `refresh_workers()` still returns the worker list for
+compatibility. Older controllers without `classified_fleet_refresh` may still
+time out the service request; Control should treat that as `restart_required`.
+
 Timeout migration (added in `0.2.0a12`): `RemoteWorkerConfig.timeout` remains the
 backward-compatible short bound. Consumers may set `connect_timeout`,
 `control_timeout`, and `execution_timeout_overhead` separately. A dispatch response
 uses the already validated job timeout plus that bounded overhead; descriptions,
 refreshes, handshakes, and other control operations never inherit the long job bound.
-Local Harness 0.5.0 requires `mncs-fabric>=0.2.0a12,<0.3` for this behavior.
-Local Harness 0.6.0 requires `mncs-fabric>=0.2.0a13,<0.3` for the additional
+MNCS Harness 0.5.0 requires `mncs-fabric>=0.2.0a12,<0.3` for this behavior.
+MNCS Harness 0.6.0 requires `mncs-fabric>=0.2.0a13,<0.3` for the additional
 operator registry API. The registry is local configuration and does not bump the
 Fabric wire protocol.
+
+Exact-target migration (added in `0.2.0a17`): persistent consumers may construct an
+`ExecutionTargetReference` from a current fleet projection and capability
+observation, then call `FabricClient.execute_target()`. The consumer supplies its
+own context and opaque authorization-provenance identity plus a verified archive;
+it does not receive worker endpoint, certificate, TrustStore, registry, cache, or
+rendezvous details. Fabric rechecks current facts, dispatches only to the exact
+worker, and returns versioned admission/evidence records. A denied or unavailable
+target never falls back. Consumers should gate this path on the running service's
+`target_aware_execution` flag, not only the installed package version.

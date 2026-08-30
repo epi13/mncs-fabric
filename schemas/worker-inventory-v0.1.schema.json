@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.worker-inventory.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "captured_at", "observation_source", "claim_boundary", "identity", "hardware", "fabric", "tools", "runtimes", "repositories", "services", "health", "credentials", "inventory_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.worker-inventory.v0.1"},
+    "worker_identity": {"type": "string"},
+    "captured_at": {"type": "string"},
+    "observation_source": {"const": "worker-observed"},
+    "claim_boundary": {"type": "string"},
+    "identity": {"type": "object"},
+    "hardware": {"type": "object"},
+    "fabric": {"type": "object"},
+    "tools": {"type": "array"},
+    "runtimes": {"type": "array"},
+    "repositories": {"type": "array"},
+    "services": {"type": "array"},
+    "health": {"type": "object"},
+    "credentials": {"type": "array"},
+    "inventory_identity": {"type": "string"}
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mncs.local/schemas/update-transaction-v0.1.schema.json",
+  "title": "mncs-fabric.update-transaction.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "worker_identity",
+    "state",
+    "expected_version",
+    "previous_version",
+    "observed_version",
+    "artifact_identity",
+    "previous_artifact_identity",
+    "receipt_identity",
+    "deadline",
+    "reason",
+    "updated_at",
+    "claim_boundary",
+    "transaction_identity"
+  ]
+}

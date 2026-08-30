@@ -2,9 +2,11 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a16` is a bounded execution harness plus an experimental
-TLS/mutual-certificate transport foundation, not a hardened hostile-code
-sandbox. Only run bundles you are willing to execute under the worker account.
+MNCS Fabric `0.2.0a18` is a bounded execution harness plus an experimental
+TLS/mutual-certificate transport foundation. Required Fedora/Linux target execution
+uses bubblewrap OS containment, but Fabric is not a hardened hostile-code or
+root-resistant sandbox. Only run bundles consistent with the selected containment
+mode and host-kernel trust assumptions.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
 development evidence; it is not independent assurance.
 
@@ -20,11 +22,36 @@ sequenced, independently verified by the worker, and atomically published;
 partial material is unavailable to execution. These controls protect package
 integrity and protocol state, not execution isolation or worker honesty.
 
+Logical bundle confinement verifies immutable content, stages a private work copy,
+uses argv without a shell, and validates result paths. Required bubblewrap mode adds
+Linux kernel namespaces, removes ambient home/state mounts, exposes only selected
+read-only system/runtime trees, leaves the staged bundle writable for results, and
+uses a separate network namespace for declared-offline jobs. This does not protect
+against a compromised kernel, privileged host process, malicious worker, runtime
+vulnerability, denial of service, or hardware side channels. Non-offline jobs retain
+host network access. Compatibility mode is explicitly `compatibility-uncontained`;
+its execution record says that filesystem enforcement is absent and network
+enforcement is unknown. A required-mode worker fails closed if bubblewrap or a
+supported worker-local Python runtime cannot be used.
+
 Worker self-description adds an authenticated but worker-reported view of
 capabilities, resources, and service references. Authentication binds the
 report to an enrolled logical worker; it is not attestation or independent
 observation. The controller keeps every description/resource snapshot as
 immutable history and expires availability after a bounded lease.
+
+The management plane adds worker inventory, desired-state documents, typed
+maintenance actions, and certification. These travel on the existing enrolled
+mTLS protocol. Desired state is not a shell script: unknown action types and
+arbitrary command strings are rejected. Privilege-bearing package and OS
+updates are classified and skipped rather than executed with a sudo password
+or an unrestricted root session. Receipts redact tokens and private-key
+material. A malicious or mistaken desired-state document can cause skipped or
+failed actions and bad operator conclusions; it cannot grant a general remote
+shell. Worker-reported inventory remains unattested. Self-update stages a
+versioned package in the worker interpreter and relies on an existing
+supervisor to restart; the applying process is not instructed to kill itself.
+Controller self-update is not auto-applied.
 
 Worker capability observations add consumer-normalized model/runtime/tool/MCP/service
 facts. Fabric binds them to exactly one registered worker, rejects unsupported or
@@ -33,12 +60,31 @@ worker liveness are evaluated separately: retained evidence cannot remain a curr
 availability claim after expiry or worker loss. Capability presence never grants
 execution, workspace, filesystem, shell, SSH, MCP, or semantic routing authority.
 
-Execution-target references bind a consumer authorization identity to one logical
-worker and factual admission requirements. They require current membership,
-authenticated presence, AVAILABLE state, bounded freshness, and no fallback. They do
-not contain commands, grant a model permission, or authorize tools merely because a
-worker reports them. A later target-aware dispatcher must re-evaluate those current
-facts and fail closed rather than reinterpret the reference as ambient authority.
+Execution-target references bind consumer-provided authorization provenance to one
+logical worker and factual admission requirements. Persistent target dispatch
+re-evaluates current membership/revocation, same-OS-user authenticated consumer
+presence, worker presence/availability, bounded liveness and capability freshness,
+required capabilities, optional runtime/tool identity, and consumer context before
+dispatch. It selects only that worker. Disconnection, stale/absent facts, revocation,
+and post-admission loss never trigger local or alternative-worker fallback.
+
+The local peer credential authenticates an operating-system user, not an application
+or human policy principal. `client_identity` is a bounded caller label. The resulting
+identity proves which local user and label submitted the exact bounded request, while
+`consumer_authorization_identity` remains opaque provenance and never becomes
+Fabric-established permission. Capability observations are non-attested facts
+supplied by a same-user consumer or bounded probe; a dishonest observation can cause
+bad admission but grants no shell or filesystem authority beyond the already supplied
+bounded workload. Harness or another consumer must authorize the tool and accept the
+result.
+
+Passing admission is not a reservation or future-capacity guarantee. Loss during
+bundle transfer or dispatch is retained as `TARGET_BECAME_UNAVAILABLE`. Deterministic
+execution request identities and worker-ledger replay return known identical results
+without re-execution, but Fabric is not a distributed transaction system and does not
+turn an unobserved in-flight result into certainty. Target admission and execution
+evidence bind the canonical target, authenticated client/request, session generation,
+capability/runtime observations, context/provenance, bundle, job, record, and receipt.
 
 Resource placement adds consumer context and dynamic capacity to the protocol.
 Fabric rejects malformed or substituted placement requests and binds the

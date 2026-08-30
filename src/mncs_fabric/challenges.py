@@ -210,7 +210,9 @@ class ChallengeReplayStore:
         self.ledger = FabricLedger(Path(path))
 
     def _entries(self) -> list[dict[str, Any]]:
-        return [entry["record"] for entry in self.ledger.records(record_type="mncs-fabric.challenge-replay", limit=100000)]
+        # Replay detection must see every consumed challenge; a bounded read
+        # would allow replay of challenges that scrolled out of the window.
+        return [entry["record"] for entry in self.ledger.all_records(record_type="mncs-fabric.challenge-replay")]
 
     def consume(self, challenge: dict[str, Any], receipt: dict[str, Any], *, now: datetime | None = None) -> ReplayReport:
         report = bind_challenge_to_receipt(challenge, receipt)

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mncs.local/schemas/package-artifact-v0.1.schema.json",
+  "title": "mncs-fabric.package-artifact.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "package",
+    "version",
+    "digest",
+    "size_bytes",
+    "filename",
+    "source",
+    "captured_at",
+    "claim_boundary",
+    "artifact_identity"
+  ]
+}

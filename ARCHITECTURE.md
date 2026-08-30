@@ -34,6 +34,27 @@ HMAC-only fallback.
 
 `FabricService` is the stable boundary for node inspection, capability inspection, plan validation, local execution, record verification, collection, and reconciliation. The CLI delegates to it. Forge invokes the same bounded service contract through its declared Provider Protocol workflow; it does not import Fabric internals.
 
+The persistent controller service treats `controller.status` and `fleet.list`
+as last-known read models. They do not describe workers. `fleet.refresh` is
+the explicit probe. Worker endpoints default to one concurrent connection, so
+an implicit describe during inference can stall unrelated clients or mark a
+busy worker unavailable. Fleet refresh therefore uses composable deadlines:
+the 30s service-frame TTL is the control-plane answer bound, each worker has
+its own probe deadline, and probes run concurrently. A slow worker is
+classified `TIMEOUT` and retains last-known availability instead of expiring
+the service request as `UNKNOWN`. Worker reachability, capability-inventory
+freshness, and model inventory are distinct observations.
+
+Running-service capabilities are advertised in `service_capabilities`, not
+only the package version. A newer source talking to an older controller must
+report `restart_required` instead of generic compatibility.
+
+Scheduled work is a Fabric-owned queue plus operator availability policy.
+Windows are permission, not a command. Commons may observe work but never
+authorizes dispatch. Forge keeps evaluation semantics. Project agents such as
+RAVEL and MNEL should express capability/resource needs and consume this
+queue rather than building a second scheduler.
+
 `mncs_fabric.api.FabricClient` is the consumer-facing distributed facade. It
 composes local and registered mTLS workers, typed `RemoteWorkerConfig`, bundle
 transfer, replication, reconciliation, Fabric-owned receipts, and optional
@@ -61,6 +82,16 @@ their history in the appropriate controller ledger, and evaluates freshness plus
 worker liveness without converting a stale claim into current availability.
 `collections.py` owns generic work-item and collection completeness; consumer
 projects retain partition meaning and semantic aggregation.
+
+`inventory.py`, `desired_state.py`, `management.py`, `providers.py`,
+`maintenance.py`, `certify.py`, and `fleet_ops.py` own the management plane.
+Inventory is a worker-observed companion to `worker-description.v0.2`. Desired
+state is operator policy composed from reusable profiles. Providers execute
+typed actions on the worker without a shell. Certification is
+capability-aware and does not treat installer exit codes as success.
+Management state is distinct from liveness; the scheduler and the worker both
+refuse ordinary work while a node is draining, in maintenance, degraded, or
+quarantined. See [Fleet management](docs/FLEET_MANAGEMENT.md).
 
 `lifecycle.py` owns the additive `mncs-fabric.*.v0.1` commissioning contracts:
 single-use enrollment authorization, bounded bootstrap request, immutable
@@ -119,14 +150,25 @@ Any tool request must return to the consuming harness or other control plane, wh
 applies its own policy and then submits a separate bounded execution request if the
 tool truly belongs on a remote worker.
 
-`targets.py` implements the first shared `ExecutionTargetReference` contract. It
+`targets.py` implements the shared `ExecutionTargetReference` contract. It
 binds an exact logical worker, the sole supported bounded-argv execution class,
 factual required capabilities, optional runtime/tool capability identities,
 consumer context and authorization identities, and bounded liveness/capability
 freshness expectations. Current membership, authenticated presence, AVAILABLE
 state, and `fallback_policy=NONE` are mandatory. The reference contains neither
-argv nor tool-selection semantics; target-aware dispatch and Harness policy
-enforcement remain separate subsequent work.
+argv nor tool-selection semantics. `FabricClient.execute_target()` uploads a
+verified immutable bundle to the persistent controller, binds the same-OS-user
+authenticated local peer and exact request, re-evaluates the current target facts,
+and dispatches only through that worker's authenticated transport. The controller
+persists identity-addressed admission and execution evidence. The authorization
+identity remains consumer-provided provenance rather than Fabric-verified semantic
+permission; Harness policy enforcement and result acceptance remain separate.
+
+Target admission is observational, not a resource reservation. A worker can become
+unavailable between the check and execution. Fabric reports that race as
+`TARGET_BECAME_UNAVAILABLE` and does not schedule a substitute. Identical retry uses
+the durable execution request identity and the worker replay ledger, returning the
+known result as `DUPLICATE_IDEMPOTENT` when available.
 
 The capability-observation API can advertise provider-neutral facts such as:
 
@@ -171,9 +213,17 @@ service-request evidence is written to the separate
 `controller-service.jsonl`. A client connection closing is not a worker
 disconnect event; only the worker session owner may publish presence changes.
 
+Detached execution uses a separate append-only `detached-execution.jsonl` ledger.
+The consumer request ends after durable `QUEUED` acceptance; a controller-owned
+thread records `RUNNING` and a terminal result independently of that socket. On
+controller restart, unterminated work advances through `RETRYING` with a new attempt.
+This is execution durability, not semantic task acceptance or Commons authority.
+
 Transport timeouts have distinct scopes. Connection establishment, TLS handshake,
 worker description refresh, control messages, and listener idle periods use short
-operator bounds. Only a validated `dispatch.request` widens its response deadline,
+operator bounds. Persistent `fleet.refresh` never borrows the service-frame TTL
+as the worker probe budget; it derives an operation deadline from the remaining
+request TTL, then a per-worker deadline from that remainder. Only a validated `dispatch.request` widens its response deadline,
 using the declared job `timeout_seconds` plus a small bounded protocol overhead.
 The job executor retains its own deadline and emits an execution record terminated
 with `TIMEOUT`; failure to receive any complete result by the network deadline is
@@ -181,7 +231,7 @@ instead `TRANSPORT_TIMEOUT`. Framing uses one monotonic total deadline, so parti
 bytes cannot keep a socket alive indefinitely.
 
 Fabric does not interpret Commons records or invoke Commons tools. A consumer such
-as Local Harness may place a model through Fabric, execute a controller-owned
+as MNCS Harness may place a model through Fabric, execute a controller-owned
 Commons operation under its own policy, and submit the next model turn through
 Fabric. Fabric carries the invocation and opaque consumer provenance while remaining
 neutral about the tool meaning, authorization, and truth of translated evidence.

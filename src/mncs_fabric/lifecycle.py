@@ -217,7 +217,9 @@ class LifecycleStore:
         self.ledger = FabricLedger(self.path)
 
     def _records(self) -> list[dict[str, Any]]:
-        records = self.ledger.records(limit=100000)
+        # Lifecycle decisions (authorization consumption, membership,
+        # revocation) must read the complete ledger, never a bounded window.
+        records = self.ledger.all_records()
         for entry in records:
             record = entry.get("record")
             if not isinstance(record, dict) or record.get("schema_version") not in _SUPPORTED_RECORD_SCHEMAS:

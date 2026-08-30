@@ -1,0 +1,12 @@
+[Unit]
+Description=Apply a staged MNCS Fabric worker package upgrade
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/mncs-fabric-worker/current
+ExecStart=%h/mncs-fabric-worker/current/venv/bin/python -m mncs_fabric.supervisor apply-staged
+# This unit is not ProtectHome-restricted so it can rewrite the worker venv.
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes

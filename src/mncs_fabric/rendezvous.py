@@ -16,7 +16,7 @@ from .node import utc_now
 from .node import capability_names
 from .protocol import make_envelope, validate_envelope
 from .scheduler import WorkerSlot, schedule
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 from .worker_state import validate_worker_description
 
 RENDEZVOUS_SCHEMA = "mncs-fabric.worker-rendezvous.v0.1"
@@ -117,6 +117,8 @@ class RendezvousCoordinator:
         self.membership_authority = known_workers is not None or membership_provider is not None
         self.sessions: dict[str, RendezvousSession] = {}
         self._lock = threading.RLock()
+        self._generation_cache: dict[str, int] = {}
+        self._generation_cache_token: tuple[int, int] | None = None
 
     def open(self, worker_id: str, fingerprint: str, opening: Mapping[str, Any]) -> dict[str, object]:
         description = opening["payload"]["description"]
@@ -156,8 +158,11 @@ class RendezvousCoordinator:
         if message.get("worker_id") != session.worker_id or message.get("controller_id") != self.controller_id:
             raise ProtocolError("worker rendezvous message identity is invalid")
         if message["message_type"] == "worker.heartbeat":
+            old_desc_id = session.description.get("description_identity")
             command = session.heartbeat(message["payload"]["description"])
-            self._record("heartbeat", session)
+            new_desc_id = session.description.get("description_identity")
+            if old_desc_id != new_desc_id:
+                self._record("description_changed", session)
             return self._ack(session, command)
         if message["message_type"] in {"execution.result", "bundle.response", "dispatch.ack", "replay.disposition"}:
             session.complete(message)
@@ -212,12 +217,14 @@ class RendezvousCoordinator:
                 "last_seen": description.get("captured_at"), "capabilities": sorted(capability_names(description["node"])),
                 "description": dict(description), "resource_snapshot": snapshot,
                 "resource_snapshot_identity": snapshot.get("resource_snapshot_identity") if isinstance(snapshot, dict) else None,
+                "network_topology": dict(description["node"]["network_topology"]) if isinstance(description.get("node", {}).get("network_topology"), dict) else None,
+                "topology_identity": description.get("node", {}).get("network_topology", {}).get("topology_identity"),
                 "concurrency_limit": int(known.get(worker_id, {}).get("concurrency_limit", 1)),
                 "liveness": "FRESH" if fresh else "STALE",
             })
         return result
 
-    def dispatch(self, plan: object, manifest: object, *, worker_id: str | None = None, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle_archive: Path | None = None, placement: Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+    def dispatch(self, plan: object, manifest: object, *, worker_id: str | None = None, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle_archive: Path | None = None, placement: Mapping[str, Any] | None = None, runtime_observation: Mapping[str, Any] | None = None, runtime_capability_observation: Mapping[str, Any] | None = None, expected_session_id: str | None = None, expected_session_generation: int | None = None) -> list[dict[str, Any]]:
         from .api import _consumer_result
         from .bundle_transfer import transfer_archive
         from .controller import NetworkController
@@ -238,6 +245,16 @@ class RendezvousCoordinator:
             if worker_id in known and not self._member_allowed(known.get(worker_id)):
                 raise ProtocolError("worker Fabric membership is not active")
             sessions = {worker_id: sessions[worker_id]} if worker_id in sessions else {}
+        if expected_session_id is not None or expected_session_generation is not None:
+            if worker_id is None:
+                raise ProtocolError("session-bound dispatch requires one exact worker")
+            session = sessions.get(worker_id)
+            if (
+                session is None
+                or session.session_id != expected_session_id
+                or session.generation != expected_session_generation
+            ):
+                raise ProtocolError("worker rendezvous session changed after target admission")
         slots = [WorkerSlot(worker_id=key, capabilities=frozenset(capability_names(value.description["node"])), concurrency_limit=int(known.get(key, {}).get("concurrency_limit", 1)), resource_snapshot=value.description.get("resource_snapshot")) for key, value in sessions.items()]
         decision = schedule(checked, slots, replicas=replicas, placement=placement)
         if decision.disposition != "PASS":
@@ -259,8 +276,25 @@ class RendezvousCoordinator:
         return make_envelope("worker.heartbeat.ack", controller_id=self.controller_id, worker_id=session.worker_id, request_id="ack-" + session.session_id, job_id="worker-session", nonce=sha256_identity({"session": session.session_id, "seen": session.last_seen})[7:39], payload={"session_id": session.session_id, "generation": session.generation, "command": command}, created_at=utc_now(), expires_at=_expiry(60))
 
     def _generation(self, worker_id: str) -> int:
-        values = [entry["record"].get("generation", 0) for entry in self.ledger.records(record_type="worker.rendezvous") if entry["record"].get("worker_id") == worker_id]
-        return max((int(value) for value in values), default=0)
+        # Session generations must never regress, so the maximum comes
+        # from the complete ledger. We project generations streamingly and
+        # memoize on the ledger stat token to avoid resident object bloat.
+        if not self.ledger.path.exists():
+            return self._generation_cache.get(worker_id, 0)
+        stat = self.ledger.path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if token != self._generation_cache_token:
+            generations: dict[str, int] = {}
+            for entry in iter_ledger_records(self.ledger, record_type="worker.rendezvous"):
+                record = entry.get("record", {})
+                wid = record.get("worker_id")
+                gen = record.get("generation", 0)
+                if isinstance(wid, str) and isinstance(gen, int):
+                    if gen > generations.get(wid, 0):
+                        generations[wid] = gen
+            self._generation_cache = generations
+            self._generation_cache_token = token
+        return self._generation_cache.get(worker_id, 0)
 
     def _known_workers(self) -> dict[str, Mapping[str, Any]]:
         values: dict[str, Mapping[str, Any]] = dict(self.known_workers)
@@ -291,5 +325,20 @@ class RendezvousCoordinator:
         return [session.session_id for session in revoked]
 
     def _record(self, event: str, session: RendezvousSession) -> None:
-        record = {"schema_version": RENDEZVOUS_SCHEMA, "event": event, "worker_id": session.worker_id, "session_id": session.session_id, "generation": session.generation, "certificate_fingerprint": session.certificate_fingerprint, "observed_at": utc_now(), "description": dict(session.description)}
+        record = {
+            "schema_version": RENDEZVOUS_SCHEMA,
+            "event": event,
+            "worker_id": session.worker_id,
+            "session_id": session.session_id,
+            "generation": session.generation,
+            "certificate_fingerprint": session.certificate_fingerprint,
+            "observed_at": utc_now(),
+            "description": dict(session.description),
+        }
         self.ledger.append("worker.rendezvous", attach_identity(record, "rendezvous_event_id"))
+        self._generation_cache[session.worker_id] = max(
+            self._generation_cache.get(session.worker_id, 0), session.generation
+        )
+        if self.ledger.path.exists():
+            stat = self.ledger.path.stat()
+            self._generation_cache_token = (stat.st_size, stat.st_mtime_ns)

@@ -19,6 +19,13 @@ from .node import utc_now
 CAPABILITY_OBSERVATION_SCHEMA = "mncs-fabric.worker-capability-observation.v0.1"
 CAPABILITY_KINDS = frozenset({"model", "runtime", "tool", "mcp", "service", "other"})
 CAPABILITY_AVAILABILITY = frozenset({"AVAILABLE", "UNAVAILABLE", "UNKNOWN"})
+# Who authored this observation.  Exact-target admission only trusts
+# worker-observed and operator-asserted observations; consumer-declared
+# observations are retained as bounded context but can never prove that a
+# worker possesses a capability required by an execution target.
+OBSERVATION_CLASSES = ("worker-observed", "operator-asserted", "consumer-declared")
+TRUSTED_ADMISSION_CLASSES = frozenset({"worker-observed", "operator-asserted"})
+DEFAULT_OBSERVATION_CLASS = "consumer-declared"
 CAPABILITY_CLAIM_BOUNDARY = (
     "identity-bound capability observation supplied by an authenticated or "
     "registered worker workflow; not attestation, authorization, availability "
@@ -137,12 +144,15 @@ def build_capability_observation(
     captured_at: str | None = None,
     observation_source: str = "consumer-bounded-worker-probe",
     status_reason: str | None = None,
+    observation_class: str = DEFAULT_OBSERVATION_CLASS,
 ) -> dict[str, Any]:
     """Build a bounded observation for exactly one worker identity."""
 
     worker = _text(worker_identity, "worker_identity")
     if availability not in CAPABILITY_AVAILABILITY:
         raise ValidationError("capability observation availability is invalid")
+    if observation_class not in OBSERVATION_CLASSES:
+        raise ValidationError("capability observation class is invalid")
     entries: list[dict[str, Any]] = []
     for index, item in enumerate(capabilities):
         if index >= MAX_CAPABILITY_ENTRIES:
@@ -164,11 +174,25 @@ def build_capability_observation(
         "status_reason": _optional_text(status_reason, "status_reason", 512),
         "attestation": "NOT_ASSERTED",
         "claim_boundary": CAPABILITY_CLAIM_BOUNDARY,
+        "observation_class": observation_class,
     }
     observed = attach_identity(value, "capability_observation_identity")
     if len(canonical_json_bytes(observed)) > MAX_CAPABILITY_OBSERVATION_BYTES:
         raise ValidationError("capability observation exceeds the encoded-size bound")
     return observed
+
+
+def observation_admission_trusted(value: Mapping[str, Any]) -> bool:
+    """Whether an observation class is trusted for exact-target admission.
+
+    Legacy observations recorded before the ``observation_class`` field existed
+    are treated as consumer-declared: they were ingested through consumer
+    tooling, and admission must not silently upgrade their provenance.
+    """
+
+    return (
+        value.get("observation_class", DEFAULT_OBSERVATION_CLASS) in TRUSTED_ADMISSION_CLASSES
+    )
 
 
 def validate_capability_observation(
@@ -183,7 +207,14 @@ def validate_capability_observation(
         "observation_source", "status_reason", "attestation", "claim_boundary",
         "capability_observation_identity",
     }
-    if set(value) != required or not verify_identity(value, "capability_observation_identity"):
+    # ``observation_class`` is additive and optional; legacy records without it
+    # remain valid and are treated as consumer-declared for admission.
+    optional = {"observation_class"}
+    if (
+        not set(value) <= (required | optional)
+        or not required <= set(value)
+        or not verify_identity(value, "capability_observation_identity")
+    ):
         raise ValidationError("capability observation fields or identity are invalid")
     if len(canonical_json_bytes(value)) > MAX_CAPABILITY_OBSERVATION_BYTES:
         raise ValidationError("capability observation exceeds the encoded-size bound")
@@ -210,6 +241,11 @@ def validate_capability_observation(
         raise ValidationError("capability observations cannot assert attestation")
     if value["claim_boundary"] != CAPABILITY_CLAIM_BOUNDARY:
         raise ValidationError("capability observation claim boundary is invalid")
+    # ``observation_class`` is additive: legacy observations without it are
+    # interpreted as consumer-declared for admission purposes but are never
+    # rewritten in place.
+    if "observation_class" in value and value["observation_class"] not in OBSERVATION_CLASSES:
+        raise ValidationError("capability observation class is invalid")
     return dict(value)
 
 

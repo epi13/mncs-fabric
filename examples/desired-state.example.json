@@ -1,0 +1,15 @@
+{
+  "worker_identity": "example-linux-inference-worker",
+  "profiles": ["mncs-linux-worker", "mncs-inference-worker"],
+  "overrides": [],
+  "models": {
+    "qwen3": {"state": "present"}
+  },
+  "policy": {
+    "os_updates": "security",
+    "auto_apply_classes": ["A", "B", "E"],
+    "require_drain": true,
+    "require_certification": true
+  },
+  "claim_boundary": "example only; machine names in this file are illustrative and are not encoded in Fabric logic"
+}

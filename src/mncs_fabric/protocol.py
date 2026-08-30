@@ -15,7 +15,7 @@ from .auth import Keyring
 from .challenges import validate_execution_challenge
 from .canonical import is_sha256_identity, sha256_identity, verify_identity
 from .contracts import validate_consumer_context
-from .errors import ProtocolError
+from .errors import ProtocolError, ValidationError
 from .models import validate_job_plan
 
 PROTOCOL_VERSION = "mncs-fabric.protocol.v0.1"
@@ -35,6 +35,16 @@ MESSAGE_TYPES = {
     "bundle.response",
     "worker.describe.request",
     "worker.describe.result",
+    "worker.inventory.request",
+    "worker.inventory.result",
+    "worker.maintenance.request",
+    "worker.maintenance.result",
+    "worker.certify.request",
+    "worker.certify.result",
+    "worker.package-artifact.request",
+    "worker.package-artifact.result",
+    "worker.management.request",
+    "worker.management.result",
     "worker.session.open",
     "worker.session.accept",
     "worker.heartbeat",
@@ -244,6 +254,95 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if set(value) != required:
             raise ProtocolError("worker description result fields are invalid")
         validate_worker_description(value.get("description"))
+    elif message_type == "worker.inventory.request":
+        required = {"inventory_request_identity"}
+        if set(value) != required or not is_sha256_identity(value.get("inventory_request_identity")):
+            raise ProtocolError("worker inventory request identity is invalid")
+    elif message_type == "worker.inventory.result":
+        from .inventory import validate_worker_inventory
+        required = {"inventory"}
+        if set(value) != required:
+            raise ProtocolError("worker inventory result fields are invalid")
+        validate_worker_inventory(value.get("inventory"))
+    elif message_type == "worker.maintenance.request":
+        from .providers import validate_action
+        required = {"maintenance_request_identity", "mode", "actions", "force"}
+        if set(value) != required or not is_sha256_identity(value.get("maintenance_request_identity")):
+            raise ProtocolError("worker maintenance request identity is invalid")
+        if value.get("mode") not in {"plan", "apply"}:
+            raise ProtocolError("worker maintenance mode is invalid")
+        if not isinstance(value.get("force"), bool):
+            raise ProtocolError("worker maintenance force flag is invalid")
+        actions = value.get("actions")
+        if not isinstance(actions, list) or len(actions) > 64:
+            raise ProtocolError("worker maintenance actions are invalid")
+        try:
+            [validate_action(item) for item in actions]
+        except ValidationError as exc:
+            raise ProtocolError(f"worker maintenance action is invalid: {exc}") from exc
+    elif message_type == "worker.maintenance.result":
+        required = {"results"}
+        if set(value) != required or not isinstance(value.get("results"), list) or len(value["results"]) > 64:
+            raise ProtocolError("worker maintenance result fields are invalid")
+    elif message_type == "worker.certify.request":
+        required = {"certify_request_identity", "profiles"}
+        if set(value) != required or not is_sha256_identity(value.get("certify_request_identity")):
+            raise ProtocolError("worker certify request identity is invalid")
+        profiles = value.get("profiles")
+        if not isinstance(profiles, list) or len(profiles) > 8 or any(not isinstance(item, str) or not item or len(item) > 64 for item in profiles):
+            raise ProtocolError("worker certify profiles are invalid")
+    elif message_type == "worker.certify.result":
+        from .certify import validate_certification
+        from .inventory import validate_worker_inventory
+        required = {"certification"}
+        if not required <= set(value) or set(value) - {"certification", "inventory"}:
+            raise ProtocolError("worker certify result fields are invalid")
+        validate_certification(value.get("certification"))
+        if "inventory" in value:
+            validate_worker_inventory(value.get("inventory"))
+    elif message_type == "worker.package-artifact.request":
+        from .package_artifact import MAX_ARTIFACT_BYTES, MAX_CHUNK_BYTES, validate_package_artifact
+        required = {"artifact_request_identity", "mode"}
+        if not required <= set(value) or not is_sha256_identity(value.get("artifact_request_identity")):
+            raise ProtocolError("package artifact request identity is invalid")
+        if value.get("mode") not in {"offer", "chunk", "commit"}:
+            raise ProtocolError("package artifact mode is invalid")
+        if value["mode"] == "offer":
+            if "artifact" not in value:
+                raise ProtocolError("package artifact offer is missing the descriptor")
+            validate_package_artifact(value["artifact"])
+            if not isinstance(value.get("total_bytes"), int) or not 1 <= value["total_bytes"] <= MAX_ARTIFACT_BYTES:
+                raise ProtocolError("package artifact size is invalid")
+            if "chunk_count" in value and (not isinstance(value["chunk_count"], int) or isinstance(value["chunk_count"], bool) or not 1 <= value["chunk_count"] <= 512):
+                raise ProtocolError("package artifact chunk count is invalid")
+            if "transfer_identity" in value and not is_sha256_identity(value.get("transfer_identity")):
+                raise ProtocolError("package artifact transfer identity is invalid")
+        elif value["mode"] == "chunk":
+            if not isinstance(value.get("sequence"), int) or isinstance(value.get("sequence"), bool) or value["sequence"] < 0 or not isinstance(value.get("data"), str):
+                raise ProtocolError("package artifact chunk is invalid")
+            try:
+                decoded = base64.b64decode(value["data"], validate=True)
+            except (ValueError, TypeError) as exc:
+                raise ProtocolError("package artifact chunk is not canonical base64") from exc
+            if not 0 < len(decoded) <= MAX_CHUNK_BYTES:
+                raise ProtocolError("package artifact chunk exceeds its bound")
+    elif message_type == "worker.package-artifact.result":
+        required = {"disposition", "detail"}
+        if not required <= set(value) or value.get("disposition") not in {"PASS", "FAIL"}:
+            raise ProtocolError("package artifact result is invalid")
+    elif message_type == "worker.management.request":
+        required = {"management_request_identity", "command", "reason"}
+        if set(value) != required or not is_sha256_identity(value.get("management_request_identity")):
+            raise ProtocolError("worker management request identity is invalid")
+        if value.get("command") not in {"drain", "resume", "quarantine", "status"}:
+            raise ProtocolError("worker management command is invalid")
+        _require_text(value.get("reason"), "management reason", maximum=512)
+    elif message_type == "worker.management.result":
+        from .management import validate_management_state
+        required = {"state"}
+        if set(value) != required:
+            raise ProtocolError("worker management result fields are invalid")
+        validate_management_state(value.get("state"))
     elif message_type in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
         from .bundle_transfer import MAX_CHUNK_BYTES, MAX_CHUNKS, MAX_ARCHIVE_BYTES, TRANSFER_SCHEMA
         required = {"transfer_schema", "transfer_id", "bundle_identity", "archive_identity", "total_bytes", "chunk_bytes", "chunk_count"}
