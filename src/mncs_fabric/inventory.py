@@ -51,7 +51,6 @@ TOOL_SPECS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("cargo", ("--version",)),
     ("gcc", ("--version",)),
     ("clang", ("--version",)),
-    ("joern", ()),
     ("forge", ("--version",)),
     ("ollama", ("--version",)),
     ("bwrap", ("--version",)),
@@ -617,8 +616,6 @@ def collect_credentials() -> list[dict[str, Any]]:
         records.append({"name": "github-cli", "available": available, "detail": detail})
     else:
         records.append({"name": "github-cli", "available": False, "detail": "gh-absent"})
-    joern = shutil.which("joern")
-    records.append({"name": "joern", "available": joern is not None, "detail": "executable-present" if joern else "absent"})
     forge = shutil.which("forge") or shutil.which("mncs-forge")
     records.append({"name": "forge", "available": forge is not None, "detail": "executable-present" if forge else "absent"})
     return records[:MAX_CREDENTIALS]

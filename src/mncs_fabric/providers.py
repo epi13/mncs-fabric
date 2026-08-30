@@ -160,16 +160,6 @@ def apply_verify_gh(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> 
     )
 
 
-def apply_verify_joern(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
-    tool = inventory_tool(inventory, "joern")
-    if not tool or not tool.get("present") or not tool.get("path"):
-        return action_result(action=action, disposition="FAIL", failure_class="VALIDATION_FAILURE", detail="joern is not present", changed=False)
-    probed = run_argv([str(tool["path"]), "--help"], timeout=8.0)
-    if probed["returncode"] in {0, 1, 2} and not probed["timed_out"]:
-        return action_result(action=action, disposition="PASS", detail="joern executable responded", changed=False, stdout=first_line(probed["stdout"]) or "")
-    return action_result(action=action, disposition="FAIL", failure_class="VALIDATION_FAILURE", detail="joern invocation failed", changed=False, stderr=probed["stderr"])
-
-
 def apply_verify_forge(action: Mapping[str, Any], inventory: Mapping[str, Any]) -> dict[str, Any]:
     path = None
     tool = inventory_tool(inventory, "forge")
@@ -371,7 +361,6 @@ PROVIDER_HANDLERS: dict[str, Callable[[Mapping[str, Any], Mapping[str, Any]], di
     "tool.inspect": apply_inspect_tool,
     "tool.git": apply_verify_git,
     "tool.gh": apply_verify_gh,
-    "tool.joern": apply_verify_joern,
     "tool.forge": apply_verify_forge,
     "tool.python": apply_verify_python,
     "runtime.ollama": apply_rediscover_ollama,
@@ -384,7 +373,7 @@ PROVIDER_HANDLERS: dict[str, Callable[[Mapping[str, Any], Mapping[str, Any]], di
 def provider_for_change(change: Mapping[str, Any]) -> str:
     kind = change.get("kind")
     name = change.get("name")
-    if kind == "tool" and name in {"git", "gh", "joern", "forge", "python"}:
+    if kind == "tool" and name in {"git", "gh", "forge", "python"}:
         return f"tool.{name}"
     if kind == "tool":
         return "tool.inspect"

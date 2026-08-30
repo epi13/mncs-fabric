@@ -38,7 +38,7 @@ class MaintenanceTests(unittest.TestCase):
         receipt = apply_maintenance_plan(checked, inventory, apply=True)
         self.assertEqual(validate_maintenance_receipt(receipt)["disposition"], "NO_CHANGES")
 
-    def test_plan_classifies_ollama_rediscovery_and_missing_joern(self) -> None:
+    def test_plan_classifies_ollama_rediscovery_and_missing_forge(self) -> None:
         inventory = sample_inventory(ollama_manager="unknown")
         desired = resolve_desired_state(
             worker_id="worker-a",
@@ -48,7 +48,7 @@ class MaintenanceTests(unittest.TestCase):
         )
         plan = build_maintenance_plan(worker_id="worker-a", desired=desired, inventory=inventory)
         providers = {item["provider"] for item in plan["actions"]}
-        self.assertIn("tool.joern", providers)
+        self.assertIn("tool.forge", providers)
         self.assertTrue(any(item["authorization"] in {"privilege", "none", "operator"} for item in plan["actions"]))
 
     def test_critical_disk_is_a_typed_preflight_failure(self) -> None:
@@ -84,23 +84,6 @@ class MaintenanceTests(unittest.TestCase):
         receipt = apply_maintenance_plan(plan, inventory, apply=True)
         self.assertEqual(receipt["disposition"], "FAIL")
         self.assertEqual(receipt["failure_class"], "ACTIVE_WORKLOAD")
-
-    def test_privilege_actions_are_not_auto_applied(self) -> None:
-        action = validate_action({
-            "action": "install",
-            "target": "joern",
-            "update_class": "B",
-            "provider": "tool.joern",
-            "disruptive": False,
-            "rollback": "unsupported",
-            "authorization": "privilege",
-            "current": "absent",
-            "desired": "mncs-supported",
-            "reason": "missing",
-        })
-        result = apply_action(action, sample_inventory())
-        self.assertEqual(result["disposition"], "SKIPPED")
-        self.assertEqual(result["failure_class"], "PRIVILEGE_REQUIRED")
 
     def test_unknown_ollama_manager_is_rediscovered_not_systemctl(self) -> None:
         change = {

@@ -64,13 +64,12 @@ PROFILE_CATALOG: dict[str, dict[str, Any]] = {
         "os_updates": "security",
     },
     "mncs-build-worker": {
-        "summary": "Compilation and repository-analysis worker",
+        "summary": "Compilation worker",
         "requirements": (
             {"kind": "tool", "name": "git", "update_class": "B", "level": "present"},
             {"kind": "tool", "name": "gcc", "update_class": "B", "level": "present"},
             {"kind": "tool", "name": "rustc", "update_class": "B", "level": "present"},
             {"kind": "tool", "name": "cargo", "update_class": "B", "level": "present"},
-            {"kind": "tool", "name": "joern", "update_class": "B", "level": "mncs-supported"},
             {"kind": "tool", "name": "forge", "update_class": "B", "level": "mncs-supported"},
         ),
         "os_updates": "security",

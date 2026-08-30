@@ -3,7 +3,11 @@ from __future__ import annotations
 import unittest
 
 from mncs_fabric.certify import certify_inventory, select_inference_models
-from mncs_fabric.conformance import decide_ready_state, evaluate_conformance, validate_conformance
+from mncs_fabric.conformance import (
+    decide_ready_state,
+    evaluate_conformance,
+    validate_conformance,
+)
 from mncs_fabric.desired_state import resolve_desired_state
 from tests.test_inventory import sample_inventory
 
@@ -28,7 +32,6 @@ class ConformanceTests(unittest.TestCase):
         payload = {key: value for key, value in inventory.items() if key != "inventory_identity"}
         payload["credentials"] = [
             {"name": "github-cli", "available": False, "detail": "unauthenticated-or-unavailable"},
-            {"name": "joern", "available": False, "detail": "absent"},
             {"name": "forge", "available": False, "detail": "absent"},
         ]
         from mncs_fabric.inventory import build_worker_inventory
@@ -56,14 +59,16 @@ class ConformanceTests(unittest.TestCase):
         decision = decide_ready_state(health, conformance, inventory=rebuilt, desired=desired)
         self.assertEqual(decision["state"], "READY")
 
-    def test_build_profile_missing_joern_and_forge_blocks_ready(self) -> None:
+    def test_build_profile_missing_forge_blocks_ready(self) -> None:
         inventory = sample_inventory(harness="0.1.0")
         desired = resolve_desired_state(worker_id="worker-a", profiles=["mncs-linux-worker", "mncs-build-worker"], supported_current={"fabric-worker": "0.2.0a21"})
+        self.assertNotIn("joern", {item["name"] for item in desired["requirements"]})
         conformance = evaluate_conformance(desired, inventory)
         self.assertEqual(conformance["disposition"], "NONCONFORMANT")
-        self.assertTrue(any(item.startswith("tool:joern") or item.startswith("tool:forge") for item in conformance["blocking_failures"]))
+        self.assertIn("tool:forge", conformance["blocking_failures"])
         health = certify_inventory(inventory, profiles=["mncs-linux-worker", "mncs-build-worker"])
         self.assertEqual(health["disposition"], "CERTIFIED")
+        self.assertNotIn("joern", {item["name"] for item in health["layers"]})
         decision = decide_ready_state(health, conformance, inventory=inventory, desired=desired)
         self.assertEqual(decision["state"], "DEGRADED")
 
