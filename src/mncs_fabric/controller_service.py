@@ -1362,6 +1362,65 @@ class ControllerService:
             execution_request_identity, admission, result
         )
 
+    def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 1000:
+            raise ValidationError("capability observation limit is invalid")
+        values: list[dict[str, Any]] = []
+        for entry in self.capability_ledger.records(
+            record_type="worker.capability-observation", limit=limit
+        ):
+            record = entry["record"]
+            if record.get("worker_identity") == worker_id:
+                values.append(validate_capability_observation(record, expected_worker_id=worker_id))
+        return values
+
+    def _latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        values = self._capability_observations(worker_id)
+        return values[-1] if values else None
+
+    def _ingest_capability_observation(self, worker_id: str, args: Mapping[str, Any]) -> dict[str, Any]:
+        worker = next(
+            (item for item in self._worker_backend_status()[0] if item.get("worker_id") == worker_id),
+            None,
+        )
+        if worker is None:
+            raise ProtocolError("worker is not known to the controller")
+        if worker.get("membership_status") == "REVOKED":
+            raise ProtocolError("worker Fabric membership is not active")
+        capabilities = args.get("capabilities")
+        if not isinstance(capabilities, list):
+            raise ValidationError("capabilities must be an array")
+        observation = build_capability_observation(
+            worker_identity=worker_id,
+            capabilities=capabilities,
+            availability=str(args.get("availability", "AVAILABLE")),
+            captured_at=args.get("captured_at"),
+            observation_source=str(args.get("observation_source", "consumer-bounded-worker-probe")),
+            status_reason=args.get("status_reason"),
+        )
+        self.capability_ledger.append("worker.capability-observation", observation)
+        return observation
+
+    @staticmethod
+    def _target_rejection(admission: Mapping[str, Any], *, diagnostic: str | None = None) -> dict[str, Any]:
+        return {
+            "schema_version": CONSUMER_RESULT_SCHEMA,
+            "disposition": admission["disposition"],
+            "worker_identity": admission["worker_identity"],
+            "request_identity": admission["request_binding"]["execution_request_identity"],
+            "job_identity": admission["request_binding"]["job_identity"],
+            "record": None,
+            "record_identity": None,
+            "receipt": None,
+            "receipt_identity": None,
+            "bundle_identity": admission["request_binding"]["bundle_identity"],
+            "reason": admission["reason_code"],
+            "diagnostic": diagnostic,
+            "execution_target_reference_identity": admission["target_identity"],
+            "target_admission": dict(admission),
+            "target_admission_identity": admission["target_admission_identity"],
+        }
+
     def status(self, *, now: str | None = None) -> dict[str, Any]:
         # Import lazily to keep the controller-service module importable while
         # the package surface is being initialized.
