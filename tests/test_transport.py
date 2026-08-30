@@ -98,6 +98,7 @@ class TLSTransportTests(unittest.TestCase):
             port = server.bind()
             thread = threading.Thread(target=server.serve_once, daemon=True)
             thread.start()
+            self.assertTrue(server.ready.wait(timeout=2.0))
             transport = TLSNetworkTransport(
                 "127.0.0.1",
                 port,
@@ -178,11 +179,12 @@ class TLSTransportTests(unittest.TestCase):
                 controller_id="controller-job-timeout",
                 worker_id="worker-job-timeout",
                 trust_store=worker_trust,
-                timeout=0.2,
+                timeout=5.0,
             )
             port = server.bind()
             thread = threading.Thread(target=server.serve_once, daemon=True)
             thread.start()
+            self.assertTrue(server.ready.wait(timeout=2.0))
             transport = TLSNetworkTransport(
                 "127.0.0.1",
                 port,
@@ -191,7 +193,8 @@ class TLSTransportTests(unittest.TestCase):
                 client_key=cert["client_key"],
                 expected_worker_id="worker-job-timeout",
                 trust_store=controller_trust,
-                timeout=0.2,
+                timeout=5.0,
+                connect_timeout=5.0,
                 execution_timeout_overhead=1,
             )
             started = time.monotonic()

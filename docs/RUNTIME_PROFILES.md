@@ -44,14 +44,14 @@ explicit operator endpoint and uses strict SSH host-key checking for bootstrap
 preflight only. It does not create an SSH tunnel or execute candidate work over
 SSH.
 
-The first commissioned Windows worker used an explicit endpoint at
-`192.168.1.78` with strict key-only SSH bootstrap, then ran the Fabric worker
-from its operator-provisioned Python 3.11 GPU environment. A synchronized
-Torch 2.11.0+cu128 probe passed FP32, FP16, and BF16 operations on an NVIDIA
-GeForce RTX 4060 Laptop GPU. The runtime observation was ingested before
-dispatch and bound to the resource snapshot, admission decision, execution
-record, and receipt. This is bounded operator-controlled evidence; it is not
-attestation, semantic correctness, or independent evaluation.
+A representative Windows worker is commissioned through an explicit operator
+endpoint with strict key-only SSH bootstrap, then runs the Fabric worker from
+an operator-provisioned Python GPU environment. A synchronized CUDA probe can
+record FP32, FP16, and BF16 operations on a discrete NVIDIA GPU. The runtime
+observation is ingested before dispatch and bound to the resource snapshot,
+admission decision, execution record, and receipt. This is bounded
+operator-controlled evidence; it is not attestation, semantic correctness, or
+independent evaluation.
 
 ## Sequential CPU offload
 

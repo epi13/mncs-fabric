@@ -78,7 +78,8 @@ class InProcessTransport:
     def __init__(self, worker: object) -> None:
         self.worker = worker
 
-    def request(self, envelope: dict[str, object]) -> dict[str, object]:
+    def request(self, envelope: dict[str, object], *, timeout: float | None = None) -> dict[str, object]:
+        del timeout
         validate_envelope(envelope)
         response = self.worker.handle(envelope)  # type: ignore[attr-defined]
         return validate_envelope(response)
@@ -132,26 +133,43 @@ class TLSNetworkTransport:
         context.load_cert_chain(certfile=str(client_cert), keyfile=str(client_key))
         self.context = context
 
-    def request(self, envelope: dict[str, object]) -> dict[str, object]:
+    def request(self, envelope: dict[str, object], *, timeout: float | None = None) -> dict[str, object]:
         message = validate_envelope(envelope)
         if message["worker_id"] != self.expected_worker_id:
             raise ProtocolError("transport request is bound to a different worker")
-        response_timeout = self.control_timeout
+        if timeout is not None and timeout <= 0:
+            raise TransportTimeoutError("Fabric request deadline has already expired")
+        connect_timeout = self.connect_timeout if timeout is None else min(self.connect_timeout, timeout)
+        control_timeout = self.control_timeout if timeout is None else min(self.control_timeout, timeout)
+        response_timeout = control_timeout
+        if message["message_type"] in {
+            "worker.inventory.request",
+            "worker.maintenance.request",
+            "worker.certify.request",
+            "worker.management.request",
+            "worker.package-artifact.request",
+        }:
+            # Management probes collect host inventory and may run certification.
+            # An explicit timeout extends the control bound instead of being
+            # capped by the registry's short describe timeout.
+            response_timeout = max(control_timeout, 90.0 if timeout is None else timeout)
         if message["message_type"] == "dispatch.request":
             plan = message["payload"]["job_plan"]
             response_timeout = max(
-                self.control_timeout,
+                control_timeout,
                 float(plan["timeout_seconds"]) + self.execution_timeout_overhead,
             )
+            if timeout is not None:
+                response_timeout = min(response_timeout, timeout)
         phase = "connect"
-        phase_timeout = self.connect_timeout
+        phase_timeout = connect_timeout
         try:
             with socket.create_connection(
-                (self.host, self.port), timeout=self.connect_timeout
+                (self.host, self.port), timeout=connect_timeout
             ) as raw:
                 phase = "TLS handshake"
-                phase_timeout = self.control_timeout
-                raw.settimeout(self.control_timeout)
+                phase_timeout = control_timeout
+                raw.settimeout(control_timeout)
                 with self.context.wrap_socket(raw, server_hostname=self.host) as stream:
                     peer = stream.getpeercert(binary_form=True)
                     if not peer:
@@ -160,7 +178,7 @@ class TLSNetworkTransport:
                         "worker", self.expected_worker_id, certificate_fingerprint(peer)
                     )
                     phase = "request send"
-                    phase_timeout = self.control_timeout
+                    phase_timeout = control_timeout
                     send_frame(stream, message, max_frame_bytes=self.max_frame_bytes)
                     phase = (
                         "execution response"
@@ -175,7 +193,7 @@ class TLSNetworkTransport:
                             deadline=time.monotonic() + response_timeout,
                         )
                     )
-                    stream.settimeout(min(self.control_timeout, 0.2))
+                    stream.settimeout(min(control_timeout, 0.2))
                     try:
                         extra = stream.recv(1)
                     except socket.timeout:
@@ -218,12 +236,14 @@ class TLSWorkerServer:
         self.context.load_cert_chain(certfile=str(server_cert), keyfile=str(server_key))
         self._listener: socket.socket | None = None
         self._stop_event = threading.Event()
+        self.ready = threading.Event()
         self._threads: set[threading.Thread] = set()
         self._threads_lock = threading.Lock()
         self.handled_requests = 0
 
     def bind(self) -> int:
         if self._listener is not None:
+            self.ready.set()
             return self._listener.getsockname()[1]
         listener = socket.socket(socket.AF_INET6 if ":" in self.host else socket.AF_INET, socket.SOCK_STREAM)
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -232,6 +252,7 @@ class TLSWorkerServer:
         listener.listen(self.max_concurrent_connections)
         self._listener = listener
         self.port = listener.getsockname()[1]
+        self.ready.set()
         return self.port
 
     def serve_once(self) -> None:
@@ -291,7 +312,12 @@ class TLSWorkerServer:
             if self._stop_event.is_set():
                 return
             raise
-        listener.settimeout(idle_timeout if idle_timeout is not None else self.timeout)
+        try:
+            listener.settimeout(idle_timeout if idle_timeout is not None else self.timeout)
+        except OSError:
+            if self._stop_event.is_set():
+                return
+            raise
         semaphore = threading.BoundedSemaphore(limit)
         accepted = 0
         try:
@@ -569,6 +595,11 @@ class TLSRendezvousWorker:
         self.session_id: str | None = None
         self.generation = 0
         self._stop_event = threading.Event()
+        # A rendezvous session carries one content-addressed worker
+        # description.  Heartbeats are liveness messages; rebuilding the
+        # timestamped description on every heartbeat would turn them into
+        # durable description-change events and grow controller storage.
+        self._session_description: dict[str, object] | None = None
         context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=str(ca_file))
         context.minimum_version = ssl.TLSVersion.TLSv1_2
         context.check_hostname = False
@@ -580,6 +611,7 @@ class TLSRendezvousWorker:
             raise ValueError("max_seconds must be positive")
         started = time.monotonic()
         self._stop_event.clear()
+        self._session_description = None
         try:
             with socket.create_connection((self.host, self.port), timeout=self.timeout) as raw:
                 raw.settimeout(self.timeout)
@@ -616,7 +648,13 @@ class TLSRendezvousWorker:
         self._stop_event.set()
 
     def _description_payload(self) -> dict[str, object]:
-        return {"protocol_version": "mncs-fabric.protocol.v0.1", "service_contract": "mncs-fabric.controller-service.v0.1", "description": self.worker.description()}  # type: ignore[attr-defined]
+        if self._session_description is None:
+            self._session_description = dict(self.worker.description())  # type: ignore[attr-defined]
+        return {
+            "protocol_version": "mncs-fabric.protocol.v0.1",
+            "service_contract": "mncs-fabric.controller-service.v0.1",
+            "description": self._session_description,
+        }
 
     def _envelope(self, message_type: str, payload: dict[str, object], *, request_id: str) -> dict[str, object]:
         from .canonical import sha256_identity

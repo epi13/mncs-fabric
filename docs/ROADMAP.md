@@ -1,5 +1,18 @@
 # Roadmap
 
+## Completed in 0.2.0a21 — desired-state fleet management
+
+- [x] worker-observed inventory that discovers service/install type instead of assuming systemd;
+- [x] reusable host-agnostic worker profiles and desired-state diffs;
+- [x] typed maintenance actions, plan-only and explicit apply, drain/resume/quarantine;
+- [x] capability-aware certification with a failing-layer result;
+- [x] scheduler and worker refuse ordinary work during maintenance or after failed certification;
+- [x] append-only maintenance receipts and unusual-discovery Commons companions.
+
+Still planned on this plane: canary orchestration, controller self-update apply,
+Windows service adapters, privileged package install under an explicit operator
+policy, and physical multi-host reconcile evidence.
+
 ## Completed in 0.2.0a13
 
 - Versioned operator-owned persistent worker registry with reference validation,
@@ -103,7 +116,7 @@ Key roadmap constraints:
   session/transport representation rather than changing existing endpoint schemas;
 - authenticated presence, liveness, resource freshness, and capability freshness stay
   distinct;
-- Fabric owns installation/connectivity/identity facts while Local Harness retains
+- Fabric owns installation/connectivity/identity facts while MNCS Harness retains
   model, residency, task, tool, and semantic-routing policy; and
 - SSH/WinRM may later assist explicit bootstrap but never become an ambient Fabric job
   execution fallback.
@@ -216,8 +229,8 @@ does not establish independent freshness or custody.
 - [x] bounded exact-target execution requests for consumer-selected remote tools,
   preserving argv-only execution, current-fact re-admission, no fallback, opaque
   authorization provenance, durable retry identity, and Fabric evidence boundaries;
-- [x] deterministic and operator-controlled physical Local Harness integration proves
-  that `gemma4:e4b` on `collamore02-windows` can request controller-owned Commons while
+- [x] deterministic and operator-controlled physical MNCS Harness integration proves
+  that `gemma4:e4b` on `worker-01-windows` can request controller-owned Commons while
   workspace/tools remain on Fedora; the companion evidence is retained by Local
   Harness and does not convert execution success into Commons verification;
 - [ ] broader physical evidence that a model placed on one host can participate in a

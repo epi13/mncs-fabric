@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from threading import Lock, Thread
 from typing import Any
 
 from .canonical import sha256_identity
@@ -20,12 +21,16 @@ from .store import FabricLedger
 from .receipts import build_execution_receipt
 from .worker_state import build_worker_description
 from .runtime import build_runtime_binding, build_runtime_capability_binding, build_runtime_profile, validate_runtime_capability_observation, validate_runtime_observation
+from .inventory import collect_worker_inventory
+from .providers import apply_action, validate_action
+from .certify import certify_inventory
+from .management import build_management_state, can_transition, validate_management_state
 
 
 class LocalWorker:
     """A worker callable in-process; no unauthenticated listener is created."""
 
-    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None) -> None:
+    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained", stage_dir: Path | None = None) -> None:
         if not worker_id or concurrency_limit < 1:
             raise ValueError("worker_id and a positive concurrency limit are required")
         self.worker_id = worker_id
@@ -33,10 +38,26 @@ class LocalWorker:
         self.ledger = FabricLedger(Path(state_path))
         self.concurrency_limit = concurrency_limit
         self.bundle_cache = BundleCache(Path(bundle_cache_root)) if bundle_cache_root is not None else None
+        self.containment_mode = containment_mode
+        self.stage_dir = Path(stage_dir) if stage_dir is not None else None
+        self._replay_lock = Lock()
+        self._dispatch_by_request: dict[str, dict[str, Any]] = {}
+        self._result_by_request: dict[str, dict[str, Any]] = {}
+        self._artifact_session = None
+        for entry in self.ledger.all_records():
+            record = entry["record"]
+            request = record.get("request_id")
+            if not isinstance(request, str):
+                continue
+            if entry["record_type"] == "protocol.dispatch":
+                self._dispatch_by_request[request] = record
+            elif entry["record_type"] == "protocol.result":
+                self._result_by_request[request] = record
         # The profile describes the interpreter that launched this worker
         # process. Capture it once so repeated descriptions do not rotate the
         # profile identity merely because contact time changed.
         self._runtime_profile = build_runtime_profile(self.worker_id)
+        self._management_state = build_management_state(worker_id=self.worker_id, state="READY", reason="worker start", certification_status="UNKNOWN")
 
     def node(self) -> dict[str, Any]:
         return collect_node_capabilities(self.worker_id)
@@ -60,6 +81,21 @@ class LocalWorker:
         snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
         return build_worker_description(worker_id=self.worker_id, node=node, resource_snapshot=snapshot, runtime_profile=self.runtime_profile())
 
+    def inventory(self) -> dict[str, Any]:
+        node = self.node()
+        snapshot = capture_resource_snapshot(self.worker_id, node_fingerprint=node.get("node_fingerprint"))
+        return collect_worker_inventory(
+            self.worker_id,
+            resource_snapshot=snapshot,
+            active_jobs=0,
+        )
+
+    def management_state(self) -> dict[str, Any]:
+        return dict(self._management_state)
+
+    def accepts_work(self) -> bool:
+        return self._management_state["state"] in {"READY", "BUSY"}
+
     def announcement(self, controller_id: str) -> dict[str, Any]:
         created = utc_now()
         expires = (self._parse_time(created) + timedelta(minutes=5)).isoformat().replace("+00:00", "Z")
@@ -71,16 +107,12 @@ class LocalWorker:
         from datetime import datetime, timezone
         return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
-    def _entries(self, record_type: str) -> list[dict[str, Any]]:
-        return self.ledger.records(record_type=record_type, limit=100000)
-
     def _prior_dispatch(self, request_id: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        dispatches = [entry["record"] for entry in self._entries("protocol.dispatch") if entry["record"].get("request_id") == request_id]
-        if not dispatches:
-            return None, None
-        dispatch = dispatches[-1]
-        results = [entry["record"] for entry in self._entries("protocol.result") if entry["record"].get("request_id") == request_id]
-        return dispatch, results[-1] if results else None
+        with self._replay_lock:
+            return (
+                self._dispatch_by_request.get(request_id),
+                self._result_by_request.get(request_id),
+            )
 
     def handle(self, envelope: object, *, now: str | None = None) -> dict[str, Any]:
         message = validate_envelope(envelope, now=now)
@@ -92,10 +124,89 @@ class LocalWorker:
             description = self.description()
             self.ledger.append("protocol.description", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "description": description})
             return self._response(message, "worker.describe.result", {"description": description})
+        if message["message_type"] == "worker.inventory.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("inventory is bound to a different worker")
+            inventory = self.inventory()
+            self.ledger.append("protocol.inventory", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "inventory": inventory})
+            return self._response(message, "worker.inventory.result", {"inventory": inventory})
+        if message["message_type"] == "worker.maintenance.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("maintenance is bound to a different worker")
+            inventory = self.inventory()
+            results = []
+            if message["payload"]["mode"] == "apply":
+                for action in message["payload"]["actions"]:
+                    results.append(apply_action(validate_action(action), inventory))
+            else:
+                for action in message["payload"]["actions"]:
+                    checked = validate_action(action)
+                    results.append(
+                        {
+                            "action": checked["action"],
+                            "target": checked["target"],
+                            "provider": checked["provider"],
+                            "disposition": "SKIPPED",
+                            "failure_class": None,
+                            "detail": "plan only",
+                            "changed": False,
+                            "restart_required": False,
+                            "rollback": {"capability": checked["rollback"]},
+                            "stdout": "",
+                            "stderr": "",
+                        }
+                    )
+            self.ledger.append("protocol.maintenance", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "results": results})
+            if any(item.get("restart_required") for item in results):
+                self._schedule_supervisor_restart()
+            return self._response(message, "worker.maintenance.result", {"results": results})
+        if message["message_type"] == "worker.certify.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("certification is bound to a different worker")
+            inventory = self.inventory()
+            certification = certify_inventory(inventory, profiles=list(message["payload"]["profiles"]))
+            self.ledger.append("protocol.certification", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "certification": certification, "inventory_identity": inventory.get("inventory_identity")})
+            return self._response(message, "worker.certify.result", {"certification": certification, "inventory": inventory})
+        if message["message_type"] == "worker.package-artifact.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("package artifact transfer is bound to a different worker")
+            result = self._accept_package_artifact(message["payload"], controller_id=message["controller_id"])
+            self.ledger.append("protocol.package-artifact", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "result": result})
+            return self._response(message, "worker.package-artifact.result", result)
+        if message["message_type"] == "worker.management.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("management is bound to a different worker")
+            command = message["payload"]["command"]
+            reason = message["payload"]["reason"]
+            current = self._management_state
+            if command == "status":
+                state = current
+            else:
+                target = {"drain": "MAINTENANCE" if current["active_jobs"] == 0 else "DRAINING", "resume": "READY", "quarantine": "QUARANTINED"}[command]
+                if command == "resume" and current["certification_status"] == "FAILED":
+                    raise ProtocolError("a worker that failed certification cannot resume to READY")
+                if not can_transition(current["state"], target):
+                    raise ProtocolError(f"management transition {current['state']} -> {target} is not allowed")
+                state = build_management_state(
+                    worker_id=self.worker_id,
+                    state=target,
+                    reason=reason,
+                    active_jobs=current["active_jobs"],
+                    certification_status=current["certification_status"] if command != "resume" or current["certification_status"] != "NOT_RUN" else "UNKNOWN",
+                    last_inventory_identity=current["last_inventory_identity"],
+                    last_plan_identity=current["last_plan_identity"],
+                    last_receipt_identity=current["last_receipt_identity"],
+                    last_certification_identity=current["last_certification_identity"],
+                )
+                self._management_state = validate_management_state(state)
+            self.ledger.append("protocol.management", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "state": state})
+            return self._response(message, "worker.management.result", {"state": state})
         if message["message_type"] != "dispatch.request":
             raise ProtocolError("worker accepts dispatch.request messages only")
         if message["worker_id"] != self.worker_id:
             raise ProtocolError("dispatch is bound to a different worker")
+        if not self.accepts_work():
+            return self._response(message, "dispatch.ack", {"disposition": "UNKNOWN", "reason": "WORKER_MAINTENANCE", "management_state": self._management_state["state"]})
         request_id = message["request_id"]
         payload = message["payload"]
         challenge = payload.get("execution_challenge")
@@ -151,9 +262,18 @@ class LocalWorker:
                 raise ProtocolError("dispatch requires a bundle cache that is not configured")
             execution_root = self.bundle_cache.root_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
             bundle_report = self.bundle_cache.report_for(bundle_info["bundle_identity"], bundle_info["archive_identity"])
-        self.ledger.append("protocol.dispatch", {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"], "bundle_identity": bundle_info.get("bundle_identity") if isinstance(bundle_info, dict) else None, "archive_identity": bundle_info.get("archive_identity") if isinstance(bundle_info, dict) else None})
+        dispatch_record = {"request_id": request_id, "dispatch_identity": message["message_id"], "dispatch_binding_identity": dispatch_binding, "worker_id": self.worker_id, "job_identity": payload["job_plan"]["job_identity"], "bundle_identity": bundle_info.get("bundle_identity") if isinstance(bundle_info, dict) else None, "archive_identity": bundle_info.get("archive_identity") if isinstance(bundle_info, dict) else None}
+        self.ledger.append("protocol.dispatch", dispatch_record)
+        with self._replay_lock:
+            self._dispatch_by_request[request_id] = dispatch_record
         try:
-            record = execute_local(payload["job_plan"], execution_root, payload["artifact_manifest"], self.worker_id)
+            record = execute_local(
+                payload["job_plan"],
+                execution_root,
+                payload["artifact_manifest"],
+                self.worker_id,
+                containment_mode=self.containment_mode,
+            )
         except Exception as exc:
             raise StorageError(f"worker execution failed before a record was published: {exc}") from exc
         placement_reference = build_placement_reference(placement_admission) if placement_admission is not None else None
@@ -184,6 +304,8 @@ class LocalWorker:
             if response_payload.get(field) is not None:
                 result_record[field] = response_payload[field]
         self.ledger.append("protocol.result", result_record)
+        with self._replay_lock:
+            self._result_by_request[request_id] = result_record
         return self._response(message, "execution.result", response_payload)
 
     def _handle_bundle_message(self, message: dict[str, Any]) -> dict[str, Any]:
@@ -203,6 +325,89 @@ class LocalWorker:
             return self._bundle_response(message, status, None)
         except (ProtocolError, StorageError, OSError, ValueError) as exc:
             return self._bundle_response(message, "FAIL" if isinstance(exc, ProtocolError) else "UNKNOWN", str(exc))
+
+    def _accept_package_artifact(self, payload: dict[str, Any], *, controller_id: str) -> dict[str, Any]:
+        from .package_artifact import (
+            ArtifactTransferSession,
+            MAX_ARTIFACT_BYTES,
+            chunk_bounds,
+            decode_chunk_data,
+            transfer_deadline,
+            validate_package_artifact,
+            write_verified_artifact,
+        )
+        from .supervisor import default_stage_dir
+
+        mode = payload["mode"]
+        if mode == "offer":
+            artifact = validate_package_artifact(payload["artifact"])
+            if int(payload["total_bytes"]) != artifact["size_bytes"] or artifact["size_bytes"] > MAX_ARTIFACT_BYTES:
+                raise ProtocolError("package artifact offer size does not match the descriptor")
+            chunk_count = payload.get("chunk_count")
+            if chunk_count is None:
+                _, chunk_count = chunk_bounds(artifact["size_bytes"])
+            transfer_identity = payload.get("transfer_identity") or payload.get("artifact_request_identity")
+            expires_at = payload.get("expires_at") or transfer_deadline()
+            session = ArtifactTransferSession(
+                worker_identity=self.worker_id,
+                controller_identity=controller_id,
+                artifact=artifact,
+                transfer_identity=str(transfer_identity),
+                expected_chunk_count=int(chunk_count),
+                expected_total_bytes=artifact["size_bytes"],
+                expires_at=str(expires_at),
+            )
+            current = self._artifact_session
+            if current is not None and not current.is_expired():
+                if current.same_offer(
+                    worker_identity=self.worker_id,
+                    controller_identity=controller_id,
+                    artifact_identity=artifact["artifact_identity"],
+                    transfer_identity=session.transfer_identity,
+                ):
+                    return {"disposition": "PASS", "detail": f"accepted offer {artifact['artifact_identity']}"}
+                return {"disposition": "FAIL", "detail": "package artifact offer rejected; an active transfer session already exists"}
+            self._artifact_session = session
+            return {"disposition": "PASS", "detail": f"accepted offer {artifact['artifact_identity']}"}
+        session = self._artifact_session
+        if session is None:
+            raise ProtocolError("package artifact chunk/commit has no open offer")
+        try:
+            if payload.get("artifact") is not None:
+                offered = validate_package_artifact(payload["artifact"])
+                if offered["artifact_identity"] != session.artifact["artifact_identity"]:
+                    raise ProtocolError("package artifact identity cannot change mid-transfer")
+            if mode == "chunk":
+                session.accept_chunk(
+                    sequence=int(payload["sequence"]),
+                    data=decode_chunk_data(payload.get("data")),
+                    transfer_identity=payload.get("transfer_identity"),
+                )
+                return {"disposition": "PASS", "detail": f"accepted chunk {payload['sequence']}"}
+            blob = session.assembled_bytes(transfer_identity=payload.get("transfer_identity"))
+            stage = self.stage_dir or default_stage_dir()
+            target = write_verified_artifact(stage, session.artifact, blob)
+        except Exception:
+            if session is self._artifact_session:
+                session.clear()
+                self._artifact_session = None
+            raise
+        artifact = session.artifact
+        self._artifact_session = None
+        return {"disposition": "PASS", "detail": f"staged {artifact['digest']} as {target}", "staged_path": str(target), "artifact_identity": artifact["artifact_identity"]}
+
+    def _schedule_supervisor_restart(self) -> None:
+        """Ask the supervisor to restart after the maintenance result is sent."""
+
+        def _restart() -> None:
+            import time
+
+            time.sleep(2.0)
+            from .supervisor import inspect_supervisor, restart_supervisor
+
+            restart_supervisor(inspect_supervisor(worker_id=self.worker_id))
+
+        Thread(target=_restart, name="fabric-supervisor-restart", daemon=True).start()
 
     def _bundle_response(self, request: dict[str, Any], status: str, diagnostic: str | None) -> dict[str, Any]:
         payload: dict[str, Any] = {"transfer_schema": "mncs-fabric.bundle-transfer.v0.1", "transfer_id": request["payload"]["transfer_id"], "status": status}

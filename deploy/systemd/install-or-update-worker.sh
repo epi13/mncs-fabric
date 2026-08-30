@@ -22,6 +22,11 @@ if [[ ! -f $state_root/installation.json || ! -f $state_root/worker.env ]]; then
   echo "run 'mncs-fabric worker activate' before installing the service" >&2
   exit 2
 fi
+if grep -qx 'MNCS_FABRIC_CONTAINMENT_MODE=required' "$state_root/worker.env" \
+  && ! command -v bwrap >/dev/null 2>&1; then
+  echo "required worker containment needs bubblewrap (Fedora: sudo dnf install bubblewrap)" >&2
+  exit 1
+fi
 
 install_root="$HOME/.local/share/mncs-fabric"
 venv="$install_root/venv"

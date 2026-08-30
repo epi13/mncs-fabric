@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mncs-fabric.maintenance-plan.v0.1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "controller_identity", "desired_state_identity", "inventory_identity", "diff_identity", "change_count", "actions", "preflight", "preflight_passed", "phases", "require_drain", "require_certification", "auto_apply_classes", "created_at", "claim_boundary", "plan_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.maintenance-plan.v0.1"},
+    "worker_identity": {"type": "string"},
+    "controller_identity": {"type": "string"},
+    "desired_state_identity": {"type": "string"},
+    "inventory_identity": {"type": "string"},
+    "diff_identity": {"type": "string"},
+    "change_count": {"type": "integer"},
+    "actions": {"type": "array"},
+    "preflight": {"type": "array"},
+    "preflight_passed": {"type": "boolean"},
+    "phases": {"type": "array"},
+    "require_drain": {"type": "boolean"},
+    "require_certification": {"type": "boolean"},
+    "auto_apply_classes": {"type": "array"},
+    "created_at": {"type": "string"},
+    "claim_boundary": {"type": "string"},
+    "plan_identity": {"type": "string"}
+  }
+}

@@ -78,6 +78,34 @@ class StoreTests(unittest.TestCase):
         with self.assertRaises(StorageError):
             ledger.verify()
 
+    def test_read_cache_stays_coherent_across_appends_and_instances(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        path = Path(temporary.name) / "ledger.jsonl"
+        ledger = FabricLedger(path)
+        self.assertEqual(ledger.all_records(), [])
+        first = ledger.append("test", {"value": 1})
+        cached = ledger.all_records()
+        self.assertEqual([entry["entry_identity"] for entry in cached], [first["entry_identity"]])
+        # A second instance (as another process would) must observe the same
+        # records and its own appends must stay visible to the first instance.
+        second = FabricLedger(path)
+        self.assertEqual(len(second.all_records()), 1)
+        appended = second.append("test", {"value": 2})
+        fresh = ledger.all_records()
+        self.assertEqual(
+            [entry["entry_identity"] for entry in fresh],
+            [first["entry_identity"], appended["entry_identity"]],
+        )
+        self.assertEqual(ledger.records(limit=1)[0]["record"]["value"], 2)
+        # Repair invalidates the cache so the truncated tail disappears.
+        with path.open("ab") as stream:
+            stream.write(b'{"interrupted":')
+        with self.assertRaises(StorageError):
+            ledger.records()
+        self.assertTrue(ledger.recover(repair_truncated_tail=True)["repaired"])
+        self.assertEqual(len(ledger.all_records()), 2)
+
 
 class SchedulerTests(unittest.TestCase):
     def test_exact_match_tie_break_and_replication(self):

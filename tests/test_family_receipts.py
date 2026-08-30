@@ -5,7 +5,11 @@ from pathlib import Path
 
 from mncs_fabric.artifacts import build_manifest
 from mncs_fabric.canonical import sha256_identity
-from mncs_fabric.receipts import build_execution_assurance, build_execution_receipt
+from mncs_fabric.receipts import (
+    build_execution_assurance,
+    build_execution_receipt,
+    build_family_execution_reference,
+)
 from mncs_fabric.executor import execute_local
 
 
@@ -57,3 +61,23 @@ class ReceiptTests(unittest.TestCase):
         assurance = build_execution_assurance(first)
         self.assertEqual(assurance["declared_assurance_status"], "UNKNOWN")
         self.assertEqual(assurance["execution"]["properties"]["network_isolation"], "UNKNOWN")
+
+    def test_family_reference_preserves_attempt_and_execution_authority_boundary(self):
+        record = self._record()
+        receipt = build_execution_receipt(record)
+        reference = build_family_execution_reference(
+            record,
+            receipt=receipt,
+            attempt=2,
+            retry_of="mncs-fabric://execution/prior/attempt/1",
+            backend_identity="mncs:language:backend:reference-interpreter",
+        )
+        self.assertTrue(reference["stable_id"].endswith("/attempt/2"))
+        self.assertEqual(reference["source_outcome"], record["outcome"])
+        self.assertEqual(reference["receipt_identity"], receipt["receipt_identity"])
+        self.assertNotIn("experiment_status", reference)
+        self.assertIn("not Concept Experiment success", reference["claim_boundary"])
+
+    def test_family_reference_rejects_invalid_attempt(self):
+        with self.assertRaises(ValueError):
+            build_family_execution_reference(self._record(), attempt=0)

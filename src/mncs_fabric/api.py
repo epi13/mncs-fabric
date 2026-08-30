@@ -9,12 +9,14 @@ contexts are opaque provenance and never evaluator or promotion authority.
 from __future__ import annotations
 
 import base64
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
 from . import __version__
 from .capabilities import (
+    DEFAULT_OBSERVATION_CLASS,
     MAX_CAPABILITY_AGE_SECONDS,
     build_capability_observation,
     capability_observation_is_fresh,
@@ -54,7 +56,12 @@ from .runtime import (
 from .service import FabricService
 from .transport import InProcessTransport, TLSNetworkTransport
 from .targets import ExecutionTargetReference, validate_execution_target_reference
-from .service_transport import ServiceClientTransport
+from .service_transport import SERVICE_MAX_TIMEOUT_SECONDS, SERVICE_REQUEST_TTL_SECONDS, ServiceClientTransport
+
+# Worker-initiated rendezvous sessions deliver dispatch commands and results on
+# heartbeat boundaries, so a synchronous single-frame dispatch needs headroom
+# beyond the job's own execution bound for up to two heartbeat waits.
+EXECUTION_DISPATCH_OVERHEAD_SECONDS = 15.0
 from .worker import LocalWorker
 from .models import validate_job_plan
 from .scheduler import WorkerSlot, schedule
@@ -261,10 +268,16 @@ class FabricClient:
 
         self._service_transport = None
 
-    def _service_payload(self, operation: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def _service_payload(
+        self,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         if self._service_transport is None:
             raise ProtocolError("client is not connected to a persistent service")
-        return self._service_transport.request(operation, arguments)
+        return self._service_transport.request(operation, arguments, timeout=timeout)
 
     def _require_embedded(self, operation: str) -> None:
         if self._service_transport is not None:
@@ -353,25 +366,71 @@ class FabricClient:
                 for worker_id, error in sorted(self.registry_errors.items())
             )
             raise ProtocolError(f"worker registry could not be loaded: {detail}")
+        restored = self.network.restore_last_known()
         return {
             "outcome": "PASS" if not self.registry_errors else "UNKNOWN",
             "registry_path": str(Path(path).expanduser()),
             "known_workers": sorted(self.registry_entries),
             "registered_workers": sorted(registered),
+            "restored_workers": restored.get("restored_workers"),
             "errors": dict(sorted(self.registry_errors.items())),
         }
 
     def refresh_worker(self, worker_id: str) -> dict[str, Any]:
         """Refresh one remote worker through authenticated Fabric protocol."""
 
+        if self._service_transport is not None:
+            workers = list(self.refresh_fleet(worker_ids=[worker_id]).get("workers", []))
+            if not workers:
+                raise ProtocolError(f"worker is not registered: {worker_id}")
+            return workers[0]
         self._require_embedded("worker refresh")
         if worker_id not in self.remote_configs:
             raise ProtocolError(f"worker is not registered: {worker_id}")
         return self.network.refresh_remote(worker_id)
 
     def refresh_workers(self) -> list[dict[str, Any]]:
+        return list(self.refresh_fleet().get("workers", []))
+
+    def refresh_fleet(
+        self,
+        *,
+        worker_ids: list[str] | None = None,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> dict[str, Any]:
+        """Probe workers with classified, bounded refresh semantics.
+
+        The service frame remains ``SERVICE_REQUEST_TTL_SECONDS``. Worker
+        probes use a separate per-worker deadline. A slow worker is reported
+        as TIMEOUT with last-known state retained instead of failing the
+        persistent service request.
+        """
+
+        if self._service_transport is not None:
+            arguments: dict[str, Any] = {}
+            if worker_ids:
+                if len(worker_ids) == 1:
+                    arguments["worker_id"] = worker_ids[0]
+                else:
+                    arguments["worker_ids"] = list(worker_ids)
+            if operation_deadline is not None:
+                arguments["operation_deadline_seconds"] = float(operation_deadline)
+            if per_worker_deadline is not None:
+                arguments["per_worker_deadline_seconds"] = float(per_worker_deadline)
+            return dict(
+                self._service_transport.request(
+                    "fleet.refresh",
+                    arguments,
+                    timeout=SERVICE_REQUEST_TTL_SECONDS,
+                )
+            )
         self._require_embedded("worker refresh")
-        return self.network.refresh_all()
+        return self.network.refresh_fleet(
+            worker_ids=worker_ids,
+            operation_deadline=operation_deadline,
+            per_worker_deadline=per_worker_deadline,
+        )
 
     def runtime_profile(self, worker_id: str) -> dict[str, Any]:
         """Return the worker's authenticated/observed runtime profile."""
@@ -458,22 +517,31 @@ class FabricClient:
         captured_at: str | None = None,
         observation_source: str = "consumer-bounded-worker-probe",
         status_reason: str | None = None,
+        observation_class: str | None = None,
     ) -> dict[str, Any]:
-        """Validate and durably retain one worker-bound capability observation."""
+        """Validate and durably retain one worker-bound capability observation.
+
+        ``observation_class`` records provenance.  Consumers may only publish
+        consumer-declared observations; the controller clamps any higher class
+        requested over a consumer connection.  Operator-asserted observations
+        require the admin connection (see :class:`FabricAdminClient`).
+        """
 
         if self._service_transport is not None:
+            arguments = {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "captured_at": captured_at,
+                "observation_source": observation_source,
+                "status_reason": status_reason,
+            }
+            if observation_class is not None:
+                arguments["observation_class"] = observation_class
             return dict(
-                self._service_payload(
-                    "worker.capability.ingest",
-                    {
-                        "worker_id": worker_id,
-                        "capabilities": [dict(item) for item in capabilities],
-                        "availability": availability,
-                        "captured_at": captured_at,
-                        "observation_source": observation_source,
-                        "status_reason": status_reason,
-                    },
-                ).get("observation", {})
+                self._service_payload("worker.capability.ingest", arguments).get(
+                    "observation", {}
+                )
             )
 
         ledger = self._capability_ledger(worker_id)
@@ -484,6 +552,7 @@ class FabricClient:
             captured_at=captured_at,
             observation_source=observation_source,
             status_reason=status_reason,
+            observation_class=observation_class or DEFAULT_OBSERVATION_CLASS,
         )
         validate_capability_observation(observation, expected_worker_id=worker_id)
         ledger.append("worker.capability-observation", observation)
@@ -571,11 +640,18 @@ class FabricClient:
         self,
         *,
         capability_max_age_seconds: float = MAX_CAPABILITY_AGE_SECONDS,
+        apply_lease: bool = True,
     ) -> list[dict[str, Any]]:
         if self._service_transport is not None:
             return list(self._service_payload("fleet.list").get("workers", []))
         local = [{**item, "transport": "in-process", "source": "local"} for item in self.local.inspect()]
-        remote = [{**self.network.worker_state(worker_id), "source": "remote"} for worker_id in sorted(self.remote_configs)]
+        remote = [
+            {
+                **self.network.worker_state(worker_id, apply_lease=apply_lease),
+                "source": "remote",
+            }
+            for worker_id in sorted(self.remote_configs)
+        ]
         known_unregistered = [
             {
                 **entry,
@@ -613,6 +689,77 @@ class FabricClient:
             worker["capability_observation"] = inventory["observation"]
         return workers
 
+    def _execute_persistent_service(
+        self, arguments: dict[str, Any], plan: Mapping[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Wait for worker execution without holding a 30s service frame open.
+
+        Control-plane requests keep the existing ``SERVICE_REQUEST_TTL_SECONDS``
+        bound. The job plan timeout is the execution deadline. Synchronous
+        ``execution.dispatch`` cannot represent that split, so waitable work
+        uses submit + status/result polling. Short jobs may still dispatch
+        in one frame when their plan timeout fits the transport TTL.
+        """
+
+        timeout_seconds = float(plan.get("timeout_seconds") or 0)
+        if timeout_seconds <= SERVICE_REQUEST_TTL_SECONDS:
+            # The control-plane TTL is too short for rendezvous workers: the
+            # command and its result each ride a heartbeat boundary, so bound
+            # the frame by the job's own deadline plus heartbeat headroom.
+            dispatch_wait = min(
+                SERVICE_MAX_TIMEOUT_SECONDS,
+                timeout_seconds + EXECUTION_DISPATCH_OVERHEAD_SECONDS,
+            )
+            payload = self._service_payload("execution.dispatch", arguments, timeout=dispatch_wait)
+            return [dict(item) for item in payload.get("results", [])]
+        try:
+            return self._wait_for_detached_execution(arguments, timeout_seconds)
+        except ProtocolError as exc:
+            detail = str(exc).lower()
+            if "detached" not in detail and "not implemented" not in detail:
+                raise
+            payload = self._service_payload("execution.dispatch", arguments)
+            return [dict(item) for item in payload.get("results", [])]
+
+    def _wait_for_detached_execution(
+        self, arguments: Mapping[str, Any], timeout_seconds: float
+    ) -> list[dict[str, Any]]:
+        submit_arguments = dict(arguments)
+        request_id = arguments.get("request_id")
+        if isinstance(request_id, str) and request_id:
+            submit_arguments["idempotency_key"] = request_id
+        accepted = self._service_payload("execution.submit", submit_arguments)
+        work_id = accepted.get("work_id")
+        if not isinstance(work_id, str) or not work_id:
+            raise ProtocolError("detached execution did not return a work identity")
+        last_state = accepted.get("state")
+        # Plan timeout is the worker execution bound. Status/result fetches
+        # remain independent 30s control-plane requests.
+        deadline = time.monotonic() + max(timeout_seconds, 0.01)
+        poll_interval = 0.25
+        while True:
+            status = self._service_payload("execution.status", {"work_id": work_id})
+            last_state = status.get("state")
+            if last_state == "COMPLETED":
+                payload = self._service_payload("execution.result", {"work_id": work_id})
+                result = payload.get("result") or {}
+                results = result.get("results") if isinstance(result, dict) else None
+                if not isinstance(results, list):
+                    raise ProtocolError("detached execution result is missing results")
+                return [dict(item) for item in results]
+            if last_state == "FAILED":
+                payload = self._service_payload("execution.result", {"work_id": work_id})
+                reason = payload.get("reason") or "detached execution failed"
+                raise ProtocolError(str(reason))
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TransportTimeoutError(
+                    "persistent Fabric execution deadline exceeded "
+                    f"(work_id={work_id} last_state={last_state})"
+                )
+            time.sleep(min(poll_interval, max(0.01, remaining / 2.0)))
+            poll_interval = min(2.0, poll_interval * 1.5)
+
     def execute(
         self,
         plan: object,
@@ -639,23 +786,20 @@ class FabricClient:
                 if execution_bundle_archive is not None
                 else None
             )
-            payload = self._service_payload(
-                "execution.dispatch",
-                {
-                    "plan": dict(plan),
-                    "manifest": dict(manifest),
-                    "worker_id": worker_id,
-                    "replicas": replicas,
-                    "request_id": request_id,
-                    "challenge": challenge,
-                    "consumer_context": context_value,
-                    "placement": placement_value,
-                    "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
-                    "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
-                    "execution_bundle_reference": bundle_reference,
-                },
-            )
-            return [dict(item) for item in payload.get("results", [])]
+            arguments = {
+                "plan": dict(plan),
+                "manifest": dict(manifest),
+                "worker_id": worker_id,
+                "replicas": replicas,
+                "request_id": request_id,
+                "challenge": challenge,
+                "consumer_context": context_value,
+                "placement": placement_value,
+                "runtime_observation": dict(runtime_observation) if runtime_observation is not None else None,
+                "runtime_capability_observation": dict(runtime_capability_observation) if runtime_capability_observation is not None else None,
+                "execution_bundle_reference": bundle_reference,
+            }
+            return self._execute_persistent_service(arguments, dict(plan))
         self._require_embedded("execution")
         context, context_value = _context_payload(consumer_context)
         placement_value = placement.to_dict() if isinstance(placement, PlacementRequest) else (dict(placement) if placement is not None else None)
@@ -699,6 +843,94 @@ class FabricClient:
             return [_consumer_result(response, context) for response in responses]
         responses = self.local.dispatch(plan, manifest, replicas=replicas, request_id=request_id, consumer_context=context_value, execution_bundle=execution_bundle, placement_request=placement_value, runtime_observation=dict(runtime_observation) if runtime_observation else None, runtime_capability_observation=dict(runtime_capability_observation) if runtime_capability_observation else None)
         return [_consumer_result(response, context) for response in responses]
+
+    def submit_execution(
+        self,
+        plan: object,
+        manifest: object,
+        *,
+        worker_id: str | None = None,
+        replicas: int = 1,
+        request_id: str | None = None,
+        idempotency_key: str | None = None,
+        consumer_context: ConsumerContext | Mapping[str, Any] | None = None,
+        execution_bundle_archive: Path,
+        placement: PlacementRequest | Mapping[str, Any] | None = None,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist and enqueue execution, returning before worker completion."""
+
+        if self._service_transport is None:
+            raise ProtocolError("detached execution requires a persistent service client")
+        _context, context_value = _context_payload(consumer_context)
+        placement_value = (
+            placement.to_dict()
+            if isinstance(placement, PlacementRequest)
+            else (dict(placement) if placement is not None else None)
+        )
+        bundle_reference = self._upload_service_bundle(Path(execution_bundle_archive))
+        return self._service_payload(
+            "execution.submit",
+            {
+                "plan": dict(plan),
+                "manifest": dict(manifest),
+                "worker_id": worker_id,
+                "replicas": replicas,
+                "request_id": request_id,
+                "idempotency_key": idempotency_key,
+                "consumer_context": context_value,
+                "placement": placement_value,
+                "execution_bundle_reference": bundle_reference,
+                "model": model,
+                "role": role,
+            },
+        )
+
+    def execution_status(self, work_id: str) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution status requires a persistent service client")
+        return self._service_payload("execution.status", {"work_id": work_id})
+
+    def execution_result(self, work_id: str) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution result requires a persistent service client")
+        return self._service_payload("execution.result", {"work_id": work_id})
+
+    def executions(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        if self._service_transport is None:
+            raise ProtocolError("detached execution listing requires a persistent service client")
+        return list(self._service_payload("execution.list", {"limit": limit}).get("work", []))
+
+    def enqueue_scheduled_work(self, **arguments: Any) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.enqueue", arguments)
+
+    def scheduled_work(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.list")
+
+    def tick_schedule(self, **arguments: Any) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.tick", arguments)
+
+    def pause_schedule(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.pause")
+
+    def resume_schedule(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.resume")
+
+    def availability_policy(self) -> dict[str, Any]:
+        if self._service_transport is None:
+            raise ProtocolError("scheduled work requires a persistent service client")
+        return self._service_payload("schedule.policy")
 
     def _upload_service_bundle(self, archive: Path) -> dict[str, str]:
         """Transfer a verified archive without exposing consumer filesystem paths."""
@@ -831,7 +1063,7 @@ class FabricClient:
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id))) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id), management_state=worker.management_state()["state"])) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
         remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items() if worker_id not in self.blocked_worker_ids]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
@@ -983,6 +1215,70 @@ class FabricClient:
             raise ProtocolError("administrative operation requires FabricAdminClient")
         return self.lifecycle.revoke_worker(worker_id, reason=reason, now=now)
 
+    def _management_controller(self, worker_id: str):
+        self._require_embedded("fleet management")
+        if worker_id in self.local.workers:
+            return self.local
+        return self.network
+
+    def inspect_worker(self, worker_id: str) -> dict[str, Any]:
+        if self._service_transport is not None:
+            return self._service_payload("worker.inspect", {"worker_id": worker_id})
+        return self._management_controller(worker_id).inspect_worker(worker_id)
+
+    def plan_worker(self, worker_id: str, *, profiles: list[str] | None = None, classes: list[str] | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            arguments: dict[str, Any] = {"worker_id": worker_id}
+            if profiles:
+                arguments["profiles"] = profiles
+            if classes:
+                arguments["classes"] = classes
+            return self._service_payload("worker.plan", arguments)
+        return self._management_controller(worker_id).plan_worker(worker_id, profiles=profiles, classes=classes)
+
+    def reconcile_worker(self, worker_id: str, *, apply: bool = False, profiles: list[str] | None = None, classes: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).reconcile_worker(worker_id, apply=apply, profiles=profiles, classes=classes, force=force)
+
+    def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).certify_worker(worker_id, profiles=profiles)
+
+    def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).drain_worker(worker_id, reason=reason)
+
+    def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).resume_worker(worker_id, reason=reason)
+
+    def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).quarantine_worker(worker_id, reason=reason)
+
+    def transfer_package_artifact(self, worker_id: str, path, *, version: str, source: str = "operator-staged") -> dict[str, Any]:
+        if self._service_transport is not None:
+            raise ProtocolError("administrative operation requires FabricAdminClient")
+        return self._management_controller(worker_id).transfer_package_artifact(worker_id, path, version=version, source=source)
+
+    def inspect_fleet(self, *, profile: str | None = None, platform: str | None = None, worker_id: str | None = None) -> dict[str, Any]:
+        if self._service_transport is not None:
+            arguments = {key: value for key, value in {"profile": profile, "platform": platform, "worker_id": worker_id}.items() if value is not None}
+            return self._service_payload("fleet.inspect", arguments)
+        from .fleet_ops import select_workers
+
+        workers = []
+        for item in self.local.inspect() + (self.network.inspect() if hasattr(self, "network") else []):
+            workers.append(item)
+        # Prefer network inspect for remotes; local inspect already listed in-process workers.
+        selected = select_workers(workers, profile=profile, platform=platform, worker_id=worker_id)
+        return {"workers": selected, "count": len(selected)}
+
     def controller_status(self) -> dict[str, Any]:
         if self._service_transport is None:
             raise ProtocolError("controller status requires a persistent service client")
@@ -1056,8 +1352,118 @@ class FabricAdminClient:
     def submit_enrollment(self, request: Mapping[str, Any], token: str) -> dict[str, Any]:
         return self._request("enrollment.submit", {"request": dict(request), "token": token})
 
+    def ingest_capability_observation(
+        self,
+        worker_id: str,
+        capabilities: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *,
+        availability: str = "AVAILABLE",
+        observation_source: str = "consumer-bounded-worker-probe",
+        observation_class: str = "operator-asserted",
+    ) -> dict[str, Any]:
+        """Publish one capability observation over the admin connection.
+
+        Admin-role ingestion may assert ``operator-asserted`` provenance.
+        ``worker-observed`` remains reserved for worker-authenticated
+        reporting and is rejected by the controller.
+        """
+
+        return dict(self._request(
+            "worker.capability.ingest",
+            {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "observation_source": observation_source,
+                "observation_class": observation_class,
+            },
+        ).get("observation", {}))
+
+    def assert_worker_capability(
+        self,
+        worker_id: str,
+        capabilities: list[Mapping[str, Any]] | tuple[Mapping[str, Any], ...],
+        *,
+        availability: str = "AVAILABLE",
+        observation_source: str = "operator-asserted-capability",
+    ) -> dict[str, Any]:
+        """Publish one operator-asserted capability observation.
+
+        This is the operator analogue of the consumer ingest path.  Only the
+        admin connection may publish operator-asserted observations, and
+        worker-observed remains reserved for worker-authenticated reporting.
+        """
+
+        return self._request(
+            "worker.capability.ingest",
+            {
+                "worker_id": worker_id,
+                "capabilities": [dict(item) for item in capabilities],
+                "availability": availability,
+                "observation_source": observation_source,
+                "observation_class": "operator-asserted",
+            },
+        )
+
     def revoke_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
         return self._request("worker.revoke", {"worker_id": worker_id, "reason": reason})
+
+    def inspect_worker(self, worker_id: str) -> dict[str, Any]:
+        return self._request("worker.inspect", {"worker_id": worker_id})
+
+    def plan_worker(self, worker_id: str, *, profiles: list[str] | None = None, classes: list[str] | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id}
+        if profiles:
+            arguments["profiles"] = profiles
+        if classes:
+            arguments["classes"] = classes
+        return self._request("worker.plan", arguments)
+
+    def reconcile_worker(self, worker_id: str, *, apply: bool = False, profiles: list[str] | None = None, classes: list[str] | None = None, force: bool = False) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id, "apply": apply, "force": force}
+        if profiles:
+            arguments["profiles"] = profiles
+        if classes:
+            arguments["classes"] = classes
+        return self._request("worker.reconcile", arguments)
+
+    def certify_worker(self, worker_id: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"worker_id": worker_id}
+        if profiles:
+            arguments["profiles"] = profiles
+        return self._request("worker.certify", arguments)
+
+    def stage_artifact(self, worker_id: str, *, source: str, version: str) -> dict[str, Any]:
+        return self._request("worker.artifact.stage", {"worker_id": worker_id, "source": source, "version": version})
+
+    def rollout_fleet(self, *, apply: bool = False, canary_count: int = 1, stop_on_failure: bool = True, update_class: str = "A", force: bool = False, worker_id: str | None = None) -> dict[str, Any]:
+        arguments: dict[str, Any] = {"apply": apply, "canary_count": canary_count, "stop_on_failure": stop_on_failure, "update_class": update_class, "force": force}
+        if worker_id:
+            arguments["worker_id"] = worker_id
+        return self._request("fleet.rollout", arguments)
+
+    def drain_worker(self, worker_id: str, *, reason: str = "operator drain") -> dict[str, Any]:
+        return self._request("worker.drain", {"worker_id": worker_id, "reason": reason})
+
+    def resume_worker(self, worker_id: str, *, reason: str = "operator resume") -> dict[str, Any]:
+        return self._request("worker.resume", {"worker_id": worker_id, "reason": reason})
+
+    def quarantine_worker(self, worker_id: str, *, reason: str) -> dict[str, Any]:
+        return self._request("worker.quarantine", {"worker_id": worker_id, "reason": reason})
+
+    def inspect_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.inspect", {key: value for key, value in filters.items() if value is not None})
+
+    def plan_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.plan", {key: value for key, value in filters.items() if value is not None})
+
+    def reconcile_fleet(self, *, apply: bool = False, **filters: Any) -> dict[str, Any]:
+        arguments = {key: value for key, value in filters.items() if value is not None}
+        arguments["apply"] = apply
+        return self._request("fleet.reconcile", arguments)
+
+    def certify_fleet(self, **filters: Any) -> dict[str, Any]:
+        return self._request("fleet.certify", {key: value for key, value in filters.items() if value is not None})
 
     def close(self) -> None:
         self._transport = None  # type: ignore[assignment]

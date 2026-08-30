@@ -20,6 +20,12 @@ controller/worker IDs, bounded framing, and timeouts are required. There is no
 plaintext or HMAC-only remote fallback. HMAC remains a separate optional
 message-authentication facility; it is not encryption.
 
+Additive management messages in the same protocol version are
+`worker.inventory.request/result`, `worker.maintenance.request/result`,
+`worker.certify.request/result`, and `worker.management.request/result`.
+They carry typed inventory, actions, certification, and drain/resume commands.
+They do not carry a shell string.
+
 Dispatch payloads contain a validated fixed argv job plan and a verified
 content-addressed manifest identity. They do not contain arbitrary shell
 commands. A duplicate request with the same request identity is idempotent;

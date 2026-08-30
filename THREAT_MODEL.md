@@ -2,9 +2,11 @@
 
 ## Security posture
 
-MNCS Fabric `0.2.0a17` is a bounded execution harness plus an experimental
-TLS/mutual-certificate transport foundation, not a hardened hostile-code
-sandbox. Only run bundles you are willing to execute under the worker account.
+MNCS Fabric `0.2.0a18` is a bounded execution harness plus an experimental
+TLS/mutual-certificate transport foundation. Required Fedora/Linux target execution
+uses bubblewrap OS containment, but Fabric is not a hardened hostile-code or
+root-resistant sandbox. Only run bundles consistent with the selected containment
+mode and host-kernel trust assumptions.
 The first direct Fedora-to-Fedora run is recorded as operator-controlled
 development evidence; it is not independent assurance.
 
@@ -20,11 +22,36 @@ sequenced, independently verified by the worker, and atomically published;
 partial material is unavailable to execution. These controls protect package
 integrity and protocol state, not execution isolation or worker honesty.
 
+Logical bundle confinement verifies immutable content, stages a private work copy,
+uses argv without a shell, and validates result paths. Required bubblewrap mode adds
+Linux kernel namespaces, removes ambient home/state mounts, exposes only selected
+read-only system/runtime trees, leaves the staged bundle writable for results, and
+uses a separate network namespace for declared-offline jobs. This does not protect
+against a compromised kernel, privileged host process, malicious worker, runtime
+vulnerability, denial of service, or hardware side channels. Non-offline jobs retain
+host network access. Compatibility mode is explicitly `compatibility-uncontained`;
+its execution record says that filesystem enforcement is absent and network
+enforcement is unknown. A required-mode worker fails closed if bubblewrap or a
+supported worker-local Python runtime cannot be used.
+
 Worker self-description adds an authenticated but worker-reported view of
 capabilities, resources, and service references. Authentication binds the
 report to an enrolled logical worker; it is not attestation or independent
 observation. The controller keeps every description/resource snapshot as
 immutable history and expires availability after a bounded lease.
+
+The management plane adds worker inventory, desired-state documents, typed
+maintenance actions, and certification. These travel on the existing enrolled
+mTLS protocol. Desired state is not a shell script: unknown action types and
+arbitrary command strings are rejected. Privilege-bearing package and OS
+updates are classified and skipped rather than executed with a sudo password
+or an unrestricted root session. Receipts redact tokens and private-key
+material. A malicious or mistaken desired-state document can cause skipped or
+failed actions and bad operator conclusions; it cannot grant a general remote
+shell. Worker-reported inventory remains unattested. Self-update stages a
+versioned package in the worker interpreter and relies on an existing
+supervisor to restart; the applying process is not instructed to kill itself.
+Controller self-update is not auto-applied.
 
 Worker capability observations add consumer-normalized model/runtime/tool/MCP/service
 facts. Fabric binds them to exactly one registered worker, rejects unsupported or

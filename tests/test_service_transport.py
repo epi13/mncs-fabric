@@ -20,7 +20,7 @@ from mncs_fabric.contracts import ConsumerContext
 from mncs_fabric.bundles import build_bundle_archive
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.enrollment import TrustStore, certificate_fingerprint
-from mncs_fabric.errors import ProtocolError
+from mncs_fabric.errors import ProtocolError, ValidationError
 from mncs_fabric.lifecycle import LifecycleStore
 from mncs_fabric.models import validate_job_plan
 from mncs_fabric.registry import RegistryWorker, WorkerRegistry
@@ -30,6 +30,32 @@ from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.worker import LocalWorker
 from mncs_fabric.canonical import attach_identity, sha256_identity
 from tests.test_transport import _certificates
+
+
+class _BackgroundRefreshBackend:
+    def __init__(self) -> None:
+        self.calls: list[tuple[float | None, float | None]] = []
+
+    def refresh_fleet(
+        self,
+        *,
+        operation_deadline: float | None = None,
+        per_worker_deadline: float | None = None,
+    ) -> dict[str, object]:
+        self.calls.append((operation_deadline, per_worker_deadline))
+        return {
+            "outcome": "PASS",
+            "workers": [
+                {
+                    "worker_id": "background-worker",
+                    "availability": "AVAILABLE",
+                    "refresh": "PASS",
+                }
+            ],
+        }
+
+    def close(self) -> None:
+        return None
 
 
 @unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
@@ -58,6 +84,26 @@ class ServiceTransportTests(unittest.TestCase):
         self.service.request_stop()
         self.thread.join(timeout=3.0)
         self.temp.cleanup()
+
+    def test_background_capability_refresh_uses_classified_fleet_probe(self) -> None:
+        backend = _BackgroundRefreshBackend()
+        self.service._worker_client = backend
+        self.service._refresh_capability_inventory_once()
+        self.assertEqual(len(backend.calls), 1)
+        self.assertEqual(backend.calls[0], (90.0, 60.0))
+        report = self.service._worker_registry_report or {}
+        self.assertEqual(report["background_refresh"]["outcome"], "PASS")
+        self.assertEqual(
+            self.service.config.public_dict()["capability_refresh_seconds"], 240.0
+        )
+
+    def test_capability_refresh_interval_must_expire_before_observation_age(self) -> None:
+        with self.assertRaises(ValidationError):
+            ControllerConfig(
+                "invalid-refresh-interval",
+                Path(self.temp.name) / "invalid.jsonl",
+                capability_refresh_seconds=300.0,
+            )
 
     def test_consumer_and_admin_surfaces_are_distinct(self) -> None:
         consumer = FabricClient.connect(self.config.socket_path_value, client_identity="harness")
@@ -126,6 +172,133 @@ class ServiceTransportTests(unittest.TestCase):
         self.assertEqual(transport.request_envelope(request), {"workers": []})
         with self.assertRaises(ProtocolError):
             self.assertEqual(transport.request_envelope(request), {"workers": []})
+
+    def test_detached_execution_survives_submitting_client_disconnect(self) -> None:
+        started = threading.Event()
+        release = threading.Event()
+
+        class SlowBackend:
+            blocked_worker_ids: set[str] = set()
+
+            def execute(self, plan, _manifest, **_kwargs):
+                started.set()
+                release.wait(timeout=2.0)
+                return [{
+                    "disposition": "EXECUTED",
+                    "worker_identity": "slow-worker",
+                    "job_identity": plan["job_identity"],
+                    "record": {"outcome": "PASS"},
+                }]
+
+            def close(self):
+                return None
+
+        self.service._worker_client = SlowBackend()
+        root = Path(self.temp.name)
+        source = root / "detached-source"
+        source.mkdir()
+        (source / "task.py").write_text("print('detached')\n", encoding="utf-8")
+        manifest = build_manifest(source)
+        archive = root / "detached.zip"
+        build_bundle_archive(source, archive)
+        plan = validate_job_plan({
+            "schema_version": "mncs-fabric.job-plan.v0.1",
+            "job_id": "detached:test",
+            "candidate_identity": manifest["manifest_identity"],
+            "evaluator_identity": None,
+            "artifact_manifest_identity": manifest["manifest_identity"],
+            "argv": ["@python", "task.py"],
+            "working_directory": ".",
+            "timeout_seconds": 5.0,
+            "output_limit_bytes": 4096,
+            "environment": {},
+            "required_capabilities": ["python"],
+            "result_paths": [],
+            "network_policy": "DECLARED_OFFLINE",
+        })
+
+        staging = FabricClient.connect(
+            self.config.socket_path_value, client_identity="detached-client"
+        )
+        bundle_reference = staging._upload_service_bundle(archive)
+        staging.close()
+        submission_arguments = {
+            "plan": plan,
+            "manifest": manifest,
+            "worker_id": "slow-worker",
+            "replicas": 1,
+            "request_id": None,
+            "idempotency_key": "stable-detached-test",
+            "consumer_context": None,
+            "placement": None,
+            "execution_bundle_reference": bundle_reference,
+        }
+        original_append_if = self.service.detached_ledger.append_if
+        simultaneous_append = threading.Barrier(2)
+
+        def synchronized_append(*args, **kwargs):
+            simultaneous_append.wait(timeout=2.0)
+            return original_append_if(*args, **kwargs)
+
+        self.service.detached_ledger.append_if = synchronized_append  # type: ignore[method-assign]
+        accepted_retries = []
+        retry_errors = []
+
+        def submit_retry() -> None:
+            submitting = FabricClient.connect(
+                self.config.socket_path_value, client_identity="detached-client"
+            )
+            try:
+                accepted_retries.append(
+                    submitting._service_transport.request(  # type: ignore[union-attr]
+                        "execution.submit",
+                        submission_arguments,
+                    )
+                )
+            except Exception as exc:
+                retry_errors.append(exc)
+            finally:
+                submitting.close()
+
+        retry_threads = [threading.Thread(target=submit_retry) for _ in range(2)]
+        for retry_thread in retry_threads:
+            retry_thread.start()
+        for retry_thread in retry_threads:
+            retry_thread.join(timeout=3.0)
+        self.service.detached_ledger.append_if = original_append_if  # type: ignore[method-assign]
+
+        self.assertEqual(retry_errors, [])
+        self.assertEqual(len(accepted_retries), 2)
+        accepted = accepted_retries[0]
+        self.assertEqual(accepted_retries[1]["work_id"], accepted["work_id"])
+        queued = [
+            record
+            for record in self.service._detached_records(accepted["work_id"])
+            if record["state"] == "QUEUED"
+        ]
+        self.assertEqual(len(queued), 1)
+        self.assertTrue(accepted["accepted"])
+        self.assertTrue(accepted["persistent"])
+        self.assertIn(accepted["state"], {"QUEUED", "RUNNING"})
+        self.assertTrue(started.wait(timeout=1.0))
+
+        observer = FabricClient.connect(
+            self.config.socket_path_value, client_identity="detached-observer"
+        )
+        self.assertIn(
+            observer.execution_status(accepted["work_id"])["state"],
+            {"QUEUED", "RUNNING"},
+        )
+        release.set()
+        deadline = time.monotonic() + 2.0
+        result = observer.execution_result(accepted["work_id"])
+        while result["state"] != "COMPLETED" and time.monotonic() < deadline:
+            time.sleep(0.01)
+            result = observer.execution_result(accepted["work_id"])
+        self.assertEqual(result["state"], "COMPLETED")
+        self.assertEqual(result["result"]["results"][0]["worker_identity"], "slow-worker")
+        self.assertEqual(observer.executions(limit=10)[0]["work_id"], accepted["work_id"])
+        observer.close()
 
     def test_consumer_bundle_upload_resumes_an_interrupted_transfer(self) -> None:
         root = Path(self.temp.name)
@@ -383,29 +556,47 @@ class ServiceTransportTests(unittest.TestCase):
                 self.assertTrue(status["service_features"]["worker_tool_capability_observations"])
                 self.assertTrue(status["service_features"]["resumable_service_bundle_transfer"])
                 self.assertFalse(status["service_features"]["rendezvous_membership_projection"])
-                workers = client.workers()
+                self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+                listed = client.workers()
+                self.assertEqual(listed[0]["worker_id"], "worker-service")
+                self.assertNotEqual(listed[0]["availability"], "AVAILABLE")
+                workers = client.refresh_workers()
                 self.assertEqual(workers[0]["worker_id"], "worker-service")
                 self.assertEqual(workers[0]["availability"], "AVAILABLE")
-                observation = client.ingest_capability_observation(
-                    "worker-service",
-                    [
-                        {
-                            "kind": "runtime",
-                            "namespace": "system",
-                            "name": "python",
-                            "attributes": {"status": "ready"},
-                        },
-                        {
-                            "kind": "tool",
-                            "namespace": "test",
-                            "name": "persistent-service-probe",
-                            "attributes": {"status": "ready"},
-                        }
-                    ],
-                )
+                admin = FabricAdminClient.connect(config.admin_socket_path_value)
+                try:
+                    observation = admin.ingest_capability_observation(
+                        "worker-service",
+                        [
+                            {
+                                "kind": "runtime",
+                                "namespace": "system",
+                                "name": "python",
+                                "attributes": {"status": "ready"},
+                            },
+                            {
+                                "kind": "tool",
+                                "namespace": "test",
+                                "name": "persistent-service-probe",
+                                "attributes": {"status": "ready"},
+                            }
+                        ],
+                        observation_class="operator-asserted",
+                    )
+                finally:
+                    admin.close()
                 self.assertEqual(observation["availability"], "AVAILABLE")
+                self.assertEqual(observation["observation_class"], "operator-asserted")
                 self.assertEqual(
                     client.capability_inventory("worker-service")["status"], "CURRENT"
+                )
+                projected = client.workers()[0]
+                self.assertEqual(projected["capability_inventory_status"], "CURRENT")
+                self.assertTrue(projected["capability_observation_fresh"])
+                self.assertEqual(projected["installed_model_count"], 0)
+                self.assertEqual(
+                    projected["capability_observation"]["observation_source"],
+                    "consumer-bounded-worker-probe",
                 )
                 context = ConsumerContext(
                     source_project="integration-harness",
@@ -444,10 +635,19 @@ class ServiceTransportTests(unittest.TestCase):
                 before_missing_capability = len(
                     worker.ledger.records(record_type="execution.record")
                 )
-                client.ingest_capability_observation(
-                    "worker-service",
-                    [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                # Only an operator (admin connection) can revise trusted
+                # capability evidence; a consumer re-ingest is inert.
+                admin_downgrade = FabricAdminClient.connect(
+                    config.admin_socket_path_value
                 )
+                try:
+                    admin_downgrade.ingest_capability_observation(
+                        "worker-service",
+                        [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                        observation_class="operator-asserted",
+                    )
+                finally:
+                    admin_downgrade.close()
                 missing_capability_target = client.execute_target(
                     target,
                     plan,
@@ -518,6 +718,10 @@ class ServiceTransportTests(unittest.TestCase):
             self.assertEqual(targeted["disposition"], "EXECUTED")
             self.assertEqual(targeted_retry["disposition"], "DUPLICATE_IDEMPOTENT")
             self.assertEqual(
+                targeted_retry["target_execution_evidence_identity"],
+                targeted["target_execution_evidence_identity"],
+            )
+            self.assertEqual(
                 targeted["target_execution_evidence"]["worker_identity"],
                 "worker-service",
             )
@@ -525,6 +729,91 @@ class ServiceTransportTests(unittest.TestCase):
             self.assertEqual(revoked_target["reason"], "TARGET_REVOKED")
             self.assertEqual(scheduled_results[0]["record"]["outcome"], "PASS")
             self.assertEqual(scheduled_results[0]["worker_identity"], "worker-service")
+
+
+class _SlowRefreshClient:
+    def __init__(self) -> None:
+        self.refresh_calls = 0
+        self.refresh_started = threading.Event()
+        self.refresh_release = threading.Event()
+        self.blocked_worker_ids: set[str] = set()
+        self.registry_entries: dict[str, object] = {}
+
+    def refresh_workers(self) -> list[dict[str, object]]:
+        self.refresh_calls += 1
+        self.refresh_started.set()
+        self.refresh_release.wait(timeout=5)
+        return []
+
+    def workers(self, *, apply_lease: bool = True) -> list[dict[str, object]]:
+        del apply_lease
+        return [
+            {
+                "worker_id": "observed-worker",
+                "source": "remote",
+                "availability": "UNKNOWN",
+            }
+        ]
+
+    def close(self) -> None:
+        self.refresh_release.set()
+
+
+@unittest.skipUnless(os.name == "posix", "AF_UNIX persistent transport is currently POSIX-only")
+class LastKnownFleetStatusTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp = TemporaryDirectory()
+        root = Path(self.temp.name)
+        self.config = ControllerConfig(
+            "controller-read-model-test",
+            root / "lifecycle.jsonl",
+            heartbeat_seconds=0.5,
+            service_log=root / "controller-service.jsonl",
+            socket_path=root / "controller.sock",
+            admin_socket_path=root / "controller-admin.sock",
+        )
+        self.service = ControllerService(self.config)
+        self.backend = _SlowRefreshClient()
+        self.service._worker_client = self.backend
+        self.thread = threading.Thread(
+            target=self.service.run, kwargs={"max_seconds": 4.0}, daemon=True
+        )
+        self.thread.start()
+        deadline = time.monotonic() + 2.0
+        while not self.config.socket_path_value.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(self.config.socket_path_value.exists())
+        self.client = FabricClient.connect(
+            self.config.socket_path_value, client_identity="read-model"
+        )
+
+    def tearDown(self) -> None:
+        self.backend.refresh_release.set()
+        self.client.close()
+        self.service.request_stop()
+        self.thread.join(timeout=3.0)
+        self.temp.cleanup()
+
+    def test_status_and_list_do_not_probe_workers(self) -> None:
+        status = self.client.controller_status()
+        listed = self.client.workers()
+        self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+        self.assertEqual(listed[0]["worker_id"], "observed-worker")
+        self.assertEqual(self.backend.refresh_calls, 0)
+
+    def test_status_does_not_wait_for_an_in_flight_refresh(self) -> None:
+        self.backend.refresh_release.clear()
+        refresh = threading.Thread(target=self.client.refresh_workers, daemon=True)
+        refresh.start()
+        self.assertTrue(self.backend.refresh_started.wait(2.0))
+        started = time.monotonic()
+        status = self.client.controller_status()
+        elapsed = time.monotonic() - started
+        self.backend.refresh_release.set()
+        refresh.join(timeout=3.0)
+        self.assertEqual(status["fleet"]["observation_mode"], "last-known")
+        self.assertLess(elapsed, 1.0)
+        self.assertGreaterEqual(self.backend.refresh_calls, 1)
 
 
 if __name__ == "__main__":

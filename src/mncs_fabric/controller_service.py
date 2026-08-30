@@ -10,24 +10,33 @@ worker-initiated rendezvous session owned by this runtime.
 from __future__ import annotations
 
 import base64
+import json
 import signal
 import time
 import os
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Event, Lock, Thread
 from typing import Any, Mapping
 
-from .canonical import attach_identity, is_sha256_identity, sha256_identity
-from .capabilities import build_capability_observation, validate_capability_observation
+from .canonical import attach_identity, canonical_json_bytes, is_sha256_identity, sha256_identity
+from .capabilities import (
+    DEFAULT_OBSERVATION_CLASS,
+    MAX_CAPABILITY_AGE_SECONDS,
+    build_capability_observation,
+    capability_observation_is_fresh,
+    observation_admission_trusted,
+    validate_capability_observation,
+)
 from .contracts import CONSUMER_RESULT_SCHEMA
 from .bundle_transfer import BundleCache
-from .errors import FabricError, ProtocolError, ValidationError
+from .errors import FabricError, ProtocolError, StorageError, ValidationError
 from .lifecycle import LifecycleStore, default_lifecycle_path, default_state_dir
 from .node import utc_now
 from .models import validate_job_plan
-from .store import FabricLedger
+from .store import FabricLedger, iter_ledger_records
 from .enrollment import TrustStore
 from .rendezvous import RendezvousCoordinator
 from .targets import (
@@ -35,10 +44,118 @@ from .targets import (
     evaluate_target_admission,
     validate_execution_target_reference,
 )
+from .target_index import TargetEvidenceIndex
 from .transport import TLSRendezvousServer
 
-CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.2"
+CONTROLLER_CONFIG_SCHEMA = "mncs-fabric.controller-config.v0.4"
 CONTROLLER_SERVICE_SCHEMA = "mncs-fabric.controller-service.v0.1"
+MIN_CAPABILITY_REFRESH_SECONDS = 30.0
+BACKGROUND_REFRESH_OPERATION_DEADLINE_SECONDS = 90.0
+BACKGROUND_REFRESH_PER_WORKER_DEADLINE_SECONDS = 60.0
+SERVICE_REPLAY_SCHEMA = "mncs-fabric.service-replay.v0.1"
+SERVICE_REPLAY_MAX_ENTRIES = 10000
+
+
+class _DetachedSubmissionExists(Exception):
+    """Internal signal used to suppress an atomic duplicate submission append."""
+
+
+class _ServiceReplayCache:
+    """Bounded, time-windowed replay protection for controller service requests."""
+
+    def __init__(self, state_path: Path | None = None) -> None:
+        self._lock = Lock()
+        self._state_path = Path(state_path).expanduser() if state_path is not None else None
+        self._entries: dict[str, float] = {}  # request_id -> expires_timestamp
+        self._loaded = False
+
+    def _load_locked(self) -> None:
+        if self._loaded or self._state_path is None:
+            self._loaded = True
+            return
+        self._loaded = True
+        if not self._state_path.exists():
+            return
+        try:
+            value = json.loads(self._state_path.read_text(encoding="utf-8"))
+            entries = value.get("entries") if isinstance(value, dict) else None
+            if not isinstance(value, dict) or value.get("schema_version") != SERVICE_REPLAY_SCHEMA or not isinstance(entries, dict):
+                raise ValueError("replay state schema is invalid")
+            for request_id, expires in entries.items():
+                if (
+                    not isinstance(request_id, str)
+                    or not request_id
+                    or not isinstance(expires, (int, float))
+                    or isinstance(expires, bool)
+                    or expires <= 0
+                ):
+                    raise ValueError("replay state entry is invalid")
+                self._entries[request_id] = float(expires)
+        except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+            raise StorageError("service replay state is corrupt") from exc
+
+    def _persist_locked(self) -> None:
+        if self._state_path is None:
+            return
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        value = {
+            "schema_version": SERVICE_REPLAY_SCHEMA,
+            "entries": dict(sorted(self._entries.items())),
+        }
+        descriptor, temporary = tempfile.mkstemp(
+            prefix=self._state_path.name + ".", dir=self._state_path.parent
+        )
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(canonical_json_bytes(value))
+                stream.write(b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.chmod(temporary, 0o600)
+            os.replace(temporary, self._state_path)
+        finally:
+            try:
+                Path(temporary).unlink()
+            except FileNotFoundError:
+                pass
+
+    def check_and_record(self, request_id: str, expires_at_iso: str) -> None:
+        try:
+            expires = datetime.fromisoformat(expires_at_iso.replace("Z", "+00:00")).timestamp()
+        except Exception as exc:
+            raise ValidationError("invalid expires_at timestamp") from exc
+        now = time.time()
+        if expires <= now:
+            raise ValidationError("service request has expired")
+        with self._lock:
+            self._load_locked()
+            expired = [k for k, exp in self._entries.items() if exp <= now]
+            for k in expired:
+                del self._entries[k]
+            if expired:
+                self._persist_locked()
+            if request_id in self._entries:
+                raise ProtocolError("service request replay detected")
+            if len(self._entries) >= SERVICE_REPLAY_MAX_ENTRIES:
+                raise ProtocolError("service replay protection capacity is exhausted")
+            self._entries[request_id] = expires
+            try:
+                self._persist_locked()
+            except BaseException:
+                self._entries.pop(request_id, None)
+                raise
+
+    @property
+    def count(self) -> int:
+        with self._lock:
+            self._load_locked()
+            now = time.time()
+            expired = [k for k, exp in self._entries.items() if exp <= now]
+            for k in expired:
+                del self._entries[k]
+            if expired:
+                self._persist_locked()
+            return len(self._entries)
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,24 +163,31 @@ class ControllerConfig:
     controller_id: str
     lifecycle_state: Path
     heartbeat_seconds: float = 5.0
+    capability_refresh_seconds: float = 240.0
     service_log: Path | None = None
     socket_path: Path | None = None
     admin_socket_path: Path | None = None
     worker_registry_path: Path | None = None
     worker_state_path: Path | None = None
     execution_bundle_root: Path | None = None
+    target_evidence_index: Path | None = None
     rendezvous_host: str | None = None
     rendezvous_port: int | None = None
     rendezvous_ca: Path | None = None
     rendezvous_certificate: Path | None = None
     rendezvous_key: Path | None = None
     rendezvous_trust_state: Path | None = None
+    availability_policy_path: Path | None = None
 
     def __post_init__(self) -> None:
         if not self.controller_id or len(self.controller_id) > 128 or "\x00" in self.controller_id:
             raise ValidationError("controller_id is invalid")
         if not 0.5 <= self.heartbeat_seconds <= 60:
             raise ValidationError("controller heartbeat is outside the bounded range")
+        if not MIN_CAPABILITY_REFRESH_SECONDS <= self.capability_refresh_seconds < MAX_CAPABILITY_AGE_SECONDS:
+            raise ValidationError(
+                "capability refresh interval must be at least 30 seconds and shorter than the capability observation age"
+            )
         if self.rendezvous_port is not None and not 0 <= self.rendezvous_port <= 65535:
             raise ValidationError("rendezvous port is outside the bounded range")
         rendezvous = (
@@ -87,11 +211,13 @@ class ControllerConfig:
             "controller_id": self.controller_id,
             "lifecycle_state": str(self.lifecycle_state),
             "heartbeat_seconds": self.heartbeat_seconds,
+            "capability_refresh_seconds": self.capability_refresh_seconds,
             "service_log": str(self.service_log_path),
             "socket_path": str(self.socket_path_value),
             "admin_socket_path": str(self.admin_socket_path_value),
             "worker_registry_path": str(self.worker_registry_path_value) if self.worker_registry_path is not None else None,
             "execution_bundle_root": str(self.execution_bundle_root_value),
+            "target_evidence_index": str(self.target_evidence_index_value),
             "rendezvous_host": self.rendezvous_host,
             "rendezvous_port": self.rendezvous_port,
             "administrative_transport": "separate local operator socket",
@@ -123,12 +249,16 @@ class ControllerConfig:
         return Path(self.execution_bundle_root).expanduser() if self.execution_bundle_root is not None else self.lifecycle_state.parent / "execution-bundles"
 
     @property
+    def target_evidence_index_value(self) -> Path:
+        return Path(self.target_evidence_index).expanduser() if self.target_evidence_index is not None else self.lifecycle_state.parent / "target-evidence-index.json"
+
+    @property
     def rendezvous_configured(self) -> bool:
         return self.rendezvous_host is not None and self.rendezvous_port is not None and all(value is not None for value in (self.rendezvous_ca, self.rendezvous_certificate, self.rendezvous_key, self.rendezvous_trust_state))
 
 
 def default_controller_config() -> ControllerConfig:
-    return ControllerConfig("local", default_lifecycle_path())
+    return ControllerConfig("mncs-fabric-controller", default_lifecycle_path())
 
 
 def controller_paths() -> dict[str, Path]:
@@ -147,10 +277,32 @@ class ControllerService:
         # direct-worker capability history while rendezvous-only deployments can
         # use the same controller-owned record stream.
         self.capability_ledger = FabricLedger(self.config.worker_state_path_value)
+        self._latest_capability_cache: dict[str, dict[str, Any]] = {}
+        self._admission_capability_cache: dict[str, dict[str, Any]] = {}
+        self._capability_cache_token: tuple[int, int] | None = None
         self.target_ledger = FabricLedger(
             self.config.worker_state_path_value.with_name("target-execution.jsonl")
         )
+        self.detached_ledger = FabricLedger(
+            self.config.service_log_path.with_name("detached-execution.jsonl")
+        )
+        self._detached_index: dict[str, dict[str, Any]] = {}
+        self._detached_index_token: tuple[int, int] | None = None
+        self.schedule_ledger = FabricLedger(
+            self.config.service_log_path.with_name("scheduled-work.jsonl")
+        )
+        from .work_queue import WorkQueue
+
+        self.work_queue = WorkQueue(self.schedule_ledger)
+        self._target_evidence_index = TargetEvidenceIndex(
+            self.target_ledger, self.config.target_evidence_index_value
+        )
+        self._replay_cache = _ServiceReplayCache(
+            self.config.service_log_path.with_name("controller-service-replay.json")
+        )
         self._stop = Event()
+        self._capability_refresh_lock = Lock()
+        self._capability_refresh_thread: Thread | None = None
         self._worker_client: Any | None = None
         self._worker_registry_report: dict[str, Any] | None = None
         self._rendezvous: RendezvousCoordinator | None = None
@@ -159,6 +311,8 @@ class ControllerService:
             self.config.execution_bundle_root_value / "consumer-cache"
         )
         self._consumer_bundle_lock = Lock()
+        self._detached_lock = Lock()
+        self._detached_threads: dict[str, Thread] = {}
         if self.config.worker_registry_path_value is not None:
             from .api import FabricClient
 
@@ -187,6 +341,447 @@ class ControllerService:
     @property
     def worker_backend_enabled(self) -> bool:
         return self._worker_client is not None or self._rendezvous is not None
+
+    def _save_detached_result(self, result: dict[str, Any]) -> str:
+        import json
+        import secrets
+
+        result_identity = sha256_identity(result)
+        results_dir = self.config.service_log_path.parent / "detached-results"
+        results_dir.mkdir(parents=True, exist_ok=True)
+        target = results_dir / f"{result_identity[7:]}.json"
+        if not target.exists():
+            from .canonical import canonical_json_bytes
+
+            raw = canonical_json_bytes(result)
+            temp = target.with_name(f"{target.name}.tmp.{secrets.token_hex(4)}")
+            temp.write_bytes(raw)
+            temp.replace(target)
+        return result_identity
+
+    def _load_detached_result(self, result_identity: str) -> dict[str, Any] | None:
+        import json
+
+        results_dir = self.config.service_log_path.parent / "detached-results"
+        target = results_dir / f"{result_identity[7:]}.json"
+        if target.exists():
+            try:
+                return json.loads(target.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        return None
+
+    def _get_detached_result(self, work_id: str) -> dict[str, Any] | None:
+        item = self._detached_projection({work_id}).get(work_id)
+        if item is None:
+            return None
+        if item.get("result") is not None:
+            return item["result"]
+        if item.get("result_identity"):
+            return self._load_detached_result(str(item["result_identity"]))
+        return None
+
+    def _ensure_detached_index(self) -> dict[str, dict[str, Any]]:
+        """Return only unfinished work needed for restart recovery.
+
+        Completed work remains authoritative in the append-only ledger and is
+        projected on demand by ``_detached_projection``. Keeping every job's
+        arguments and history here would recreate the unbounded resident graph
+        that this storage design is intended to remove.
+        """
+
+        path = self.detached_ledger.path
+        if not path.exists():
+            self._detached_index = {}
+            self._detached_index_token = None
+            return self._detached_index
+        stat = path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if self._detached_index_token != token:
+            active: dict[str, dict[str, Any]] = {}
+            for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+                rec = entry.get("record", {})
+                wid = rec.get("work_id")
+                if not isinstance(wid, str) or not wid:
+                    continue
+                state = rec.get("state", "QUEUED")
+                if state in {"COMPLETED", "FAILED", "CANCELLED"}:
+                    active.pop(wid, None)
+                    continue
+                item = active.setdefault(wid, {
+                    "work_id": wid,
+                    "job_id": rec.get("job_id"),
+                    "request_identity": rec.get("request_identity"),
+                    "arguments": rec.get("arguments"),
+                    "submitted_at": rec.get("observed_at"),
+                    "worker_id": rec.get("worker_id"),
+                    "model": rec.get("model"),
+                    "state": state,
+                    "attempt": rec.get("attempt", 1),
+                    "updated_at": rec.get("observed_at"),
+                })
+                item["state"] = state
+                item["attempt"] = rec.get("attempt", item["attempt"])
+                item["updated_at"] = rec.get("observed_at", item["updated_at"])
+            self._detached_index = active
+            self._detached_index_token = token
+        return self._detached_index
+
+    def _detached_projection(
+        self, work_ids: set[str] | None = None
+    ) -> dict[str, dict[str, Any]]:
+        """Build a bounded projection for explicitly requested work IDs."""
+
+        projection: dict[str, dict[str, Any]] = {}
+        for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+            rec = entry.get("record", {})
+            wid = rec.get("work_id")
+            if not isinstance(wid, str) or (work_ids is not None and wid not in work_ids):
+                continue
+            item = projection.setdefault(wid, {
+                "work_id": wid,
+                "job_id": rec.get("job_id"),
+                "client_identity": rec.get("client_identity"),
+                "idempotency_key": rec.get("idempotency_key"),
+                "request_identity": rec.get("request_identity"),
+                "arguments": rec.get("arguments"),
+                "submitted_at": rec.get("observed_at"),
+                "worker_id": rec.get("worker_id"),
+                "model": rec.get("model"),
+                "state": rec.get("state", "QUEUED"),
+                "attempt": rec.get("attempt", 1),
+                "updated_at": rec.get("observed_at"),
+                "reason": rec.get("reason"),
+                "result": rec.get("result"),
+                "result_identity": rec.get("result_identity"),
+                "history": [],
+            })
+            item["state"] = rec.get("state", item["state"])
+            item["attempt"] = rec.get("attempt", item["attempt"])
+            item["updated_at"] = rec.get("observed_at", item["updated_at"])
+            if rec.get("reason") is not None:
+                item["reason"] = rec.get("reason")
+            if rec.get("result") is not None:
+                item["result"] = rec.get("result")
+            if rec.get("result_identity") is not None:
+                item["result_identity"] = rec.get("result_identity")
+            item["history"].append({
+                key: rec[key]
+                for key in ("state", "attempt", "observed_at", "reason")
+                if rec.get(key) is not None
+            })
+        return projection
+
+    def _detached_work_ids(self, *, limit: int) -> list[str]:
+        """Return the newest distinct work IDs using bounded memory."""
+
+        from collections import deque
+
+        recent: deque[str] = deque(maxlen=limit)
+        for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution"):
+            record = entry.get("record", {})
+            wid = record.get("work_id")
+            # Only the durable submission event is QUEUED. Later transitions
+            # for the same work ID therefore cannot create duplicates here.
+            if record.get("state") == "QUEUED" and isinstance(wid, str):
+                recent.append(wid)
+        return list(reversed(recent))
+
+    def _detached_job_count(self) -> int:
+        """Count accepted submissions without retaining their identities."""
+
+        return sum(
+            1
+            for entry in iter_ledger_records(self.detached_ledger, record_type="detached.execution")
+            if entry.get("record", {}).get("state") == "QUEUED"
+        )
+
+    def _detached_records(self, work_id: str | None = None) -> list[dict[str, Any]]:
+        return [
+            dict(entry["record"])
+            for entry in iter_ledger_records(
+                self.detached_ledger, record_type="detached.execution"
+            )
+            if work_id is None or entry.get("record", {}).get("work_id") == work_id
+        ]
+
+    def _detached_status(self, work_id: str) -> dict[str, Any]:
+        if not is_sha256_identity(work_id):
+            raise ValidationError("detached work identity is invalid")
+        index = self._detached_projection({work_id})
+        item = index.get(work_id)
+        if item is None:
+            raise ValidationError("detached work identity is unknown")
+        return {
+            "work_id": work_id,
+            "job_id": item["job_id"],
+            "state": item["state"],
+            "persistent": True,
+            "attempt": item["attempt"],
+            "submitted_at": item["submitted_at"],
+            "updated_at": item["updated_at"],
+            "worker_id": item["worker_id"],
+            "model": item["model"],
+            "result_available": item["state"] in {"COMPLETED", "FAILED"},
+            "history": list(item["history"]),
+        }
+
+    def _detached_statuses(self, work_ids: list[str]) -> list[dict[str, Any]]:
+        index = self._detached_projection(set(work_ids))
+        statuses = []
+        for work_id in work_ids:
+            item = index.get(work_id)
+            if item is None:
+                raise ValidationError("detached work identity is unknown")
+            statuses.append({
+                "work_id": work_id,
+                "job_id": item["job_id"],
+                "state": item["state"],
+                "persistent": True,
+                "attempt": item["attempt"],
+                "submitted_at": item["submitted_at"],
+                "updated_at": item["updated_at"],
+                "worker_id": item["worker_id"],
+                "model": item["model"],
+                "result_available": item["state"] in {"COMPLETED", "FAILED"},
+                "history": list(item["history"]),
+            })
+        return statuses
+
+    def _append_detached_event(
+        self,
+        work_id: str,
+        state: str,
+        *,
+        attempt: int,
+        reason: str | None = None,
+        result: dict[str, Any] | None = None,
+    ) -> None:
+        result_identity = None
+        if result is not None:
+            result_identity = self._save_detached_result(result)
+        event = {
+            "schema_version": "mncs-fabric.detached-execution.v0.1",
+            "work_id": work_id,
+            "state": state,
+            "attempt": attempt,
+            "observed_at": utc_now(),
+            "reason": reason,
+            "result_identity": result_identity,
+            "result": None,
+        }
+        self.detached_ledger.append(
+            "detached.execution", attach_identity(event, "event_identity")
+        )
+        self._ensure_detached_index()
+
+    def _execute_dispatch_arguments(self, args: Mapping[str, Any]) -> dict[str, Any]:
+        if self._worker_client is None and not self.rendezvous_ready:
+            raise ProtocolError("persistent execution backend is not configured")
+        revoked = self._revoked_worker_ids()
+        requested_worker = args.get("worker_id")
+        if requested_worker is not None and str(requested_worker) in revoked:
+            raise ProtocolError("worker Fabric membership is not active")
+        if self._worker_client is not None:
+            self._worker_client.blocked_worker_ids = revoked
+        reference = args.get("execution_bundle_reference")
+        if not isinstance(reference, dict) or set(reference) != {
+            "bundle_identity",
+            "archive_identity",
+        }:
+            raise ProtocolError("execution bundle reference is invalid")
+        with self._consumer_bundle_lock:
+            content = self._consumer_bundle_cache.root_for(
+                str(reference["bundle_identity"]),
+                str(reference["archive_identity"]),
+            )
+        archive = content.parent / "archive.zip"
+        if self.rendezvous_ready and self._rendezvous is not None:
+            results = self._rendezvous.dispatch(
+                args["plan"], args["manifest"], worker_id=args.get("worker_id"),
+                replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"),
+                challenge=args.get("challenge"), consumer_context=args.get("consumer_context"),
+                execution_bundle_archive=archive, placement=args.get("placement"),
+                runtime_observation=args.get("runtime_observation"),
+                runtime_capability_observation=args.get("runtime_capability_observation"),
+            )
+            execution_transport = "worker-initiated-persistent-rendezvous"
+        else:
+            results = self._worker_client.execute(
+                args["plan"], args["manifest"], worker_id=args.get("worker_id"),
+                replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"),
+                challenge=args.get("challenge"), consumer_context=args.get("consumer_context"),
+                execution_bundle_archive=archive, placement=args.get("placement"),
+                runtime_observation=args.get("runtime_observation"),
+                runtime_capability_observation=args.get("runtime_capability_observation"),
+            )
+            execution_transport = "controller-managed-authenticated-worker-endpoint"
+        return {
+            "results": results,
+            "execution_transport": execution_transport,
+            "fleet_authority": "persistent-controller",
+        }
+
+    def _run_detached(self, work_id: str, arguments: dict[str, Any], attempt: int) -> None:
+        self._append_detached_event(work_id, "RUNNING", attempt=attempt)
+        try:
+            result = self._execute_dispatch_arguments(arguments)
+        except Exception as exc:
+            self._append_detached_event(
+                work_id, "FAILED", attempt=attempt, reason=str(exc)
+            )
+        else:
+            self._append_detached_event(
+                work_id, "COMPLETED", attempt=attempt, result=result
+            )
+        finally:
+            with self._detached_lock:
+                self._detached_threads.pop(work_id, None)
+
+    def _start_detached(self, work_id: str, arguments: dict[str, Any], attempt: int) -> None:
+        with self._detached_lock:
+            existing = self._detached_threads.get(work_id)
+            if existing is not None and existing.is_alive():
+                return
+            thread = Thread(
+                target=self._run_detached,
+                args=(work_id, arguments, attempt),
+                daemon=True,
+                name=f"mncs-fabric-work-{work_id[7:19]}",
+            )
+            self._detached_threads[work_id] = thread
+            thread.start()
+
+    def _availability_policy(self) -> dict[str, Any]:
+        from .availability import AVAILABILITY_POLICY_SCHEMA, validate_availability_policy
+
+        path = self.config.availability_policy_path
+        if path is None:
+            return {
+                "schema_version": AVAILABILITY_POLICY_SCHEMA,
+                "timezone": "UTC",
+                "paused": False,
+                "workers": {},
+                "source": "none",
+            }
+        import json
+
+        policy = json.loads(Path(path).expanduser().read_text(encoding="utf-8"))
+        checked = validate_availability_policy(policy)
+        checked["source"] = str(Path(path).expanduser())
+        return checked
+
+    def _tick_schedule(self, args: Mapping[str, Any]) -> dict[str, Any]:
+        from datetime import datetime, timezone
+
+        now = args.get("now")
+        current = None
+        if now is not None:
+            if not isinstance(now, str):
+                raise ValidationError("schedule tick now must be an RFC 3339 timestamp")
+            current = datetime.fromisoformat(now.replace("Z", "+00:00")).astimezone(timezone.utc)
+        policy = args.get("policy")
+        if policy is None:
+            policy = self._availability_policy()
+        workers, _registry = self._worker_backend_status()
+        return self.work_queue.tick(policy=policy, workers=workers, now=current)
+
+    def _submit_detached(
+        self, args: Mapping[str, Any], *, client_identity: str, request_id: str
+    ) -> dict[str, Any]:
+        if not self.worker_backend_enabled:
+            raise ProtocolError("persistent execution backend is not configured")
+        dispatch_arguments = dict(args)
+        idempotency_key = dispatch_arguments.pop("idempotency_key", None) or request_id
+        if (
+            not isinstance(idempotency_key, str)
+            or not idempotency_key
+            or len(idempotency_key) > 256
+            or "\x00" in idempotency_key
+        ):
+            raise ValidationError("detached execution idempotency key is invalid")
+        plan = validate_job_plan(dispatch_arguments.get("plan"))
+        manifest = dispatch_arguments.get("manifest")
+        if (
+            not isinstance(manifest, dict)
+            or manifest.get("manifest_identity") != plan["artifact_manifest_identity"]
+        ):
+            raise ProtocolError("detached execution requires a matching manifest")
+        work_id = sha256_identity(
+            {"client_identity": client_identity, "idempotency_key": idempotency_key}
+        )
+        dispatch_arguments["request_id"] = dispatch_arguments.get("request_id") or work_id
+        reference = dispatch_arguments.get("execution_bundle_reference")
+        if not isinstance(reference, dict) or set(reference) != {
+            "bundle_identity",
+            "archive_identity",
+        }:
+            raise ProtocolError("execution bundle reference is invalid")
+        with self._consumer_bundle_lock:
+            self._consumer_bundle_cache.root_for(
+                str(reference["bundle_identity"]), str(reference["archive_identity"])
+            )
+        request_identity = sha256_identity(dispatch_arguments)
+        submitted = {
+            "schema_version": "mncs-fabric.detached-execution.v0.1",
+            "work_id": work_id,
+            "job_id": plan["job_id"],
+            "state": "QUEUED",
+            "attempt": 1,
+            "observed_at": utc_now(),
+            "client_identity": client_identity,
+            "idempotency_key": idempotency_key,
+            "request_identity": request_identity,
+            "worker_id": dispatch_arguments.get("worker_id"),
+            "model": dispatch_arguments.get("model"),
+            "arguments": dispatch_arguments,
+        }
+
+        def accept(records: list[dict[str, Any]]) -> None:
+            prior = [
+                entry["record"]
+                for entry in records
+                if entry["record"].get("work_id") == work_id
+            ]
+            if not prior:
+                return
+            if prior[0].get("request_identity") != request_identity:
+                raise ProtocolError("detached execution idempotency key conflicts with prior work")
+            raise _DetachedSubmissionExists
+
+        try:
+            self.detached_ledger.append_if(
+                "detached.execution",
+                attach_identity(submitted, "event_identity"),
+                accept,
+            )
+        except _DetachedSubmissionExists:
+            pass
+        index = self._detached_projection({work_id})
+        existing_item = index.get(work_id)
+        if existing_item is None or existing_item.get("request_identity") != request_identity:
+            raise ProtocolError("detached execution idempotency key conflicts with prior work")
+        if existing_item.get("state") in {"QUEUED", "RETRYING"}:
+            self._start_detached(
+                work_id, dict(existing_item.get("arguments") or {}), int(existing_item.get("attempt", 1))
+            )
+        return {"accepted": True, **self._detached_status(work_id)}
+
+    def _recover_detached(self) -> None:
+        index = self._ensure_detached_index()
+        for work_id, item in list(index.items()):
+            if item.get("state") not in {"QUEUED", "RUNNING", "RETRYING"}:
+                continue
+            attempt = int(item.get("attempt", 1)) + int(item.get("state") == "RUNNING")
+            if item.get("state") == "RUNNING":
+                self._append_detached_event(
+                    work_id,
+                    "RETRYING",
+                    attempt=attempt,
+                    reason="controller restarted before terminal result",
+                )
+            if item.get("arguments"):
+                self._start_detached(work_id, dict(item["arguments"]), attempt)
 
     def _approved_rendezvous_members(self) -> dict[str, dict[str, Any]]:
         return {
@@ -266,24 +861,506 @@ class ControllerService:
     def rendezvous_ready(self) -> bool:
         return self._rendezvous is not None and self._rendezvous_server is not None
 
-    def _worker_backend_status(self) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-        if self._worker_client is not None:
+    def _worker_backend_status(
+        self, *, refresh: bool = False
+    ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
+        """Project last-known worker state, optionally probing remotes first.
+
+        Status, fleet list, and other read operations must not refresh. Worker
+        endpoints default to one concurrent connection, so a live describe
+        during inference can stall or mark a busy worker unavailable. Active
+        probing is ``fleet.refresh``.
+        """
+
+        if self._worker_client is not None and hasattr(self._worker_client, "blocked_worker_ids"):
             self._worker_client.blocked_worker_ids = self._revoked_worker_ids()
         if self.rendezvous_ready and self._rendezvous is not None:
-            return self._apply_membership_precedence(self._rendezvous.states()), self._worker_registry_report
+            workers = self._rendezvous.states()
+            if self._worker_client is not None:
+                # A configured rendezvous listener does not convert existing
+                # direct-registry workers into rendezvous workers. Prefer a
+                # live session, but retain the exact worker's validated
+                # direct endpoint when that session is absent.
+                from .worker_backend import list_backend_workers
+
+                direct_workers = {
+                    str(worker.get("worker_id")): worker
+                    for worker in list_backend_workers(self._worker_client, apply_lease=refresh)
+                    if worker.get("worker_id")
+                }
+                merged: list[dict[str, Any]] = []
+                seen: set[str] = set()
+                for worker in workers:
+                    worker_id = str(worker.get("worker_id") or "")
+                    if (
+                        worker_id
+                        and worker.get("availability") != "AVAILABLE"
+                        and worker_id in direct_workers
+                    ):
+                        merged.append(dict(direct_workers[worker_id]))
+                    else:
+                        merged.append(dict(worker))
+                    if worker_id:
+                        seen.add(worker_id)
+                merged.extend(
+                    dict(worker)
+                    for worker_id, worker in direct_workers.items()
+                    if worker_id not in seen
+                )
+                workers = merged
+        elif self._worker_client is None:
+            workers = self._rendezvous.states() if self._rendezvous is not None else []
+        else:
+            from .worker_backend import list_backend_workers
+
+            if refresh:
+                refresher = getattr(self._worker_client, "refresh_workers", None)
+                if callable(refresher):
+                    try:
+                        refresher()
+                    except Exception as exc:
+                        self._worker_registry_report = {
+                            **(self._worker_registry_report or {}),
+                            "refresh_error": str(exc),
+                        }
+            workers = list_backend_workers(self._worker_client, apply_lease=refresh)
+        return self._apply_capability_inventory(
+            self._apply_membership_precedence([dict(worker) for worker in workers])
+        ), self._worker_registry_report
+
+    def _refresh_capability_inventory_once(self) -> None:
+        """Refresh worker capability evidence without blocking service reads.
+
+        A background probe updates the durable worker observation ledger through
+        the same classified fleet-refresh API used by ``fleet.refresh``. A
+        failed or skipped probe only records diagnostics; the normal projection
+        still marks old observations stale or unknown.
+        """
+
         if self._worker_client is None:
-            return (
-                self._apply_membership_precedence(self._rendezvous.states() if self._rendezvous is not None else []),
-                self._worker_registry_report,
-            )
+            return
+        refresher = getattr(self._worker_client, "refresh_fleet", None)
+        if not callable(refresher) or not self._capability_refresh_lock.acquire(blocking=False):
+            return
         try:
-            self._worker_client.refresh_workers()
+            report = dict(
+                refresher(
+                    operation_deadline=BACKGROUND_REFRESH_OPERATION_DEADLINE_SECONDS,
+                    per_worker_deadline=BACKGROUND_REFRESH_PER_WORKER_DEADLINE_SECONDS,
+                )
+            )
+            workers = []
+            for worker in report.get("workers") or []:
+                if isinstance(worker, dict):
+                    workers.append(
+                        {
+                            "worker_id": worker.get("worker_id"),
+                            "availability": worker.get("availability"),
+                            "refresh": worker.get("refresh"),
+                            "diagnostic": worker.get("diagnostic"),
+                        }
+                    )
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "background_refresh": {
+                    "observed_at": utc_now(),
+                    "outcome": report.get("outcome", "UNKNOWN"),
+                    "workers": workers,
+                },
+            }
         except Exception as exc:
             self._worker_registry_report = {
                 **(self._worker_registry_report or {}),
-                "refresh_error": str(exc),
+                "background_refresh": {
+                    "observed_at": utc_now(),
+                    "outcome": "UNKNOWN",
+                    "diagnostic": str(exc),
+                },
             }
-        return self._apply_membership_precedence([dict(worker) for worker in self._worker_client.workers()]), self._worker_registry_report
+        finally:
+            self._capability_refresh_lock.release()
+
+    def _capability_refresh_loop(self) -> None:
+        """Keep capability observations inside their bounded freshness window."""
+
+        # Let the service socket become available before the first remote
+        # probe. This also avoids making startup depend on a slow worker.
+        if self._stop.wait(min(5.0, self.config.capability_refresh_seconds)):
+            return
+        while not self._stop.is_set():
+            self._refresh_capability_inventory_once()
+            if self._stop.wait(self.config.capability_refresh_seconds):
+                return
+
+    def _apply_capability_inventory(self, workers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Project durable capability evidence onto every public worker view.
+
+        Rendezvous state is the liveness authority, while the capability ledger
+        is the observation authority.  Keeping these projections separate is
+        important, but consumers need both in one fleet response.
+        """
+        from .fleet_refresh import project_runtime_identity
+
+        for worker in workers:
+            worker_id = str(worker.get("worker_id") or "")
+            observation = self._latest_capability_observation(worker_id) if worker_id else None
+            availability = str(worker.get("availability") or "UNKNOWN")
+            fresh = bool(
+                observation
+                and capability_observation_is_fresh(
+                    observation, max_age_seconds=MAX_CAPABILITY_AGE_SECONDS
+                )
+            )
+            if availability != "AVAILABLE":
+                inventory_status = "UNAVAILABLE" if availability == "UNAVAILABLE" else "UNKNOWN"
+            elif observation is None:
+                inventory_status = "UNKNOWN"
+            elif not fresh:
+                inventory_status = "STALE"
+            elif observation.get("availability") == "AVAILABLE":
+                inventory_status = "CURRENT"
+            else:
+                inventory_status = "UNAVAILABLE"
+            worker["capability_inventory_status"] = inventory_status
+            worker["capability_observation_fresh"] = fresh
+            worker["capability_observation"] = observation
+            capabilities = observation.get("capabilities", []) if observation else []
+            models = [
+                dict(entry)
+                for entry in capabilities
+                if isinstance(entry, dict) and entry.get("kind") == "model"
+            ]
+            worker["model_inventory"] = models
+            worker["installed_model_count"] = len(models)
+            worker["loaded_model_names"] = [
+                str(entry.get("name"))
+                for entry in models
+                if isinstance(entry.get("attributes"), dict)
+                and entry["attributes"].get("loaded") is True
+                and entry.get("name")
+            ]
+            worker.update(project_runtime_identity(worker))
+        return workers
+
+    def _fleet_backend(self) -> Any:
+        if self._worker_client is None or not hasattr(self._worker_client, "inspect_worker"):
+            raise ProtocolError("persistent fleet-management backend is not configured")
+        return self._worker_client
+
+    def _fleet_worker_op(self, method: str, worker_id: str, **kwargs: Any) -> dict[str, Any]:
+        if not worker_id:
+            raise ValidationError("worker_id is required")
+        backend = self._fleet_backend()
+        call = getattr(backend, method)
+        filtered = {key: value for key, value in kwargs.items() if value is not None}
+        result = call(worker_id, **filtered)
+        return dict(result) if isinstance(result, dict) else {"result": result}
+
+    def _fleet_collection_op(self, method: str, args: Mapping[str, Any], **kwargs: Any) -> dict[str, Any]:
+        workers, _registry = self._worker_backend_status(refresh=False)
+        wanted = args.get("worker_id")
+        platform = args.get("platform")
+        profile = args.get("profile")
+        selected = []
+        for worker in workers:
+            worker_id = str(worker.get("worker_id") or "")
+            if wanted and worker_id != wanted:
+                continue
+            if platform and str(worker.get("os") or worker.get("platform") or "").lower() != str(platform).lower():
+                continue
+            if profile and profile not in (worker.get("profiles") or []):
+                continue
+            selected.append(worker_id)
+        results = []
+        for worker_id in selected:
+            try:
+                results.append(self._fleet_worker_op(method, worker_id, **kwargs))
+            except (FabricError, OSError, TimeoutError) as exc:
+                results.append({"worker_id": worker_id, "disposition": "UNKNOWN", "error": str(exc)})
+        return {"workers": results, "count": len(results)}
+
+    def _refresh_fleet(self, request: Mapping[str, Any], args: Mapping[str, Any]) -> dict[str, Any]:
+        from .fleet_refresh import (
+            annotate_refresh,
+            build_refresh_report,
+            merge_refresh_into_workers,
+            operation_deadline_seconds,
+            remaining_request_seconds,
+            select_refresh_targets,
+        )
+
+        remaining = remaining_request_seconds(request)
+        operation_budget = operation_deadline_seconds(remaining)
+        if args.get("operation_deadline_seconds") is not None:
+            try:
+                requested = float(args["operation_deadline_seconds"])
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("operation_deadline_seconds is invalid") from exc
+            if requested <= 0:
+                raise ValidationError("operation_deadline_seconds must be positive")
+            operation_budget = min(operation_budget, requested)
+        per_worker_budget = None
+        if args.get("per_worker_deadline_seconds") is not None:
+            try:
+                per_worker_budget = float(args["per_worker_deadline_seconds"])
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("per_worker_deadline_seconds is invalid") from exc
+            if per_worker_budget <= 0:
+                raise ValidationError("per_worker_deadline_seconds must be positive")
+        worker_ids = select_refresh_targets(args)
+        if not self.worker_backend_enabled:
+            workers = self.lifecycle.memberships()
+            if worker_ids is not None:
+                wanted = set(worker_ids)
+                workers = [worker for worker in workers if worker.get("worker_id") in wanted]
+            report = build_refresh_report(
+                [annotate_refresh(worker, status="UNKNOWN", diagnostic="persistent worker backend is not configured") for worker in workers],
+                observation_mode="membership",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        elif self.rendezvous_ready and self._worker_client is None:
+            workers = self._rendezvous.states() if self._rendezvous is not None else []
+            report = build_refresh_report(
+                [
+                    annotate_refresh(
+                        worker,
+                        status="UNKNOWN",
+                        diagnostic="rendezvous workers expose last-known presence; describe refresh requires the direct worker backend",
+                    )
+                    for worker in workers
+                ],
+                observation_mode="rendezvous-last-known",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        elif self._worker_client is not None:
+            from .worker_backend import list_backend_workers
+
+            fleet_refresh = getattr(self._worker_client, "refresh_fleet", None)
+            if callable(fleet_refresh):
+                report = dict(
+                    fleet_refresh(
+                        worker_ids=worker_ids,
+                        operation_deadline=operation_budget,
+                        per_worker_deadline=per_worker_budget,
+                    )
+                )
+            else:
+                report = self._refresh_workers_fallback(
+                    operation_budget=operation_budget,
+                    remaining=remaining,
+                )
+        else:
+            report = build_refresh_report(
+                [],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        projected, _registry = self._worker_backend_status(refresh=False)
+        if worker_ids is not None:
+            wanted = set(worker_ids)
+            projected = [worker for worker in projected if worker.get("worker_id") in wanted]
+        report["workers"] = merge_refresh_into_workers(projected, report.get("workers") or [])
+        report["observation_mode"] = "probed"
+        report["service_deadline_seconds"] = remaining
+        report["operation_deadline_seconds"] = operation_budget
+        return report
+
+    def _refresh_workers_fallback(
+        self, *, operation_budget: float, remaining: float
+    ) -> dict[str, Any]:
+        from threading import Thread
+
+        from .fleet_refresh import annotate_refresh, build_refresh_report
+        from .worker_backend import list_backend_workers
+
+        refresher = getattr(self._worker_client, "refresh_workers", None)
+        if not callable(refresher):
+            return build_refresh_report(
+                [],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        box: dict[str, Any] = {}
+
+        def run() -> None:
+            try:
+                refresher()
+                box["error"] = None
+            except Exception as exc:
+                box["error"] = exc
+
+        thread = Thread(target=run, daemon=True, name="mncs-fabric-refresh-fallback")
+        thread.start()
+        thread.join(timeout=max(0.0, operation_budget))
+        probed = list_backend_workers(self._worker_client, apply_lease=False)
+        if thread.is_alive():
+            return build_refresh_report(
+                [
+                    annotate_refresh(
+                        worker,
+                        status="TIMEOUT",
+                        deadline_fired="operation",
+                        diagnostic="legacy refresh_workers exceeded the fleet refresh operation deadline",
+                    )
+                    for worker in probed
+                ],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        if box.get("error") is not None:
+            self._worker_registry_report = {
+                **(self._worker_registry_report or {}),
+                "refresh_error": str(box["error"]),
+            }
+            return build_refresh_report(
+                [annotate_refresh(worker, status="UNKNOWN", diagnostic=str(box["error"])) for worker in probed],
+                observation_mode="probed",
+                service_deadline_seconds=remaining,
+                operation_deadline_seconds_value=operation_budget,
+            )
+        return build_refresh_report(
+            [annotate_refresh(worker, status="PASS") for worker in probed],
+            observation_mode="probed",
+            service_deadline_seconds=remaining,
+            operation_deadline_seconds_value=operation_budget,
+        )
+
+    def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
+        if not 1 <= limit <= 1000:
+            raise ValidationError("capability observation limit is invalid")
+        values: list[dict[str, Any]] = []
+        for entry in self.capability_ledger.records(
+            record_type="worker.capability-observation", limit=limit
+        ):
+            record = entry["record"]
+            if record.get("worker_identity") == worker_id:
+                values.append(validate_capability_observation(record, expected_worker_id=worker_id))
+        return values
+
+    def _load_latest_capability_cache(self) -> None:
+        path = self.capability_ledger.path
+        if not path.exists():
+            return
+        stat = path.stat()
+        token = (stat.st_size, stat.st_mtime_ns)
+        if self._capability_cache_token == token:
+            return
+        latest: dict[str, dict[str, Any]] = {}
+        trusted: dict[str, dict[str, Any]] = {}
+        for entry in iter_ledger_records(self.capability_ledger, record_type="worker.capability-observation"):
+            record = entry.get("record") or entry
+            if not isinstance(record, Mapping):
+                continue
+            wid = str(record.get("worker_identity") or "")
+            if not wid:
+                continue
+            try:
+                validated = validate_capability_observation(record, expected_worker_id=wid)
+                latest[wid] = validated
+                if observation_admission_trusted(validated):
+                    trusted[wid] = validated
+            except Exception:
+                continue
+        self._latest_capability_cache = latest
+        self._admission_capability_cache = trusted
+        self._capability_cache_token = token
+
+    def _latest_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        self._load_latest_capability_cache()
+        return self._latest_capability_cache.get(worker_id)
+
+    def _admission_capability_observation(self, worker_id: str) -> dict[str, Any] | None:
+        """Newest admission-trusted observation for one exact worker.
+
+        Exact-target admission must rest on worker-observed or operator-asserted
+        evidence.  Consumer-declared observations may be more recent, but letting
+        them shadow trusted observations would let a consumer bootstrap the
+        capability facts that admit its own request.
+        """
+
+        self._load_latest_capability_cache()
+        return self._admission_capability_cache.get(worker_id)
+
+    def _ingest_capability_observation(
+        self, worker_id: str, args: Mapping[str, Any], *, role: str
+    ) -> dict[str, Any]:
+        worker = next(
+            (item for item in self._worker_backend_status()[0] if item.get("worker_id") == worker_id),
+            None,
+        )
+        if worker is None:
+            raise ProtocolError("worker is not known to the controller")
+        if worker.get("membership_status") == "REVOKED":
+            raise ProtocolError("worker Fabric membership is not active")
+        capabilities = args.get("capabilities")
+        if not isinstance(capabilities, list):
+            raise ValidationError("capabilities must be an array")
+        requested_class = args.get("observation_class", DEFAULT_OBSERVATION_CLASS)
+        if role != "admin":
+            # Consumers may contribute bounded context about a worker, but the
+            # provenance class of their statements is always consumer-declared:
+            # a consumer cannot self-authorize the capability evidence that
+            # exact-target admission later relies on.
+            requested_class = DEFAULT_OBSERVATION_CLASS
+        elif requested_class == "worker-observed":
+            raise ValidationError(
+                "worker-observed capability class is reserved for worker-authenticated reporting"
+            )
+        observation = build_capability_observation(
+            worker_identity=worker_id,
+            capabilities=capabilities,
+            availability=str(args.get("availability", "AVAILABLE")),
+            captured_at=args.get("captured_at"),
+            observation_source=str(args.get("observation_source", "consumer-bounded-worker-probe")),
+            status_reason=args.get("status_reason"),
+            observation_class=requested_class,
+        )
+        self.capability_ledger.append("worker.capability-observation", observation)
+        self._load_latest_capability_cache()
+        self._latest_capability_cache[worker_id] = observation
+        if observation_admission_trusted(observation):
+            self._admission_capability_cache[worker_id] = observation
+        if self.capability_ledger.path.exists():
+            stat = self.capability_ledger.path.stat()
+            self._capability_cache_token = (stat.st_size, stat.st_mtime_ns)
+        return observation
+
+    @staticmethod
+    def _target_rejection(admission: Mapping[str, Any], *, diagnostic: str | None = None) -> dict[str, Any]:
+        return {
+            "schema_version": CONSUMER_RESULT_SCHEMA,
+            "disposition": admission["disposition"],
+            "worker_identity": admission["worker_identity"],
+            "request_identity": admission["request_binding"]["execution_request_identity"],
+            "job_identity": admission["request_binding"]["job_identity"],
+            "record": None,
+            "record_identity": None,
+            "receipt": None,
+            "receipt_identity": None,
+            "bundle_identity": admission["request_binding"]["bundle_identity"],
+            "reason": admission["reason_code"],
+            "diagnostic": diagnostic,
+            "execution_target_reference_identity": admission["target_identity"],
+            "target_admission": dict(admission),
+            "target_admission_identity": admission["target_admission_identity"],
+        }
+
+    def _prior_target_execution_evidence(
+        self,
+        execution_request_identity: str,
+        admission: Mapping[str, Any],
+        result: Mapping[str, Any],
+    ) -> dict[str, Any] | None:
+        """Find the original evidence for a durable idempotent worker result."""
+
+        return self._target_evidence_index.lookup(
+            execution_request_identity, admission, result
+        )
 
     def _capability_observations(self, worker_id: str, *, limit: int = 1000) -> list[dict[str, Any]]:
         if not 1 <= limit <= 1000:
@@ -348,7 +1425,7 @@ class ControllerService:
         # Import lazily to keep the controller-service module importable while
         # the package surface is being initialized.
         from . import __version__
-        from .contracts import build_public_contract
+        from .contracts import build_public_contract, service_capability_projection, service_feature_projection
 
         health = self.lifecycle.doctor(now=now)
         service_health = self.service_ledger.verify()
@@ -357,12 +1434,66 @@ class ControllerService:
         runtime = "RUNNING" if latest_event == "started" else "STOPPED" if latest_event == "stopped" else "NOT_STARTED"
         public_contract = build_public_contract(__version__)
         workers, registry = self._worker_backend_status()
-        from .contracts import service_feature_projection
-
         service_features = service_feature_projection(worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready)
+        service_capabilities = service_capability_projection(
+            worker_backend=self.worker_backend_enabled, worker_rendezvous=self.rendezvous_ready
+        )
+        from .runtime_identity import collect_runtime_identity
+
+        runtime_identity = collect_runtime_identity(role="controller")
+        storage_diag = {
+            "service_ledger": {
+                "path": str(self.service_ledger.path),
+                "size_bytes": self.service_ledger.path.stat().st_size if self.service_ledger.path.exists() else 0,
+                "record_count": self.service_ledger.verify().get("record_count", 0),
+            },
+            "replay_state": {
+                "path": str(self._replay_cache._state_path) if self._replay_cache._state_path is not None else None,
+                "size_bytes": self._replay_cache._state_path.stat().st_size if self._replay_cache._state_path is not None and self._replay_cache._state_path.exists() else 0,
+                "entry_count": self._replay_cache.count,
+            },
+            "lifecycle_ledger": {
+                "path": str(self.lifecycle.path),
+                "size_bytes": self.lifecycle.path.stat().st_size if self.lifecycle.path.exists() else 0,
+                "record_count": self.lifecycle.ledger.verify().get("record_count", 0),
+            },
+            "capability_ledger": {
+                "path": str(self.capability_ledger.path),
+                "size_bytes": self.capability_ledger.path.stat().st_size if self.capability_ledger.path.exists() else 0,
+                "record_count": self.capability_ledger.verify().get("record_count", 0),
+            },
+            "detached_ledger": {
+                "path": str(self.detached_ledger.path),
+                "size_bytes": self.detached_ledger.path.stat().st_size if self.detached_ledger.path.exists() else 0,
+                "record_count": self.detached_ledger.verify().get("record_count", 0),
+            },
+            "schedule_ledger": {
+                "path": str(self.schedule_ledger.path),
+                "size_bytes": self.schedule_ledger.path.stat().st_size if self.schedule_ledger.path.exists() else 0,
+                "record_count": self.schedule_ledger.verify().get("record_count", 0),
+            },
+            "rendezvous_ledger": (
+                {
+                    "path": str(self._rendezvous.ledger.path),
+                    "size_bytes": self._rendezvous.ledger.path.stat().st_size if self._rendezvous.ledger.path.exists() else 0,
+                    "record_count": self._rendezvous.ledger.verify().get("record_count", 0),
+                }
+                if self._rendezvous is not None
+                else None
+            ),
+            "projections": {
+                "active_workers": len(workers),
+                "active_sessions": len(self._rendezvous.sessions) if self._rendezvous is not None else 0,
+                "queued_jobs": len(self.work_queue.queued()),
+                "detached_jobs": self._detached_job_count(),
+                "replay_cache_size": self._replay_cache.count,
+            },
+        }
         return {
             "schema_version": CONTROLLER_SERVICE_SCHEMA,
             "fabric_version": __version__,
+            "runtime_identity": runtime_identity,
+            "source_commit": runtime_identity.get("source_commit"),
             "service_contract": CONTROLLER_SERVICE_SCHEMA,
             "public_api_version": public_contract["public_api_version"],
             "public_contract_identity": public_contract["contract_identity"],
@@ -381,8 +1512,14 @@ class ControllerService:
             "worker_rendezvous": "RUNNING" if self.rendezvous_ready else "CONFIGURED" if self._rendezvous is not None else "PLANNED",
             "consumer_transport": "LOCAL_UNIX_SOCKET" if os.name == "posix" else "PLANNED_WINDOWS_LOCAL_TRANSPORT",
             "claim_boundary": "controller health is independent from worker availability and consumer connection",
-            "fleet": {"workers": workers, "registry": registry},
+            "fleet": {
+                "workers": workers,
+                "registry": registry,
+                "observation_mode": "last-known",
+            },
             "service_features": service_features,
+            "service_capabilities": service_capabilities,
+            "storage": storage_diag,
         }
 
     def doctor(self, *, now: str | None = None) -> dict[str, Any]:
@@ -394,6 +1531,7 @@ class ControllerService:
             "administrative_listener": "LOCAL_OPERATOR_SOCKET" if os.name == "posix" else "NOT_IMPLEMENTED",
             "worker_rendezvous": "PASS" if self.rendezvous_ready else "CONFIGURED_NOT_STARTED" if self._rendezvous is not None else "NOT_CONFIGURED",
             "persistent_service_execution": "CONTROLLER_MANAGED_ENDPOINTS" if self.worker_backend_enabled else "NOT_CONFIGURED",
+            "storage": "PASS",
         }
         return result
 
@@ -415,22 +1553,7 @@ class ControllerService:
         expires = datetime.fromisoformat(request["expires_at"].replace("Z", "+00:00"))
         if expires <= now:
             return _response(request, self.config.controller_id, "UNKNOWN", error={"code": "REQUEST_EXPIRED", "message": "service request deadline has expired"})
-        event = {
-            "schema_version": CONTROLLER_SERVICE_SCHEMA,
-            "event": "request",
-            "request_id": request["request_id"],
-            "client_identity": request["client_identity"],
-            "role": role,
-            "peer_identity": peer_identity,
-            "operation": operation,
-            "observed_at": utc_now(),
-        }
-
-        def new_request(records: list[dict[str, Any]]) -> None:
-            if any(entry["record"].get("event") == "request" and entry["record"].get("request_id") == request["request_id"] for entry in records):
-                raise ProtocolError("service request replay detected")
-
-        self.service_ledger.append_if("controller.service-request", attach_identity(event, "service_event_id"), new_request)
+        self._replay_cache.check_and_record(request["request_id"], request["expires_at"])
         if operation in _ADMIN_OPERATIONS and role != "admin":
             return _response(request, self.config.controller_id, "FAIL", error={"code": "UNAUTHORIZED_ADMIN_OPERATION", "message": "administrative operation requires the operator service surface"})
         args = request["arguments"]
@@ -441,6 +1564,8 @@ class ControllerService:
                 payload = self.doctor()
             elif operation == "fleet.list":
                 payload = {"workers": self._worker_backend_status()[0] if self.worker_backend_enabled else self.lifecycle.memberships()}
+            elif operation == "fleet.refresh":
+                payload = self._refresh_fleet(request, args)
             elif operation in {"fleet.status", "worker.status", "worker.observations"}:
                 worker_id = str(args.get("worker_id"))
                 if self.worker_backend_enabled:
@@ -530,37 +1655,49 @@ class ControllerService:
             elif operation == "worker.revoke":
                 payload = self._revoke_worker(str(args.get("worker_id")), str(args.get("reason", "operator revoked worker")))
             elif operation == "execution.dispatch":
-                if self._worker_client is None and not self.rendezvous_ready:
-                    raise ProtocolError("persistent execution backend is not configured")
-                revoked = self._revoked_worker_ids()
-                requested_worker = args.get("worker_id")
-                if requested_worker is not None and str(requested_worker) in revoked:
-                    raise ProtocolError("worker Fabric membership is not active")
-                if self._worker_client is not None:
-                    self._worker_client.blocked_worker_ids = revoked
-                reference = args.get("execution_bundle_reference")
-                if not isinstance(reference, dict) or set(reference) != {
-                    "bundle_identity",
-                    "archive_identity",
-                }:
-                    raise ProtocolError("execution bundle reference is invalid")
-                with self._consumer_bundle_lock:
-                    content = self._consumer_bundle_cache.root_for(
-                        str(reference["bundle_identity"]),
-                        str(reference["archive_identity"]),
-                    )
-                archive = content.parent / "archive.zip"
-                if self.rendezvous_ready and self._rendezvous is not None:
-                    results = self._rendezvous.dispatch(
-                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
-                    )
-                    execution_transport = "worker-initiated-persistent-rendezvous"
-                else:
-                    results = self._worker_client.execute(
-                        args["plan"], args["manifest"], worker_id=args.get("worker_id"), replicas=int(args.get("replicas", 1)), request_id=args.get("request_id"), challenge=args.get("challenge"), consumer_context=args.get("consumer_context"), execution_bundle_archive=archive, placement=args.get("placement"), runtime_observation=args.get("runtime_observation"), runtime_capability_observation=args.get("runtime_capability_observation"),
-                    )
-                    execution_transport = "controller-managed-authenticated-worker-endpoint"
-                payload = {"results": results, "execution_transport": execution_transport, "fleet_authority": "persistent-controller"}
+                payload = self._execute_dispatch_arguments(args)
+            elif operation == "execution.submit":
+                payload = self._submit_detached(
+                    args,
+                    client_identity=request["client_identity"],
+                    request_id=request["request_id"],
+                )
+            elif operation == "execution.status":
+                payload = self._detached_status(str(args.get("work_id", "")))
+            elif operation == "execution.result":
+                work_id = str(args.get("work_id", ""))
+                status = self._detached_status(work_id)
+                result = self._get_detached_result(status["work_id"])
+                index = self._detached_projection({status["work_id"]})
+                item = index.get(status["work_id"], {})
+                payload = {
+                    **status,
+                    "result": result,
+                    "reason": item.get("reason"),
+                }
+            elif operation == "execution.list":
+                limit = int(args.get("limit", 100))
+                if not 1 <= limit <= 1000:
+                    raise ValidationError("detached execution list limit is invalid")
+                work_ids = self._detached_work_ids(limit=limit)
+                payload = {"work": self._detached_statuses(work_ids)}
+            elif operation == "schedule.enqueue":
+                payload = self.work_queue.enqueue(args, client_identity=request["client_identity"])
+            elif operation == "schedule.list":
+                payload = {
+                    "paused": self.work_queue.paused(),
+                    "queued": self.work_queue.queued(),
+                    "commons_authority": "none",
+                    "authority": "persistent-fabric",
+                }
+            elif operation == "schedule.tick":
+                payload = self._tick_schedule(args)
+            elif operation == "schedule.pause":
+                payload = self.work_queue.pause()
+            elif operation == "schedule.resume":
+                payload = self.work_queue.resume()
+            elif operation == "schedule.policy":
+                payload = self._availability_policy()
             elif operation == "execution.target.dispatch":
                 if not self.worker_backend_enabled:
                     raise ProtocolError("persistent target execution backend is not configured")
@@ -595,7 +1732,7 @@ class ControllerService:
                 admission = evaluate_target_admission(
                     target,
                     worker_state=worker,
-                    capability_observation=self._latest_capability_observation(target["worker_identity"]),
+                    capability_observation=self._admission_capability_observation(target["worker_identity"]),
                     consumer_context=args.get("consumer_context"),
                     consumer_authorization_identity=args.get("consumer_authorization_identity"),
                     authenticated_client_identity=authenticated_client_identity,
@@ -610,12 +1747,20 @@ class ControllerService:
                     payload = {"result": self._target_rejection(admission), "admission": admission}
                 else:
                     try:
-                        if self.rendezvous_ready and self._rendezvous is not None:
+                        rendezvous_admitted = (
+                            self.rendezvous_ready
+                            and self._rendezvous is not None
+                            and isinstance(admission.get("session_id"), str)
+                            and isinstance(admission.get("session_generation"), int)
+                        )
+                        if rendezvous_admitted:
                             results = self._rendezvous.dispatch(
                                 plan, manifest, worker_id=target["worker_identity"], replicas=1,
                                 request_id=str(execution_request_identity),
                                 consumer_context=args.get("consumer_context"),
                                 execution_bundle_archive=archive,
+                                expected_session_id=admission.get("session_id"),
+                                expected_session_generation=admission.get("session_generation"),
                             )
                             execution_transport = "worker-initiated-persistent-rendezvous"
                         elif self._worker_client is not None:
@@ -632,8 +1777,18 @@ class ControllerService:
                         result = results[0] if len(results) == 1 else None
                         if not isinstance(result, dict) or result.get("worker_identity") != target["worker_identity"] or result.get("disposition") not in {"EXECUTED", "DUPLICATE_IDEMPOTENT"}:
                             raise ProtocolError("target became unavailable before exact-worker execution")
-                        evidence = build_target_execution_evidence(admission, result)
-                        self.target_ledger.append("target.execution", evidence)
+                        if result["disposition"] == "DUPLICATE_IDEMPOTENT":
+                            evidence = self._prior_target_execution_evidence(
+                                str(execution_request_identity), admission, result
+                            )
+                            if evidence is None:
+                                raise ProtocolError(
+                                    "idempotent target result lacks durable original execution evidence"
+                                )
+                        else:
+                            evidence = build_target_execution_evidence(admission, result)
+                            self.target_ledger.append("target.execution", evidence)
+                            self._target_evidence_index.add(evidence)
                         result = {
                             **result,
                             "execution_target_reference_identity": target["target_identity"],
@@ -658,7 +1813,7 @@ class ControllerService:
                     raise ProtocolError("persistent capability backend is not configured")
                 worker_id = str(args.get("worker_id", ""))
                 payload = {
-                    "observation": self._ingest_capability_observation(worker_id, args),
+                    "observation": self._ingest_capability_observation(worker_id, args, role=role),
                     "fleet_authority": "persistent-controller",
                 }
             elif operation == "worker.capability.observations":
@@ -669,6 +1824,92 @@ class ControllerService:
                     "observations": self._capability_observations(worker_id, limit=int(args.get("limit", 1000))),
                     "fleet_authority": "persistent-controller",
                 }
+            elif operation == "worker.inspect":
+                payload = self._fleet_worker_op("inspect_worker", str(args.get("worker_id", "")))
+            elif operation == "worker.plan":
+                payload = self._fleet_worker_op(
+                    "plan_worker",
+                    str(args.get("worker_id", "")),
+                    profiles=args.get("profiles"),
+                    classes=args.get("classes"),
+                )
+            elif operation == "worker.reconcile":
+                payload = self._fleet_worker_op(
+                    "reconcile_worker",
+                    str(args.get("worker_id", "")),
+                    apply=bool(args.get("apply", False)),
+                    profiles=args.get("profiles"),
+                    classes=args.get("classes"),
+                    force=bool(args.get("force", False)),
+                )
+            elif operation == "worker.certify":
+                payload = self._fleet_worker_op("certify_worker", str(args.get("worker_id", "")), profiles=args.get("profiles"))
+            elif operation == "worker.drain":
+                payload = self._fleet_worker_op("drain_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator drain")))
+            elif operation == "worker.resume":
+                payload = self._fleet_worker_op("resume_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator resume")))
+            elif operation == "worker.quarantine":
+                payload = self._fleet_worker_op("quarantine_worker", str(args.get("worker_id", "")), reason=str(args.get("reason", "operator quarantine")))
+            elif operation == "worker.artifact.stage":
+                backend = self._fleet_backend()
+                transfer = getattr(backend, "transfer_package_artifact", None)
+                if transfer is None:
+                    raise ProtocolError("persistent fleet backend cannot transfer package artifacts")
+                payload = transfer(
+                    str(args.get("worker_id", "")),
+                    Path(str(args.get("source", ""))),
+                    version=str(args.get("version", "")),
+                    source=str(args.get("provenance", "controller-staged")),
+                )
+            elif operation == "fleet.rollout":
+                from .rollout import build_rollout_plan, execute_rollout, validate_rollout
+
+                workers, _registry = self._worker_backend_status(refresh=False)
+                ids = [str(item.get("worker_id")) for item in workers if item.get("worker_id")]
+                if args.get("worker_id"):
+                    ids = [str(args["worker_id"])]
+                backend = self._fleet_backend()
+                manager = getattr(backend, "fleet_manager", None)
+                prior = manager.store.latest_unscoped("management.rollout") if manager is not None else None
+                resume = bool(args.get("resume")) or bool(args.get("apply") and prior and prior.get("state") == "IN_PROGRESS")
+                if resume and prior is not None:
+                    plan = validate_rollout({key: value for key, value in prior.items() if key != "artifact_identity"})
+                else:
+                    plan = build_rollout_plan(
+                        worker_ids=ids,
+                        canary_count=int(args.get("canary_count", 1)),
+                        stop_on_failure=bool(args.get("stop_on_failure", True)),
+                        update_class=str(args.get("update_class", "A")),
+                    )
+                if not args.get("apply") and not resume:
+                    payload = plan
+                    if manager is not None:
+                        manager.store.record("management.rollout", plan)
+                else:
+                    def _persist(record: object) -> None:
+                        if manager is not None:
+                            manager.store.record("management.rollout", record)
+
+                    payload = execute_rollout(
+                        plan,
+                        lambda worker_id: backend.reconcile_worker(
+                            worker_id,
+                            apply=True,
+                            classes=[str(args.get("update_class", "A"))],
+                            force=bool(args.get("force", False)),
+                        ),
+                        apply=True,
+                        persist=_persist,
+                        artifact_identity=str(args["artifact_identity"]) if args.get("artifact_identity") else (prior or {}).get("artifact_identity"),
+                    )
+            elif operation == "fleet.inspect":
+                payload = self._fleet_collection_op("inspect_worker", args)
+            elif operation == "fleet.plan":
+                payload = self._fleet_collection_op("plan_worker", args)
+            elif operation == "fleet.reconcile":
+                payload = self._fleet_collection_op("reconcile_worker", args, apply=bool(args.get("apply", False)))
+            elif operation == "fleet.certify":
+                payload = self._fleet_collection_op("certify_worker", args)
             else:
                 return _response(request, self.config.controller_id, "FAIL", error={"code": "UNKNOWN_OPERATION", "message": "service operation is unsupported"})
         except (FabricError, ValueError) as exc:
@@ -717,6 +1958,7 @@ class ControllerService:
                 # The platform-neutral runtime remains useful under a Windows
                 # supervisor while named-pipe transport is still planned.
                 server = ControllerServiceServer(self)
+            self._recover_detached()
             try:
                 if self._rendezvous is not None and self.config.rendezvous_configured:
                     rendezvous_server = TLSRendezvousServer(
@@ -742,11 +1984,22 @@ class ControllerService:
                 # consumer socket, so a Windows consumer fallback must not
                 # suppress a configured rendezvous listener.
                 rendezvous_server = None
+            if self._worker_client is not None:
+                self._capability_refresh_thread = Thread(
+                    target=self._capability_refresh_loop,
+                    daemon=True,
+                    name="mncs-fabric-capability-refresh",
+                )
+                self._capability_refresh_thread.start()
             while not self._stop.is_set():
                 if max_seconds is not None and time.monotonic() - started >= max_seconds:
                     break
                 time.sleep(min(self.config.heartbeat_seconds, 0.25))
         finally:
+            self._stop.set()
+            if self._capability_refresh_thread is not None:
+                self._capability_refresh_thread.join(timeout=5.0)
+                self._capability_refresh_thread = None
             if rendezvous_server is not None:
                 rendezvous_server.close()
                 self._rendezvous_server = None

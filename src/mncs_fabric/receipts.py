@@ -294,3 +294,72 @@ def build_execution_assurance(receipt: dict[str, Any]) -> dict[str, Any]:
         "extensions": {"mncs-fabric:source-receipt": receipt["receipt_identity"]},
     }
     return assurance
+
+
+def build_family_execution_reference(
+    record: dict[str, Any],
+    *,
+    receipt: dict[str, Any] | None = None,
+    attempt: int = 1,
+    retry_of: str | None = None,
+    recovery_of: str | None = None,
+    backend_identity: str | None = None,
+    bundle_reference: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Project stable Fabric execution facts for the Family Record Spine.
+
+    This companion record deliberately preserves the Fabric outcome as a source
+    observation.  It has no Concept Experiment, scientific, assurance, or
+    conformance verdict field.
+    """
+
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        raise ValueError("attempt must be a positive integer")
+    record_identity = record.get("record_id")
+    if not isinstance(record_identity, str) or not record_identity:
+        raise ValueError("execution record requires its Fabric record_id")
+    source_outcome = (
+        record.get("outcome") if record.get("outcome") in {"PASS", "FAIL", "UNKNOWN"} else "UNKNOWN"
+    )
+    receipt_identity = receipt.get("receipt_identity") if isinstance(receipt, dict) else None
+    node = record.get("node") if isinstance(record.get("node"), dict) else {}
+    environment_identity = sha256_identity(
+        {
+            "node_fingerprint": node.get("node_fingerprint"),
+            "machine_label": node.get("machine_label"),
+            "environment": record.get("declared_environment", {}),
+            "network_policy": (record.get("policy_observations") or {}).get("network_policy")
+            if isinstance(record.get("policy_observations"), dict)
+            else None,
+        }
+    )
+    stable_id = f"mncs-fabric://execution/{record_identity}/attempt/{attempt}"
+    return {
+        "schema_version": "mncs-fabric.family-execution-reference.v0.1",
+        "producer": "mncs-fabric",
+        "stable_id": stable_id,
+        "record_identity": record_identity,
+        "content_digest": record_identity if record_identity.startswith("sha256:") else None,
+        "execution_identity": record_identity,
+        "job_identity": record.get("job_identity"),
+        "request_identity": record.get("request_identity"),
+        "worker_identity": node.get("node_id") or node.get("machine_label"),
+        "node_fingerprint": node.get("node_fingerprint"),
+        "environment_identity": environment_identity,
+        "target_identity": record.get("target_identity"),
+        "backend_identity": backend_identity,
+        "attempt": attempt,
+        "retry_of": retry_of,
+        "recovery_of": recovery_of,
+        "source_outcome": source_outcome,
+        "receipt_identity": receipt_identity,
+        "started_at": record.get("started_at"),
+        "finished_at": record.get("finished_at"),
+        "duration_seconds": record.get("duration_seconds"),
+        "resource_observations": record.get("resource_observations", []),
+        "bundle_reference": dict(bundle_reference) if bundle_reference else None,
+        "claim_boundary": (
+            "Fabric execution fact only; source_outcome is not Concept Experiment success, "
+            "scientific truth, assurance, or conformance"
+        ),
+    }

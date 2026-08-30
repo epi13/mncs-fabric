@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -101,7 +102,17 @@ class CommissioningTests(unittest.TestCase):
             installation = activate_worker_credentials(credentials, state_root=worker_root)
             self.assertEqual(installation["lifecycle"], "ENROLLED")
             self.assertEqual(private_key.read_bytes(), original_key)
-            self.assertNotIn("PRIVATE KEY", (worker_root / "worker.env").read_text())
+            worker_environment = (worker_root / "worker.env").read_text()
+            self.assertNotIn("PRIVATE KEY", worker_environment)
+            expected_mode = (
+                "required" if sys.platform.startswith("linux") else "compatibility-uncontained"
+            )
+            self.assertIn(
+                f"MNCS_FABRIC_CONTAINMENT_MODE={expected_mode}", worker_environment
+            )
+            # Rendezvous units must wire the worker bundle cache: without it a
+            # resident worker cannot accept any new execution bundle offer.
+            self.assertIn("MNCS_FABRIC_BUNDLE_CACHE=", worker_environment)
             self.assertEqual((worker_root / "worker.env").stat().st_mode & 0o777, 0o600)
             self.assertEqual((worker_root / "installation.json").stat().st_mode & 0o777, 0o600)
             self.assertTrue((worker_root / "tls" / "worker.pem").is_file())
@@ -277,6 +288,87 @@ class CommissioningTests(unittest.TestCase):
                 activate_worker_credentials(credentials, state_root=worker_root)
             self.assertFalse((worker_root / "tls" / "worker.pem").exists())
             self.assertFalse((worker_root / "installation.json").exists())
+
+    @unittest.skipUnless(os.name == "posix", "Fedora commissioning requires POSIX")
+    def test_activation_rotates_controller_certificate_trust(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "initial").mkdir()
+            (root / "rotated").mkdir()
+            cert = _certificates(root / "initial")
+            lifecycle, worker_root, join = self._approved_join(root, cert)
+            credentials = issue_worker_credentials(
+                lifecycle,
+                join,
+                ca_certificate=cert["ca"],
+                ca_key=cert["ca_key"],
+                controller_certificate=cert["server"],
+                controller_trust_state=root / "controller-trust.jsonl",
+            )
+            activate_worker_credentials(credentials, state_root=worker_root)
+            original_fingerprint = credentials["controller_certificate_fingerprint"]
+
+            # Rotate the operator CA and controller certificate, re-issue the
+            # same worker key through a fresh approval, and activate again.
+            rotated = _certificates(root / "rotated")
+            rotation = LifecycleStore(root / "controller" / "lifecycle.jsonl")
+            authorization = rotation.create_authorization(
+                expected_worker_identity="worker-commissioned"
+            )
+            material = build_enrollment_material(
+                authorization,
+                controller_id="controller-home",
+                controller_host="controller.example.test",
+                controller_port=7444,
+                controller_certificate_pem=rotated["server"].read_text(encoding="ascii"),
+            )
+            rejoin = prepare_join_request(
+                material,
+                worker_id="worker-commissioned",
+                state_root=worker_root,
+                hostname="worker-dhcp-a",
+                operating_system="linux",
+                architecture="x86_64",
+            )
+            submitted = submit_join_request(rotation, rejoin)
+            rotation.revoke_worker(
+                "worker-commissioned",
+                reason="controller certificate rotation",
+            )
+            rotation.approve_request(str(submitted["request_id"]))
+            rotated_credentials = issue_worker_credentials(
+                rotation,
+                rejoin,
+                ca_certificate=rotated["ca"],
+                ca_key=rotated["ca_key"],
+                controller_certificate=rotated["server"],
+                controller_trust_state=root / "controller-trust.jsonl",
+            )
+            self.assertNotEqual(
+                rotated_credentials["controller_certificate_fingerprint"],
+                original_fingerprint,
+            )
+            installation = activate_worker_credentials(
+                rotated_credentials, state_root=worker_root
+            )
+            self.assertEqual(installation["lifecycle"], "ENROLLED")
+
+            trust = TrustStore(worker_root / "worker-trust.jsonl")
+            current = trust.lookup("controller", "controller-home")
+            self.assertIsNotNone(current)
+            self.assertTrue(current["active"])
+            self.assertEqual(
+                current["certificate_fingerprint"],
+                rotated_credentials["controller_certificate_fingerprint"],
+            )
+            history = [
+                entry["record"]
+                for entry in trust.ledger.all_records()
+                if entry["record"].get("identity_type") == "controller"
+            ]
+            revoked = [record for record in history if record.get("event") == "revoked"]
+            self.assertEqual(len(revoked), 1)
+            self.assertEqual(revoked[0]["certificate_fingerprint"], original_fingerprint)
 
     @unittest.skipUnless(os.name == "posix", "Fedora commissioning requires POSIX")
     def test_join_rejects_worker_identity_mismatch(self) -> None:

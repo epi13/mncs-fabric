@@ -1,6 +1,6 @@
 # Exact target execution
 
-Fabric `0.2.0a17` adds persistent-service execution on one exact
+Fabric `0.2.0a18` provides persistent-service execution on one exact
 `ExecutionTargetReference`. The consumer chooses the worker and the bounded job.
 Fabric re-evaluates current controller-owned membership, authenticated presence,
 liveness, capability observation, runtime, context, and provenance bindings before
@@ -12,7 +12,7 @@ from mncs_fabric import ConsumerContext, ExecutionTargetReference, FabricClient
 
 client = FabricClient.connect("/run/user/1000/mncs-fabric/controller.sock")
 context = ConsumerContext(
-    source_project="epi13-local-harness",
+    source_project="example-consumer",
     consumer_workload_identity="sha256:" + "a" * 64,
 )
 observation = client.latest_capability_observation("worker-a")
@@ -50,11 +50,28 @@ ages, individual checks, and `TARGET_ADMITTED`. Non-passing requests use stable
 codes:
 
 - `DENIED`: `TARGET_REVOKED`, `TARGET_CAPABILITY_MISSING`,
-  `TARGET_RUNTIME_MISMATCH`, `TARGET_TOOL_CAPABILITY_MISMATCH`,
-  `TARGET_CONTEXT_MISMATCH`, or `TARGET_AUTHORIZATION_BINDING_INVALID`;
+  `TARGET_CAPABILITY_UNVERIFIED`, `TARGET_RUNTIME_MISMATCH`,
+  `TARGET_TOOL_CAPABILITY_MISMATCH`, `TARGET_CONTEXT_MISMATCH`, or
+  `TARGET_AUTHORIZATION_BINDING_INVALID`;
 - `UNKNOWN`: `TARGET_UNKNOWN`, `TARGET_DISCONNECTED`,
   `TARGET_LIVENESS_STALE`, `TARGET_CAPABILITIES_STALE`, or
   `TARGET_BECAME_UNAVAILABLE`.
+
+## Capability provenance
+
+Capability observations carry an explicit provenance class:
+
+- `worker-observed` — reserved for worker-authenticated reporting;
+- `operator-asserted` — published over the admin surface by the operator;
+- `consumer-declared` — published by consumers; retained as bounded context.
+
+Exact-target admission trusts only worker-observed and operator-asserted
+observations. A consumer cannot bootstrap the capability evidence that later
+admits its own request: consumer-side ingestion is always recorded as
+consumer-declared, legacy observations without a class are treated as
+consumer-declared, and admission selects the newest *trusted* observation
+rather than the newest observation of any class. Untrusted-but-fresh evidence
+fails admission with `TARGET_CAPABILITY_UNVERIFIED`.
 
 The authorization identity is opaque consumer-provided provenance. Its SHA-256
 shape is not semantic permission. Fabric's narrow guarantee is that the
@@ -75,6 +92,21 @@ The worker's durable replay ledger returns `DUPLICATE_IDEMPOTENT` with the known
 record for an identical retry and rejects a changed-payload replay. This avoids
 accidental re-execution; it is not a distributed transaction or a guarantee that an
 unobserved in-flight operation completed.
+
+The append-only `target-execution.jsonl` ledger is authoritative. The controller's
+`target-evidence-index.json` is only a rebuildable request-identity cache. Missing,
+malformed, identity-invalid, or ledger-stale cache state is discarded and rebuilt
+from the complete verified ledger. A retry can return original evidence only when
+the target, authenticated client/context/authorization, worker, job, bundle, record,
+and receipt bindings all match; request-identity reuse with different bindings is
+rejected.
+
+Exact targeting and immutable bundles are logical confinement, not OS isolation.
+The execution record separately reports `containment_mode`, provider, filesystem
+enforcement, and network enforcement. Fedora/Linux deployed workers use required
+bubblewrap containment for Python targets and fail closed when it is unavailable.
+An explicitly configured `compatibility-uncontained` worker retains the service
+account's ambient authority and must not be treated as sandboxed.
 
 Capability observations are factual, retained, non-attested inputs supplied by an
 authenticated same-user consumer or bounded probe. Presence of `git`, `python`, a

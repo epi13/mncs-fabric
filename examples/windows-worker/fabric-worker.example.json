@@ -1,5 +1,5 @@
 {
-  "worker_id": "collamore02-windows",
+  "worker_id": "worker-01-windows",
   "controller_id": "fabric-controller-01",
   "bind_host": "<development-LAN-address>",
   "port": 7443,

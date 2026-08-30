@@ -20,7 +20,6 @@ from mncs_fabric.models import validate_job_plan
 from mncs_fabric.api import FabricAdminClient, FabricClient
 from mncs_fabric.controller_service import ControllerConfig, ControllerService
 from mncs_fabric.lifecycle import LifecycleStore
-from mncs_fabric.registry import RegistryWorker, WorkerRegistry
 from mncs_fabric.rendezvous import RendezvousCoordinator
 from mncs_fabric.targets import ExecutionTargetReference
 from mncs_fabric.transport import TLSRendezvousServer, TLSRendezvousWorker
@@ -262,10 +261,16 @@ class RendezvousTests(unittest.TestCase):
             self.assertTrue(status["fleet"]["workers"], diagnostic)
             self.assertEqual(status["fleet"]["workers"][0]["worker_id"], worker.worker_id)
             self.assertEqual(consumer.fleet()[0]["availability"], "AVAILABLE")
-            observation = consumer.ingest_capability_observation(
-                worker.worker_id,
-                [{"kind": "runtime", "namespace": "system", "name": "python"}],
-            )
+            admin_for_capabilities = FabricAdminClient.connect(config.admin_socket_path_value)
+            try:
+                observation = admin_for_capabilities.ingest_capability_observation(
+                    worker.worker_id,
+                    [{"kind": "runtime", "namespace": "system", "name": "python"}],
+                    observation_class="operator-asserted",
+                )
+            finally:
+                admin_for_capabilities.close()
+            self.assertEqual(observation["observation_class"], "operator-asserted")
             context = ConsumerContext(
                 source_project="rendezvous-integration",
                 consumer_workload_identity="sha256:" + "d" * 64,
@@ -330,6 +335,18 @@ class RendezvousTests(unittest.TestCase):
             )
             self.assertEqual(duplicate["disposition"], "DUPLICATE_IDEMPOTENT")
             self.assertEqual(duplicate["worker_identity"], worker.worker_id)
+            self.assertGreater(
+                duplicate["target_admission"]["session_generation"],
+                duplicate["target_execution_evidence"]["session_generation"],
+            )
+            self.assertEqual(
+                duplicate["target_execution_evidence_identity"],
+                result["target_execution_evidence_identity"],
+            )
+            self.assertEqual(
+                duplicate["target_execution_evidence"]["session_generation"],
+                first_generation,
+            )
 
             admin = FabricAdminClient.connect(config.admin_socket_path_value)
             try:

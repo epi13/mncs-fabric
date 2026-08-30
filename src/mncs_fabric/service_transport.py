@@ -34,22 +34,35 @@ SERVICE_RESPONSE_SCHEMA = "mncs-fabric.service-response.v0.1"
 SERVICE_EVENT_SCHEMA = "mncs-fabric.controller-service.v0.1"
 SERVICE_MAX_FRAME_BYTES = 4 * 1024 * 1024
 SERVICE_REQUEST_TTL_SECONDS = 30.0
+SERVICE_MAX_TIMEOUT_SECONDS = 120.0
 SERVICE_MAX_CONNECTIONS = 32
+SERVICE_RESPONSE_RESERVE_SECONDS = 1.0
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _OPERATIONS = {
     "controller.status", "controller.doctor", "fleet.list", "fleet.status",
-    "worker.status", "worker.observations", "fleet.doctor",
+    "fleet.refresh", "worker.status", "worker.observations", "fleet.doctor",
     "execution.bundle.begin", "execution.bundle.chunk", "execution.bundle.commit",
-    "execution.dispatch", "execution.target.dispatch",
+    "execution.dispatch", "execution.submit", "execution.status",
+    "execution.result", "execution.list", "execution.target.dispatch",
     "worker.capability.ingest", "worker.capability.observations",
+    "schedule.enqueue", "schedule.list", "schedule.tick",
+    "schedule.pause", "schedule.resume", "schedule.policy",
     "enrollment.create", "enrollment.list", "enrollment.pending",
     "enrollment.inspect", "enrollment.approve", "enrollment.deny",
     "enrollment.expire", "enrollment.submit", "worker.revoke",
+    "worker.inspect", "worker.plan", "worker.reconcile", "worker.certify",
+    "worker.drain", "worker.resume", "worker.quarantine",
+    "worker.artifact.stage",
+    "fleet.inspect", "fleet.plan", "fleet.reconcile", "fleet.certify",
+    "fleet.rollout",
 }
 _ADMIN_OPERATIONS = {
     "fleet.doctor", "enrollment.create", "enrollment.list",
     "enrollment.pending", "enrollment.inspect", "enrollment.approve",
     "enrollment.deny", "enrollment.expire", "enrollment.submit", "worker.revoke",
+    "worker.reconcile", "worker.certify", "worker.drain", "worker.resume",
+    "worker.quarantine", "fleet.reconcile", "fleet.certify",
+    "worker.artifact.stage", "fleet.rollout",
 }
 
 
@@ -343,18 +356,27 @@ class ServiceClientTransport:
     def __init__(self, socket_path: Path, *, client_identity: str, admin: bool = False, timeout: float = 5.0) -> None:
         if os.name != "posix" or not hasattr(socket, "AF_UNIX"):
             raise ProtocolError("local service transport is not implemented on this platform")
-        if not 0 < timeout <= 30:
+        if not 0 < timeout <= SERVICE_MAX_TIMEOUT_SECONDS:
             raise ValidationError("service timeout is outside the bounded range")
         self.socket_path = Path(socket_path).expanduser()
         self.client_identity = _bounded_identity(client_identity, "client_identity")
         self.admin = admin
         self.timeout = timeout
 
-    def request(self, operation: str, arguments: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    def request(
+        self,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
         if operation not in _OPERATIONS:
             raise ProtocolError("service operation is unsupported")
+        wait = self.timeout if timeout is None else float(timeout)
+        if not 0 < wait <= SERVICE_MAX_TIMEOUT_SECONDS:
+            raise ValidationError("service timeout is outside the bounded range")
         created = utc_now()
-        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(seconds=min(self.timeout, SERVICE_REQUEST_TTL_SECONDS))).isoformat().replace("+00:00", "Z")
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")) + timedelta(seconds=wait)).isoformat().replace("+00:00", "Z")
         request = attach_identity({
             "schema_version": SERVICE_REQUEST_SCHEMA,
             "client_identity": self.client_identity,
@@ -363,16 +385,19 @@ class ServiceClientTransport:
             "created_at": created,
             "expires_at": expires,
         }, "request_id")
-        return self.request_envelope(request)
+        return self.request_envelope(request, timeout=wait)
 
-    def request_envelope(self, request: Mapping[str, Any]) -> dict[str, Any]:
+    def request_envelope(self, request: Mapping[str, Any], *, timeout: float | None = None) -> dict[str, Any]:
         """Send one pre-identified request, primarily for deterministic clients/tests."""
 
         request = _validate_request(request)
-        deadline = time.monotonic() + self.timeout
+        wait = self.timeout if timeout is None else float(timeout)
+        if not 0 < wait <= SERVICE_MAX_TIMEOUT_SECONDS:
+            raise ValidationError("service timeout is outside the bounded range")
+        deadline = time.monotonic() + wait
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stream:
-                stream.settimeout(self.timeout)
+                stream.settimeout(wait)
                 stream.connect(str(self.socket_path))
                 send_frame(stream, request, max_frame_bytes=SERVICE_MAX_FRAME_BYTES)
                 response = _validate_response(receive_frame(stream, max_frame_bytes=SERVICE_MAX_FRAME_BYTES, deadline=deadline), request["request_id"])
@@ -386,5 +411,6 @@ class ServiceClientTransport:
 
 __all__ = [
     "SERVICE_REQUEST_SCHEMA", "SERVICE_RESPONSE_SCHEMA", "SERVICE_EVENT_SCHEMA",
+    "SERVICE_REQUEST_TTL_SECONDS", "SERVICE_RESPONSE_RESERVE_SECONDS",
     "ControllerServiceOwnership", "ControllerServiceServer", "ServiceClientTransport",
 ]

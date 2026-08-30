@@ -20,9 +20,14 @@ PUBLIC_FEATURES = {
     # Keep the service-boundary capabilities separate from embedded execution
     # features so consumers do not infer dispatch support from the latter.
     "persistent_fleet_read": True,
+    "persistent_fleet_refresh": True,
+    "classified_fleet_refresh": True,
+    "last_known_fleet_status": True,
     "persistent_service_execution": False,
+    "persistent_detached_execution": False,
     "persistent_service_capability_ingestion": False,
     "persistent_worker_observations": False,
+    "scheduled_work_queue": True,
     "worker_rendezvous": False,
     "operator_file_commissioning": True,
     "approved_rendezvous_membership": True,
@@ -41,6 +46,11 @@ PUBLIC_FEATURES = {
     "placement_evidence": True,
     "sequential_cpu_offload_evidence": True,
     "remote_worker_description": True,
+    "worker_inventory": True,
+    "desired_state_reconciliation": True,
+    "worker_certification": True,
+    "fleet_management": True,
+    "typed_maintenance_actions": True,
     "remote_resource_refresh": True,
     "worker_liveness": True,
     "execution_collections": True,
@@ -54,6 +64,8 @@ PUBLIC_FEATURES = {
     "windows_worker_launcher": True,
     "cuda_execution_probe": True,
     "operator_worker_registry": True,
+    "worker_containment_policy": True,
+    "linux_bubblewrap_containment": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {
@@ -200,12 +212,20 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
     return value
 
 
+SERVICE_CAPABILITIES_SCHEMA = "mncs-fabric.service-capabilities.v0.2"
+
+
 def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool = False) -> dict[str, bool]:
     """Describe capabilities provided by the running controller instance."""
 
     return {
         "persistent_fleet_read": True,
+        "persistent_fleet_refresh": True,
+        "classified_fleet_refresh": True,
+        "last_known_fleet_status": True,
         "persistent_service_execution": bool(worker_backend),
+        "persistent_detached_execution": bool(worker_backend),
+        "persistent_execution_deadline_wait": bool(worker_backend),
         "persistent_service_capability_ingestion": bool(worker_backend),
         "persistent_worker_observations": bool(worker_backend),
         "worker_rendezvous": bool(worker_rendezvous),
@@ -214,7 +234,61 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
         "rendezvous_membership_projection": bool(worker_rendezvous),
         "worker_tool_capability_observations": bool(worker_backend),
         "resumable_service_bundle_transfer": True,
+        "scheduled_work_queue": True,
+        "worker_inventory": True,
+        "desired_state_reconciliation": True,
+        "worker_certification": True,
+        "fleet_management": True,
+        "typed_maintenance_actions": True,
     }
+
+
+def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bool = False) -> dict[str, Any]:
+    """Advertise the running service operations independently of package version."""
+
+    features = service_feature_projection(
+        worker_backend=worker_backend, worker_rendezvous=worker_rendezvous
+    )
+    operations = {
+        "controller.status": True,
+        "controller.doctor": True,
+        "fleet.list": True,
+        "fleet.refresh": True,
+        "fleet.status": True,
+        "execution.dispatch": bool(worker_backend),
+        "execution.submit": bool(worker_backend),
+        "execution.status": True,
+        "execution.result": True,
+        "execution.list": True,
+        "worker.capability.ingest": bool(worker_backend),
+        "schedule.enqueue": True,
+        "schedule.list": True,
+        "schedule.tick": True,
+        "schedule.pause": True,
+        "schedule.resume": True,
+        "schedule.policy": True,
+        "worker.inspect": True,
+        "worker.plan": True,
+        "worker.reconcile": True,
+        "worker.certify": True,
+        "worker.drain": True,
+        "worker.resume": True,
+        "worker.quarantine": True,
+        "fleet.inspect": True,
+        "fleet.plan": True,
+        "fleet.reconcile": True,
+        "fleet.certify": True,
+        "worker.artifact.stage": True,
+        "fleet.rollout": True,
+    }
+    value = {
+        "schema_version": SERVICE_CAPABILITIES_SCHEMA,
+        "features": features,
+        "operations": operations,
+        "restart_policy": "source newer than the running persistent controller requires a controller restart",
+    }
+    value["capabilities_identity"] = sha256_identity(value)
+    return value
 
 
 def validate_public_contract(value: object) -> dict[str, Any]:
