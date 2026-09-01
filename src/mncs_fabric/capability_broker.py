@@ -1246,8 +1246,20 @@ class WindowsCapabilityBroker:
             service = args["service"]
             if self.profile.mode != "unrestricted" and service not in self.profile.value["service_allowlist"]:
                 raise ValidationError("service is not allowlisted by the host profile")
-            command = [self._windows_executable("sc"), operation if operation != "status" else "query", service]
-            return _result_from_process(self.runner(command), success_detail=f"Windows service {operation} completed", failure_detail=f"Windows service {operation} failed", changed=operation != "status")
+            executable = self._windows_executable("sc")
+            if operation == "restart":
+                stopped = self.runner([executable, "stop", service])
+                if stopped.get("timed_out") or stopped.get("returncode") not in {0, 1060, 1062}:
+                    return _result_from_process(stopped, success_detail="Windows service restart completed", failure_detail="Windows service restart stop phase failed", changed=False)
+                started = self.runner([executable, "start", service])
+                return _result_from_process(started, success_detail="Windows service restart completed", failure_detail="Windows service restart start phase failed", changed=True, data={"service": service})
+            if operation == "enable":
+                command = [executable, "config", service, "start=", "auto"]
+            elif operation == "disable":
+                command = [executable, "config", service, "start=", "disabled"]
+            else:
+                command = [executable, operation if operation != "status" else "query", service]
+            return _result_from_process(self.runner(command), success_detail=f"Windows service {operation} completed", failure_detail=f"Windows service {operation} failed", changed=operation != "status", data={"service": service})
         if family in {"system-reboot", "system-shutdown"}:
             if args.get("delay_seconds", 0) != 0:
                 return _command_result(outcome="SKIPPED", detail="delayed power operations are not implemented")
@@ -1294,7 +1306,7 @@ class WindowsCapabilityBroker:
             path = self._path(args["path"])
             if path.suffix.lower() != ".inf":
                 raise ValidationError("Windows driver path must be an INF file")
-            command = [self._windows_executable("pnputil"), "/add-driver", str(path), "/install"] if operation == "install" else [self._windows_executable("pnputil"), "/delete-driver", path.stem, "/uninstall"]
+            command = [self._windows_executable("pnputil"), "/add-driver", str(path), "/install"] if operation == "install" else [self._windows_executable("pnputil"), "/delete-driver", path.name, "/uninstall"]
             return _result_from_process(self.runner(command), success_detail=f"Windows driver {operation} completed", failure_detail=f"Windows driver {operation} failed", changed=True)
         return _command_result(outcome="SKIPPED", detail=f"{family}.{operation} has no Windows adapter")
 

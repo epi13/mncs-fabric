@@ -13,6 +13,7 @@ from mncs_fabric.capability_broker import (
     CapabilityBroker,
     UnixCapabilityBrokerClient,
     UnixCapabilityBrokerServer,
+    WindowsCapabilityBroker,
     build_capability_lease,
     build_capability_request,
     build_capability_reconcile_result,
@@ -211,6 +212,45 @@ class CapabilityBrokerTests(unittest.TestCase):
             adapter.execute(request)
             self.assertEqual(commands[0], ["/usr/bin/systemctl", "start", "fabric-worker"])
             self.assertNotIn(";", " ".join(commands[0]))
+
+    def test_windows_adapter_maps_typed_service_operations_to_fixed_argv(self) -> None:
+        profile = build_host_privilege_profile(
+            worker_identity="windows-worker",
+            mode="windows-capability-broker",
+            platform="windows",
+            allowed_capabilities=["service-management"],
+            service_allowlist=["mncs-experiment"],
+        )
+        commands: list[list[str]] = []
+
+        def runner(argv: list[str]) -> dict:
+            commands.append(argv)
+            return {"returncode": 0, "stdout": "", "stderr": "", "timed_out": False}
+
+        adapter = WindowsCapabilityBroker(profile, runner=runner)
+        restart = build_capability_request(
+            worker_identity="windows-worker",
+            capability="service-management",
+            operation="restart",
+            arguments={"service": "mncs-experiment"},
+        )
+        adapter.execute(restart)
+        self.assertEqual(
+            commands,
+            [
+                [r"C:\Windows\System32\sc.exe", "stop", "mncs-experiment"],
+                [r"C:\Windows\System32\sc.exe", "start", "mncs-experiment"],
+            ],
+        )
+        commands.clear()
+        enable = build_capability_request(
+            worker_identity="windows-worker",
+            capability="service-management",
+            operation="enable",
+            arguments={"service": "mncs-experiment"},
+        )
+        adapter.execute(enable)
+        self.assertEqual(commands, [[r"C:\Windows\System32\sc.exe", "config", "mncs-experiment", "start=", "auto"]])
 
     def test_noninteractive_root_check_never_prompts(self) -> None:
         commands: list[list[str]] = []
