@@ -21,6 +21,11 @@ from .io import load_json, write_json
 from .lifecycle import LifecycleStore, default_lifecycle_path
 from .controller_service import ControllerConfig, ControllerService
 from .api import FabricAdminClient, FabricClient
+from .capability_broker import (
+    UnixCapabilityBrokerClient,
+    WindowsCapabilityBrokerClient,
+    load_host_privilege_profile,
+)
 from .registry import RegistryWorker, WorkerRegistry
 from .service import FabricService
 from .transport import TLSWorkerServer
@@ -209,6 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
     serve.add_argument("--graceful-shutdown-timeout", type=float, default=5.0)
     serve.add_argument("--bundle-cache", type=_path, help="immutable EA-NEXT-002 bundle cache for native transfer")
     serve.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
+    serve.add_argument("--privilege-profile", type=_path, help="explicit identity-bound host privilege profile for structured privileged operations")
+    serve_broker = serve.add_mutually_exclusive_group()
+    serve_broker.add_argument("--capability-broker-socket", type=_path, help="local Unix capability broker socket")
+    serve_broker.add_argument("--capability-broker-pipe", help="local Windows capability broker named pipe")
     rendezvous = worker_sub.add_parser("rendezvous", help="dial a persistent controller and maintain a worker session")
     rendezvous.add_argument("--worker-id", required=True)
     rendezvous.add_argument("--controller-id", required=True)
@@ -225,6 +234,10 @@ def build_parser() -> argparse.ArgumentParser:
     rendezvous.add_argument("--timeout", type=float, default=5.0)
     rendezvous.add_argument("--max-seconds", type=float)
     rendezvous.add_argument("--containment-mode", choices=("required", "compatibility-uncontained"), default=os.environ.get("MNCS_FABRIC_CONTAINMENT_MODE", "compatibility-uncontained"))
+    rendezvous.add_argument("--privilege-profile", type=_path, help="explicit identity-bound host privilege profile for structured privileged operations")
+    rendezvous_broker = rendezvous.add_mutually_exclusive_group()
+    rendezvous_broker.add_argument("--capability-broker-socket", type=_path, help="local Unix capability broker socket")
+    rendezvous_broker.add_argument("--capability-broker-pipe", help="local Windows capability broker named pipe")
     join = worker_sub.add_parser(
         "join", help="generate a durable local identity and protected enrollment request"
     )
@@ -423,6 +436,16 @@ def build_parser() -> argparse.ArgumentParser:
     worker_artifact.add_argument("--version", required=True)
     worker_artifact.add_argument("--json", action="store_true")
     worker_artifact.add_argument("--admin-socket", type=_path, required=True)
+    worker_capability = worker_sub.add_parser("capability-request", help="request one structured worker capability through the operator surface")
+    worker_capability.add_argument("worker_id")
+    worker_capability.add_argument("capability")
+    worker_capability.add_argument("operation")
+    worker_capability.add_argument("--arguments", type=_path, help="JSON object containing the exact operation arguments")
+    worker_capability.add_argument("--experiment-identity")
+    worker_capability.add_argument("--agent-session")
+    worker_capability.add_argument("--lease-identity")
+    worker_capability.add_argument("--timeout", type=float, default=90.0)
+    worker_capability.add_argument("--admin-socket", type=_path, required=True)
     for managed in (worker_inspect, worker_plan, worker_reconcile, worker_certify, worker_drain, worker_resume, worker_quarantine):
         managed.add_argument("worker_id", nargs="?", help="registered worker identity; omit with --local")
         managed.add_argument("--local", action="store_true", help="inspect the current process as a worker")
@@ -904,6 +927,24 @@ def main(argv: list[str] | None = None) -> int:
             result = _SERVICE.verify_record(value)
             write_json(None, result)
             return _status_code(result["outcome"])
+        if args.command == "worker" and args.worker_command == "capability-request":
+            arguments = load_json(args.arguments) if args.arguments is not None else {}
+            if not isinstance(arguments, dict):
+                raise ValueError("capability request arguments must be a JSON object")
+            admin = FabricAdminClient.connect(args.admin_socket, timeout=args.timeout)
+            result = admin.request_capability(
+                args.worker_id,
+                args.capability,
+                args.operation,
+                arguments,
+                experiment_identity=args.experiment_identity,
+                agent_session=args.agent_session,
+                lease_identity=args.lease_identity,
+                timeout=args.timeout,
+            )
+            admin.close()
+            write_json(None, result)
+            return _status_code(result.get("outcome", "UNKNOWN"))
         if args.command == "provenance" and args.provenance_command == "emit":
             from .provenance import build_provenance_evidence
 
@@ -923,7 +964,9 @@ def main(argv: list[str] | None = None) -> int:
             write_json(args.output, cohort)
             return _status_code(cohort["outcome"])
         if args.command == "worker" and args.worker_command == "serve":
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
+            privilege_profile = load_host_privilege_profile(args.privilege_profile, worker_identity=args.worker_id) if args.privilege_profile is not None else None
+            capability_client = UnixCapabilityBrokerClient(args.capability_broker_socket) if args.capability_broker_socket is not None else WindowsCapabilityBrokerClient(args.capability_broker_pipe) if args.capability_broker_pipe is not None else None
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode, privilege_profile=privilege_profile, capability_broker_client=capability_client)
             endpoint = TLSWorkerServer(worker_service, args.host, args.port, ca_file=args.ca, server_cert=args.certificate, server_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), timeout=args.timeout)
             if args.max_requests == 1 and args.idle_timeout is None and args.max_concurrent_connections == 1:
                 endpoint.serve_once()
@@ -934,7 +977,9 @@ def main(argv: list[str] | None = None) -> int:
             return _status_code(result["outcome"])
         if args.command == "worker" and args.worker_command == "rendezvous":
             from .transport import TLSRendezvousWorker
-            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode)
+            privilege_profile = load_host_privilege_profile(args.privilege_profile, worker_identity=args.worker_id) if args.privilege_profile is not None else None
+            capability_client = UnixCapabilityBrokerClient(args.capability_broker_socket) if args.capability_broker_socket is not None else WindowsCapabilityBrokerClient(args.capability_broker_pipe) if args.capability_broker_pipe is not None else None
+            worker_service = LocalWorker(args.worker_id, args.bundle_root, args.state, bundle_cache_root=args.bundle_cache, containment_mode=args.containment_mode, privilege_profile=privilege_profile, capability_broker_client=capability_client)
             endpoint = TLSRendezvousWorker(worker_service, args.controller_host, args.controller_port, ca_file=args.ca, client_cert=args.certificate, client_key=args.key, controller_id=args.controller_id, worker_id=args.worker_id, trust_store=TrustStore(args.trust_state), heartbeat_seconds=args.heartbeat_seconds, timeout=args.timeout)
             result = endpoint.run(max_seconds=args.max_seconds)
             write_json(None, result)

@@ -44,7 +44,7 @@ _OPERATIONS = {
     "execution.bundle.begin", "execution.bundle.chunk", "execution.bundle.commit",
     "execution.dispatch", "execution.submit", "execution.status",
     "execution.result", "execution.list", "execution.target.dispatch",
-    "worker.capability.ingest", "worker.capability.observations",
+    "worker.capability.ingest", "worker.capability.observations", "worker.capability.request",
     "schedule.enqueue", "schedule.list", "schedule.tick",
     "schedule.pause", "schedule.resume", "schedule.policy",
     "enrollment.create", "enrollment.list", "enrollment.pending",
@@ -62,7 +62,7 @@ _ADMIN_OPERATIONS = {
     "enrollment.deny", "enrollment.expire", "enrollment.submit", "worker.revoke",
     "worker.reconcile", "worker.certify", "worker.drain", "worker.resume",
     "worker.quarantine", "fleet.reconcile", "fleet.certify",
-    "worker.artifact.stage", "fleet.rollout",
+    "worker.artifact.stage", "fleet.rollout", "worker.capability.request",
 }
 
 

@@ -1261,6 +1261,54 @@ class FabricClient:
             raise ProtocolError("administrative operation requires FabricAdminClient")
         return self._management_controller(worker_id).quarantine_worker(worker_id, reason=reason)
 
+    def request_capability(
+        self,
+        worker_id: str,
+        capability: str,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        experiment_identity: str | None = None,
+        agent_session: str | None = None,
+        lease_identity: str | None = None,
+        timeout: float | None = 90.0,
+    ) -> dict[str, Any]:
+        """Request one structured worker capability through Fabric.
+
+        This is intentionally a Fabric worker operation, not a consumer
+        escape hatch to sudo, PowerShell, SSH, or an arbitrary root command.
+        """
+
+        if self._service_transport is not None:
+            return self._service_payload(
+                "worker.capability.request",
+                {
+                    "worker_id": worker_id,
+                    "capability": capability,
+                    "operation": operation,
+                    "arguments": dict(arguments or {}),
+                    "experiment_identity": experiment_identity,
+                    "agent_session": agent_session,
+                    "lease_identity": lease_identity,
+                    "timeout": timeout,
+                },
+                timeout=timeout,
+            )
+        self._require_embedded("capability brokerage")
+        controller = self._management_controller(worker_id)
+        transport = controller._worker_transport(worker_id)
+        return controller.capability_via(
+            transport,
+            worker_id=worker_id,
+            capability=capability,
+            operation=operation,
+            arguments=arguments,
+            experiment_identity=experiment_identity,
+            agent_session=agent_session,
+            lease_identity=lease_identity,
+            timeout=timeout,
+        )
+
     def transfer_package_artifact(self, worker_id: str, path, *, version: str, source: str = "operator-staged") -> dict[str, Any]:
         if self._service_transport is not None:
             raise ProtocolError("administrative operation requires FabricAdminClient")
@@ -1402,6 +1450,34 @@ class FabricAdminClient:
                 "availability": availability,
                 "observation_source": observation_source,
                 "observation_class": "operator-asserted",
+            },
+        )
+
+    def request_capability(
+        self,
+        worker_id: str,
+        capability: str,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        *,
+        experiment_identity: str | None = None,
+        agent_session: str | None = None,
+        lease_identity: str | None = None,
+        timeout: float | None = 90.0,
+    ) -> dict[str, Any]:
+        """Request one structured worker capability through the admin surface."""
+
+        return self._request(
+            "worker.capability.request",
+            {
+                "worker_id": worker_id,
+                "capability": capability,
+                "operation": operation,
+                "arguments": dict(arguments or {}),
+                "experiment_identity": experiment_identity,
+                "agent_session": agent_session,
+                "lease_identity": lease_identity,
+                "timeout": timeout,
             },
         )
 

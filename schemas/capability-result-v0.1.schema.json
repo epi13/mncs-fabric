@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric capability result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol", "worker_identity", "request_identity", "capability", "operation", "outcome", "detail", "changed", "previous_state", "new_state", "data", "stdout", "stderr", "audit_identity", "claim_boundary", "result_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.capability-result.v0.1"},
+    "protocol": {"const": "mncs-fabric.capability-broker.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "capability": {"type": "string", "minLength": 1, "maxLength": 64},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 32},
+    "outcome": {"enum": ["PASS", "FAIL", "UNKNOWN", "SKIPPED"]},
+    "detail": {"type": "string", "maxLength": 512},
+    "changed": {"type": "boolean"},
+    "previous_state": {},
+    "new_state": {},
+    "data": {"type": "object"},
+    "stdout": {"type": "string", "maxLength": 4096},
+    "stderr": {"type": "string", "maxLength": 4096},
+    "audit_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "claim_boundary": {"const": "broker operation result; not host attestation or execution correctness"},
+    "result_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

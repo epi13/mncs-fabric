@@ -25,12 +25,18 @@ from .inventory import collect_worker_inventory
 from .providers import apply_action, validate_action
 from .certify import certify_inventory
 from .management import build_management_state, can_transition, validate_management_state
+from .capability_broker import (
+    CapabilityBroker,
+    HostPrivilegeProfile,
+    build_capability_result,
+    validate_capability_request,
+)
 
 
 class LocalWorker:
     """A worker callable in-process; no unauthenticated listener is created."""
 
-    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained", stage_dir: Path | None = None) -> None:
+    def __init__(self, worker_id: str, bundle_root: Path, state_path: Path, *, concurrency_limit: int = 1, bundle_cache_root: Path | None = None, containment_mode: str = "compatibility-uncontained", stage_dir: Path | None = None, privilege_profile: HostPrivilegeProfile | dict[str, Any] | None = None, capability_broker: CapabilityBroker | None = None, capability_broker_client: Any | None = None) -> None:
         if not worker_id or concurrency_limit < 1:
             raise ValueError("worker_id and a positive concurrency limit are required")
         self.worker_id = worker_id
@@ -44,6 +50,20 @@ class LocalWorker:
         self._dispatch_by_request: dict[str, dict[str, Any]] = {}
         self._result_by_request: dict[str, dict[str, Any]] = {}
         self._artifact_session = None
+        if (capability_broker is not None or privilege_profile is not None) and capability_broker_client is not None:
+            raise ValueError("worker cannot configure both an in-process broker and a broker client")
+        self.capability_broker = capability_broker
+        self.capability_broker_client = capability_broker_client
+        if privilege_profile is not None:
+            profile = privilege_profile if isinstance(privilege_profile, HostPrivilegeProfile) else HostPrivilegeProfile(dict(privilege_profile))
+            if profile.worker_identity != worker_id:
+                raise ValueError("privilege profile is bound to another worker")
+            if capability_broker is not None and capability_broker.profile.worker_identity != worker_id:
+                raise ValueError("capability broker is bound to another worker")
+            self.capability_broker = capability_broker or CapabilityBroker(
+                profile,
+                state_path=Path(state_path).with_name(Path(state_path).stem + ".capability.jsonl"),
+            )
         for entry in self.ledger.all_records():
             record = entry["record"]
             request = record.get("request_id")
@@ -201,6 +221,34 @@ class LocalWorker:
                 self._management_state = validate_management_state(state)
             self.ledger.append("protocol.management", {"request_id": message["request_id"], "controller_id": message["controller_id"], "worker_id": self.worker_id, "state": state})
             return self._response(message, "worker.management.result", {"state": state})
+        if message["message_type"] == "worker.capability.request":
+            if message["worker_id"] != self.worker_id:
+                raise ProtocolError("capability request is bound to a different worker")
+            request = validate_capability_request(message["payload"]["capability_request"], expected_worker_id=self.worker_id)
+            if self.capability_broker is None:
+                result = build_capability_result(
+                    request,
+                    outcome="UNKNOWN",
+                    detail="worker capability broker is not configured",
+                )
+            elif self.capability_broker_client is not None:
+                try:
+                    result = self.capability_broker_client.request(request)
+                except (ProtocolError, OSError) as exc:
+                    result = build_capability_result(request, outcome="UNKNOWN", detail=f"capability broker endpoint unavailable: {exc}")
+            else:
+                result = self.capability_broker.request(request)
+            self.ledger.append(
+                "protocol.capability",
+                {
+                    "request_id": message["request_id"],
+                    "controller_id": message["controller_id"],
+                    "worker_id": self.worker_id,
+                    "request": request,
+                    "result": result,
+                },
+            )
+            return self._response(message, "worker.capability.result", {"result": result})
         if message["message_type"] != "dispatch.request":
             raise ProtocolError("worker accepts dispatch.request messages only")
         if message["worker_id"] != self.worker_id:

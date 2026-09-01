@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric capability request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol", "worker_identity", "capability", "operation", "arguments", "experiment_identity", "agent_session", "lease_identity", "requested_at", "claim_boundary", "request_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.capability-request.v0.1"},
+    "protocol": {"const": "mncs-fabric.capability-broker.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "capability": {"type": "string", "minLength": 1, "maxLength": 64},
+    "operation": {"type": "string", "minLength": 1, "maxLength": 32},
+    "arguments": {"type": "object"},
+    "experiment_identity": {"type": ["string", "null"], "maxLength": 256},
+    "agent_session": {"type": ["string", "null"], "maxLength": 256},
+    "lease_identity": {"type": ["string", "null"], "maxLength": 128},
+    "requested_at": {"type": "string", "format": "date-time"},
+    "claim_boundary": {"const": "structured capability intent; not a shell, root session, or attestation"},
+    "request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

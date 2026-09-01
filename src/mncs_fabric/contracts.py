@@ -66,6 +66,10 @@ PUBLIC_FEATURES = {
     "operator_worker_registry": True,
     "worker_containment_policy": True,
     "linux_bubblewrap_containment": True,
+    "capability_broker_contract": True,
+    "structured_privileged_operations": True,
+    "capability_leases": True,
+    "capability_audit": True,
 }
 
 _FORBIDDEN_AUTHORITY_FIELDS = {
@@ -201,6 +205,13 @@ def build_public_contract(package_version: str) -> dict[str, Any]:
         "worker_capability_observation_schema": "mncs-fabric.worker-capability-observation.v0.1",
         "execution_target_reference_schema": "mncs-fabric.execution-target-reference.v0.1",
         "protocol_schema": "mncs-fabric.protocol.v0.1",
+        "capability_request_schema": "mncs-fabric.capability-request.v0.1",
+        "capability_result_schema": "mncs-fabric.capability-result.v0.1",
+        "capability_lease_schema": "mncs-fabric.capability-lease.v0.1",
+        "capability_audit_schema": "mncs-fabric.capability-audit.v0.1",
+        "capability_reconcile_schema": "mncs-fabric.capability-reconcile-result.v0.1",
+        "host_privilege_profile_schema": "mncs-fabric.host-privilege-profile.v0.1",
+        "experiment_requirements_schema": "mncs-fabric.experiment-requirements.v0.1",
         "receipt_profile": "0.1-experimental",
         "execution_bundle_profile": "0.1-experimental",
         "challenge_profile": "0.1-experimental",
@@ -240,6 +251,11 @@ def service_feature_projection(*, worker_backend: bool, worker_rendezvous: bool 
         "worker_certification": True,
         "fleet_management": True,
         "typed_maintenance_actions": True,
+        "capability_broker_contract": True,
+        "structured_privileged_operations": bool(worker_backend),
+        "capability_leases": bool(worker_backend),
+        "capability_audit": bool(worker_backend),
+        "worker_capability_request": bool(worker_backend),
     }
 
 
@@ -261,6 +277,7 @@ def service_capability_projection(*, worker_backend: bool, worker_rendezvous: bo
         "execution.result": True,
         "execution.list": True,
         "worker.capability.ingest": bool(worker_backend),
+        "worker.capability.request": bool(worker_backend),
         "schedule.enqueue": True,
         "schedule.list": True,
         "schedule.tick": True,

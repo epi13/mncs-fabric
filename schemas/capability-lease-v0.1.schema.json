@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric bounded capability lease",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "protocol", "worker_identity", "experiment_identity", "capabilities", "operations", "granted_at", "expires_at", "granted_by", "claim_boundary", "lease_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.capability-lease.v0.1"},
+    "protocol": {"const": "mncs-fabric.capability-broker.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "experiment_identity": {"type": ["string", "null"], "maxLength": 256},
+    "capabilities": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}},
+    "operations": {"type": "object", "additionalProperties": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string"}}},
+    "granted_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "granted_by": {"type": "string", "minLength": 1, "maxLength": 128},
+    "claim_boundary": {"const": "bounded broker lease; not host ownership, attestation, or a root shell"},
+    "lease_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

@@ -26,6 +26,15 @@ Additive management messages in the same protocol version are
 They carry typed inventory, actions, certification, and drain/resume commands.
 They do not carry a shell string.
 
+The capability-broker extension adds
+`worker.capability.request/result` without changing the meaning of protocol
+v0.1. The payload carries the versioned
+`mncs-fabric.capability-request.v0.1` or result contract. The worker-local
+profile, lease, fixed platform adapter, append-only audit, and durable exact
+request replay decide whether a privileged operation runs. A capability
+request is never translated into SSH, WinRM, `sudo`, PowerShell, or a generic
+command string.
+
 Dispatch payloads contain a validated fixed argv job plan and a verified
 content-addressed manifest identity. They do not contain arbitrary shell
 commands. A duplicate request with the same request identity is idempotent;

@@ -398,6 +398,7 @@ replace canonical evidence.
 
 - `src/mncs_fabric/` — canonical identities, manifests, node capture, execution, receipts, bundle compatibility, service boundary, protocol, transports, enrollment, scheduler, and ledger;
 - `schemas/` — versioned interchange schemas;
+- `docs/CAPABILITY_BROKER.md` — typed privileged-worker capability contracts, host profiles, leases, audit/recovery, adapters, and deployment boundaries;
 - `examples/portable-python/` — a deterministic cross-platform example bundle;
 - `docs/` — protocol, integration, and roadmap documents; and
 - `tests/` — standard-library unit and integration tests.
