@@ -1824,6 +1824,24 @@ class ControllerService:
                     "observations": self._capability_observations(worker_id, limit=int(args.get("limit", 1000))),
                     "fleet_authority": "persistent-controller",
                 }
+            elif operation == "worker.capability.request":
+                if not self.worker_backend_enabled:
+                    raise ProtocolError("persistent capability backend is not configured")
+                backend = self._fleet_backend()
+                request_capability = getattr(backend, "request_capability", None)
+                if request_capability is None:
+                    raise ProtocolError("persistent fleet backend cannot request worker capabilities")
+                requested_timeout = args.get("timeout", 90.0)
+                payload = request_capability(
+                    str(args.get("worker_id", "")),
+                    str(args.get("capability", "")),
+                    str(args.get("operation", "")),
+                    args.get("arguments") if isinstance(args.get("arguments"), dict) else {},
+                    experiment_identity=args.get("experiment_identity"),
+                    agent_session=args.get("agent_session"),
+                    lease_identity=args.get("lease_identity"),
+                    timeout=float(requested_timeout) if requested_timeout is not None else 90.0,
+                )
             elif operation == "worker.inspect":
                 payload = self._fleet_worker_op("inspect_worker", str(args.get("worker_id", "")))
             elif operation == "worker.plan":

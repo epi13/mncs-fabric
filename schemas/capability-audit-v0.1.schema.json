@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric capability audit record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "experiment_identity", "agent_session", "lease_identity", "request_identity", "capability", "operation", "arguments", "result", "recorded_at", "claim_boundary", "audit_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.capability-audit.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "experiment_identity": {"type": ["string", "null"], "maxLength": 256},
+    "agent_session": {"type": ["string", "null"], "maxLength": 256},
+    "lease_identity": {"type": ["string", "null"], "maxLength": 128},
+    "request_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "capability": {"type": "string"},
+    "operation": {"type": "string"},
+    "arguments": {"type": "object"},
+    "result": {"type": "object"},
+    "recorded_at": {"type": "string", "format": "date-time"},
+    "claim_boundary": {"const": "broker operation audit; not proof of host honesty or independent assurance"},
+    "audit_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

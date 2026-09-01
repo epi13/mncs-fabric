@@ -45,6 +45,8 @@ MESSAGE_TYPES = {
     "worker.package-artifact.result",
     "worker.management.request",
     "worker.management.result",
+    "worker.capability.request",
+    "worker.capability.result",
     "worker.session.open",
     "worker.session.accept",
     "worker.heartbeat",
@@ -343,6 +345,26 @@ def _validate_payload(message_type: str, payload: object) -> dict[str, Any]:
         if set(value) != required:
             raise ProtocolError("worker management result fields are invalid")
         validate_management_state(value.get("state"))
+    elif message_type == "worker.capability.request":
+        from .capability_broker import validate_capability_request
+
+        required = {"capability_request"}
+        if set(value) != required:
+            raise ProtocolError("worker capability request fields are invalid")
+        try:
+            validate_capability_request(value.get("capability_request"))
+        except ValidationError as exc:
+            raise ProtocolError(f"worker capability request is invalid: {exc}") from exc
+    elif message_type == "worker.capability.result":
+        from .capability_broker import validate_capability_result
+
+        required = {"result"}
+        if set(value) != required:
+            raise ProtocolError("worker capability result fields are invalid")
+        try:
+            validate_capability_result(value.get("result"))
+        except ValidationError as exc:
+            raise ProtocolError(f"worker capability result is invalid: {exc}") from exc
     elif message_type in {"bundle.offer", "bundle.chunk", "bundle.commit"}:
         from .bundle_transfer import MAX_CHUNK_BYTES, MAX_CHUNKS, MAX_ARCHIVE_BYTES, TRANSFER_SCHEMA
         required = {"transfer_schema", "transfer_id", "bundle_identity", "archive_identity", "total_bytes", "chunk_bytes", "chunk_count"}

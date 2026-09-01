@@ -76,6 +76,15 @@ The controller validates the logical worker binding and retains the result in
 its append-only ledger. It derives `mncs-fabric.worker-liveness.v0.1` from
 authenticated contact; an expired lease is `UNKNOWN`, not presumed available.
 
+`worker.capability.request` / `worker.capability.result` are additive typed
+management messages in protocol v0.1. Their nested request/result contracts
+are versioned separately as `mncs-fabric.capability-request.v0.1` and
+`mncs-fabric.capability-result.v0.1`. They name one allowlisted capability
+family, one operation, and one exact structured argument object. They never
+carry a shell string, executable selector, password, or remote-login action.
+Protected workers enforce explicit host profiles and bounded leases; unsupported
+operations remain `SKIPPED`/`UNKNOWN`.
+
 An optional EA-NEXT-005 challenge is carried as a validated dispatch companion.
 Its exact subject/candidate/bundle/policy/runner scope, nonce, and validity
 window are identity-bound into the request payload. The worker copies the

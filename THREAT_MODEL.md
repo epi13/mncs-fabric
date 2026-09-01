@@ -60,6 +60,39 @@ worker liveness are evaluated separately: retained evidence cannot remain a curr
 availability claim after expiry or worker loss. Capability presence never grants
 execution, workspace, filesystem, shell, SSH, MCP, or semantic routing authority.
 
+### Privileged capability broker boundary
+
+The additive `mncs-fabric.capability-broker.v0.1` contracts model privileged
+worker control as an explicit intent boundary. Capability families and operation
+argument shapes are allowlisted and identity-addressed; command strings,
+caller-selected executables, shell fragments, interactive passwords, SSH, and
+WinRM are not protocol values. Protected profiles require bounded leases for
+destructive families, bind them to worker and experiment identities, and retain
+grant/revoke/expiry/cleanup history. Request results are durably replayed by
+exact request identity so a retry or broker restart does not repeat a completed
+operation. Audit records are append-only and redact secret-shaped fields and
+bounded output.
+
+The Linux adapter resolves fixed absolute system tools and invokes them with
+`shell=False`; path, service, sysctl, device, cgroup, and package inputs are
+validated against fixed policy. The Windows adapter runs in a LocalSystem
+service boundary and uses a named pipe with an explicit DACL for LocalSystem,
+Administrators, and one configured worker SID. The existing worker-to-controller
+capability messages use the enrolled mTLS transport and canonical envelope
+validation. `worker-03` unrestricted mode is explicit operator policy, not a
+hostname-derived exception, and it still receives structured operations only.
+Unsupported adapter operations return `SKIPPED` rather than falling back to a
+privileged shell. Requirements reconciliation probes state before mutation and
+reports `UNKNOWN` when compliance cannot be established.
+
+This boundary does not attest to host honesty, kernel state, package provenance,
+service semantics, or experiment correctness. A root or LocalSystem compromise,
+profile/ACL tampering, filesystem race outside the adapter's checks, package or
+driver supply-chain compromise, and target-image integration defects remain
+residual risks. Windows service installation and the deferred Linux
+mount/namespace/user/container/driver/firewall/boot adapters require target-host
+validation before production use.
+
 Execution-target references bind consumer-provided authorization provenance to one
 logical worker and factual admission requirements. Persistent target dispatch
 re-evaluates current membership/revocation, same-OS-user authenticated consumer
@@ -208,6 +241,11 @@ The current implementation detects or bounds:
   duplicate results with `UNKNOWN`/`FAIL` dominance; and
 - scoped EA-NEXT-005 challenge identity, nonce/window copying into receipts,
   single-use replay consumption, and persisted replay-store linkage;
+- capability request/result/profile/lease identity substitution, malformed
+  structured arguments, shell metacharacter injection, unsafe broker paths,
+  wrong-worker lease use, expired/revoked leases, duplicate privileged request
+  replay, non-canonical local frames, unauthorized Unix peer UIDs, and Windows
+  named-pipe ACL policy;
 
 The optional protocol HMAC boundary detects message tampering and unknown or
 revoked key IDs. It authenticates canonical contents only; it does not provide

@@ -1,0 +1,27 @@
+[Unit]
+Description=MNCS Fabric capability broker for %i
+After=local-fs.target
+Before=mncs-fabric-worker@%i.service
+
+[Service]
+Type=simple
+# The broker is the only root-owned component. It accepts typed capability
+# requests over AF_UNIX and never accepts a command string or shell fragment.
+User=root
+Group=root
+Environment=PYTHONPATH=/opt/mncs-fabric/src
+ExecStart=/usr/bin/python3 -m mncs_fabric.capability_broker --profile /etc/mncs-fabric/%i.capability.json --socket /run/mncs-fabric/%i-capability.sock --allowed-uid ${MNCS_FABRIC_WORKER_UID} --state /var/lib/mncs-fabric/%i-capability.jsonl
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=no
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/mncs-fabric /var/lib/mncs-fabric /opt/mncs /var/lib/mncs
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

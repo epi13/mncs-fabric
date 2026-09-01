@@ -1,0 +1,52 @@
+{
+  "profiles": [
+    {
+      "schema_version": "mncs-fabric.host-privilege-profile.v0.1",
+      "worker_identity": "worker-03",
+      "platform": "linux",
+      "mode": "unrestricted",
+      "allowed_capabilities": ["boot-management", "cgroup-management", "container-management", "device-access", "driver-management", "ebpf", "experiment-directory-management", "experiment-user-management", "firewall-management", "hardware-observation", "kernel-module-management", "kernel-parameter-management", "mount-management", "namespace-management", "package-management", "performance-counters", "service-management", "system-observation", "system-reboot", "system-shutdown"],
+      "experiment_roots": ["/opt/mncs", "/var/lib/mncs", "/var/lib/mncs/experiments", "/run/mncs"],
+      "device_roots": ["/dev/dri", "/dev/kvm"],
+      "sysctl_allowlist": ["kernel.bpf_stats_enabled", "kernel.nmi_watchdog", "kernel.perf_event_paranoid", "kernel.sched_autogroup_enabled", "kernel.unprivileged_bpf_disabled", "vm.max_map_count", "vm.nr_hugepages", "vm.overcommit_memory"],
+      "service_allowlist": [],
+      "cgroup_root": "/sys/fs/cgroup/mncs",
+      "lease_required": [],
+      "automatic_leases": false,
+      "claim_boundary": "operator host policy; not hostname-derived authorization or attestation",
+      "profile_identity": "sha256:5edd79a903684cd5fe0308752aad339f89e88149642309fac8e09eb3e36bd3ce"
+    },
+    {
+      "schema_version": "mncs-fabric.host-privilege-profile.v0.1",
+      "worker_identity": "worker-02",
+      "platform": "linux",
+      "mode": "capability-broker",
+      "allowed_capabilities": ["boot-management", "cgroup-management", "container-management", "device-access", "driver-management", "ebpf", "experiment-directory-management", "experiment-user-management", "firewall-management", "hardware-observation", "kernel-module-management", "kernel-parameter-management", "mount-management", "namespace-management", "package-management", "performance-counters", "service-management", "system-observation", "system-reboot", "system-shutdown"],
+      "experiment_roots": ["/opt/mncs", "/var/lib/mncs", "/var/lib/mncs/experiments", "/run/mncs"],
+      "device_roots": ["/dev/dri", "/dev/kvm"],
+      "sysctl_allowlist": ["kernel.bpf_stats_enabled", "kernel.nmi_watchdog", "kernel.perf_event_paranoid", "kernel.sched_autogroup_enabled", "kernel.unprivileged_bpf_disabled", "vm.max_map_count", "vm.nr_hugepages", "vm.overcommit_memory"],
+      "service_allowlist": ["fabric-worker", "mncs-experiment"],
+      "cgroup_root": "/sys/fs/cgroup/mncs",
+      "lease_required": ["boot-management", "cgroup-management", "container-management", "driver-management", "experiment-user-management", "firewall-management", "kernel-module-management", "mount-management", "namespace-management", "package-management", "service-management", "system-reboot", "system-shutdown"],
+      "automatic_leases": false,
+      "claim_boundary": "operator host policy; not hostname-derived authorization or attestation",
+      "profile_identity": "sha256:fb7789413dced0c943c35e87bd5a192f9488b30f2904045bdbc50dda4b875d06"
+    },
+    {
+      "schema_version": "mncs-fabric.host-privilege-profile.v0.1",
+      "worker_identity": "windows-worker",
+      "platform": "windows",
+      "mode": "windows-capability-broker",
+      "allowed_capabilities": ["container-management", "device-access", "driver-management", "experiment-directory-management", "experiment-user-management", "firewall-management", "hardware-observation", "package-management", "service-management", "system-observation", "system-reboot", "system-shutdown"],
+      "experiment_roots": ["C:\\ProgramData\\MNCS", "C:\\ProgramData\\MNCS\\experiments"],
+      "device_roots": [],
+      "sysctl_allowlist": ["kernel.bpf_stats_enabled", "kernel.nmi_watchdog", "kernel.perf_event_paranoid", "kernel.sched_autogroup_enabled", "kernel.unprivileged_bpf_disabled", "vm.max_map_count", "vm.nr_hugepages", "vm.overcommit_memory"],
+      "service_allowlist": ["fabric-worker", "mncs-experiment"],
+      "cgroup_root": null,
+      "lease_required": ["container-management", "driver-management", "experiment-user-management", "firewall-management", "package-management", "service-management", "system-reboot", "system-shutdown"],
+      "automatic_leases": false,
+      "claim_boundary": "operator host policy; not hostname-derived authorization or attestation",
+      "profile_identity": "sha256:60d86f6e1c20c5cdfa98366217907526d38a7a5e3e9e1c780cca070dcec574ad"
+    }
+  ]
+}

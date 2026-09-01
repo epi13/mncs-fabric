@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric host privilege profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "platform", "mode", "allowed_capabilities", "experiment_roots", "device_roots", "sysctl_allowlist", "service_allowlist", "cgroup_root", "lease_required", "automatic_leases", "claim_boundary", "profile_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.host-privilege-profile.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "platform": {"enum": ["linux", "windows"]},
+    "mode": {"enum": ["unrestricted", "capability-broker", "windows-capability-broker"]},
+    "allowed_capabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "experiment_roots": {"type": "array", "items": {"type": "string"}},
+    "device_roots": {"type": "array", "items": {"type": "string"}},
+    "sysctl_allowlist": {"type": "array", "items": {"type": "string"}},
+    "service_allowlist": {"type": "array", "items": {"type": "string"}},
+    "cgroup_root": {"type": ["string", "null"]},
+    "lease_required": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "automatic_leases": {"type": "boolean"},
+    "claim_boundary": {"const": "operator host policy; not hostname-derived authorization or attestation"},
+    "profile_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

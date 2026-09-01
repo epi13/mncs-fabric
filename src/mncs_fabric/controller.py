@@ -7,7 +7,7 @@ from pathlib import Path
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait
-from typing import Any
+from typing import Any, Mapping
 
 from .canonical import sha256_identity, verify_identity
 from .challenges import bind_challenge_to_receipt
@@ -40,6 +40,11 @@ from .worker_state import (
     validate_worker_description,
 )
 from .certify import validate_certification
+from .capability_broker import (
+    build_capability_request,
+    validate_capability_request,
+    validate_capability_result,
+)
 from .fleet_ops import FleetManager
 from .inventory import validate_worker_inventory
 from .management import ManagementStore
@@ -285,6 +290,64 @@ class LocalController:
         if response.get("message_type") != "worker.management.result":
             raise ProtocolError("worker management response is invalid")
         return response["payload"]["state"]
+
+    def capability_via(
+        self,
+        transport: EnvelopeTransport,
+        *,
+        worker_id: str,
+        capability: str,
+        operation: str,
+        arguments: Mapping[str, Any] | None = None,
+        experiment_identity: str | None = None,
+        agent_session: str | None = None,
+        lease_identity: str | None = None,
+        timeout: float | None = 90.0,
+    ) -> dict[str, Any]:
+        """Request one structured host capability through the worker protocol.
+
+        The controller constructs no privileged argv and never falls back to
+        SSH, sudo, WinRM, or a remote shell. The worker-local broker applies
+        the selected host profile and returns a bounded, audited result.
+        """
+
+        request = build_capability_request(
+            worker_identity=worker_id,
+            capability=capability,
+            operation=operation,
+            arguments=arguments,
+            experiment_identity=experiment_identity,
+            agent_session=agent_session,
+            lease_identity=lease_identity,
+        )
+        checked = validate_capability_request(request, expected_worker_id=worker_id)
+        created = utc_now()
+        expires = (datetime.fromisoformat(created.replace("Z", "+00:00")).astimezone(timezone.utc) + timedelta(minutes=10)).isoformat().replace("+00:00", "Z")
+        request_id = "capability-" + checked["request_identity"][7:]
+        envelope = make_envelope(
+            "worker.capability.request",
+            controller_id=self.controller_id,
+            worker_id=worker_id,
+            request_id=request_id,
+            job_id="worker-capability",
+            nonce="capability-" + checked["request_identity"][7:47],
+            payload={"capability_request": checked},
+            created_at=created,
+            expires_at=expires,
+        )
+        self.ledger.append("worker.capability.request", envelope)
+        response = validate_envelope(
+            self._transport_request(transport, envelope, timeout=timeout)
+            if hasattr(self, "_transport_request")
+            else transport.request(envelope)
+        )
+        if response.get("message_type") != "worker.capability.result" or response.get("worker_id") != worker_id:
+            raise ProtocolError("worker capability response identity is invalid")
+        result = validate_capability_result(response["payload"].get("result"), expected_worker_id=worker_id)
+        if result["request_identity"] != checked["request_identity"]:
+            raise ProtocolError("worker capability response does not match the request")
+        self.ledger.append("worker.capability.result", result)
+        return result
 
     def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric experiment machine requirements",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "experiment_identity", "capabilities", "packages", "sysctl", "services", "system", "experiment_directory", "captured_at", "claim_boundary", "requirements_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.experiment-requirements.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "experiment_identity": {"type": "string", "minLength": 1, "maxLength": 256},
+    "capabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "packages": {"type": "array", "uniqueItems": true, "items": {"type": "string"}},
+    "sysctl": {"type": "object", "additionalProperties": {"type": ["string", "number"]}},
+    "services": {"type": "object", "additionalProperties": {"enum": ["running", "stopped", "enabled", "disabled"]}},
+    "system": {"type": "object", "additionalProperties": false, "required": ["reboot", "shutdown"], "properties": {"reboot": {"type": "boolean"}, "shutdown": {"type": "boolean"}}},
+    "experiment_directory": {"type": ["string", "null"], "maxLength": 512},
+    "captured_at": {"type": "string", "format": "date-time"},
+    "claim_boundary": {"const": "structured desired machine state; not a command script or attestation"},
+    "requirements_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

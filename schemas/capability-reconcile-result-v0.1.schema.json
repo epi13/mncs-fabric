@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MNCS Fabric capability reconciliation result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "worker_identity", "experiment_identity", "requirements_identity", "lease_identity", "disposition", "requests", "observations", "results", "changed", "claim_boundary", "reconcile_identity"],
+  "properties": {
+    "schema_version": {"const": "mncs-fabric.capability-reconcile-result.v0.1"},
+    "worker_identity": {"type": "string", "minLength": 1},
+    "experiment_identity": {"type": "string", "minLength": 1},
+    "requirements_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "lease_identity": {"type": ["string", "null"], "pattern": "^sha256:[0-9a-f]{64}$"},
+    "disposition": {"enum": ["PASS", "FAIL", "UNKNOWN"]},
+    "requests": {"type": "array", "items": {"$ref": "capability-request-v0.1.schema.json"}},
+    "observations": {"type": "array", "items": {"$ref": "capability-result-v0.1.schema.json"}},
+    "results": {"type": "array", "items": {"$ref": "capability-result-v0.1.schema.json"}},
+    "changed": {"type": "boolean"},
+    "claim_boundary": {"const": "typed desired-state reconciliation; not proof of machine honesty or experiment correctness"},
+    "reconcile_identity": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

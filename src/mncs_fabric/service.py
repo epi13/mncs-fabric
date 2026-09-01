@@ -17,6 +17,12 @@ from .certify import certify_inventory, format_certification
 from .desired_state import resolve_desired_state, default_profiles_for_platform
 from .inventory import collect_worker_inventory
 from .maintenance import build_maintenance_plan, format_plan
+from .capability_broker import (
+    build_capability_request,
+    build_experiment_requirements,
+    validate_capability_request,
+    validate_experiment_requirements,
+)
 from . import __version__
 
 
@@ -76,6 +82,18 @@ class FabricService:
     def certify_local(self, label: str, *, profiles: list[str] | None = None) -> dict[str, Any]:
         inventory = self.inventory(label)
         return certify_inventory(inventory, profiles=list(profiles or []))
+
+    def capability_request(self, **kwargs: Any) -> dict[str, Any]:
+        return build_capability_request(**kwargs)
+
+    def validate_capability_request(self, request: object, *, worker_id: str | None = None) -> dict[str, Any]:
+        return validate_capability_request(request, expected_worker_id=worker_id)
+
+    def experiment_requirements(self, **kwargs: Any) -> dict[str, Any]:
+        return build_experiment_requirements(**kwargs)
+
+    def validate_experiment_requirements(self, requirements: object, *, worker_id: str | None = None) -> dict[str, Any]:
+        return validate_experiment_requirements(requirements, expected_worker_id=worker_id)
 
     def format_plan(self, plan: dict[str, Any]) -> str:
         return format_plan(plan)

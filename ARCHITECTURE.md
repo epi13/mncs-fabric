@@ -93,6 +93,18 @@ Management state is distinct from liveness; the scheduler and the worker both
 refuse ordinary work while a node is draining, in maintenance, degraded, or
 quarantined. See [Fleet management](docs/FLEET_MANAGEMENT.md).
 
+`capability_broker.py` owns the additive `mncs-fabric.capability-broker.v0.1`
+contracts for privileged worker control. A request names one capability family,
+one enumerated operation, and one exact structured argument object; it never
+contains a command string or caller-selected executable. Explicit worker
+profiles select `unrestricted` mode for sacrificial `worker-03`, a protected
+Linux broker for `worker-02`, or the Windows broker profile. Protected
+destructive operations require bounded, worker- and experiment-bound leases.
+The broker records append-only audit and replay-result ledgers and returns
+`UNKNOWN` or `SKIPPED` when current state or an adapter is unavailable. Linux
+uses fixed `shell=False` argv; Windows uses a LocalSystem named-pipe endpoint
+with a worker-SID DACL. See [Capability broker](docs/CAPABILITY_BROKER.md).
+
 `lifecycle.py` owns the additive `mncs-fabric.*.v0.1` commissioning contracts:
 single-use enrollment authorization, bounded bootstrap request, immutable
 approval/denial/expiry decision, fleet membership/revocation, and authenticated
