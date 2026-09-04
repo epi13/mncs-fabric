@@ -21,6 +21,46 @@ from .worker_state import validate_worker_description
 
 RENDEZVOUS_SCHEMA = "mncs-fabric.worker-rendezvous.v0.1"
 
+# Description fields that change on every observation without changing what
+# the worker is: sample times, derived identities that embed those times,
+# and volatile telemetry readings (available memory, load). Heartbeat
+# change detection ignores exactly these paths so routine telemetry drift
+# cannot grow the ledger; capability, version, topology-membership, and
+# resource-total changes still record. Live scheduling always reads the
+# full latest description from the session, never this key.
+_VOLATILE_DESCRIPTION_KEYS = frozenset({
+    "captured_at",
+    "description_identity",
+    "record_id",
+    "resource_snapshot_identity",
+    "runtime_profile_identity",
+    "topology_identity",
+    "host_memory_available_bytes",
+    "free_memory_bytes",
+    "load_1m",
+    "load_5m",
+    "load_15m",
+})
+
+
+def material_description_key(description: Mapping[str, Any]) -> bytes:
+    """Return the stable identity of a worker description for change detection."""
+
+    from .canonical import canonical_json_bytes
+
+    def _normalize(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                key: _normalize(item)
+                for key, item in value.items()
+                if key not in _VOLATILE_DESCRIPTION_KEYS
+            }
+        if isinstance(value, (list, tuple)):
+            return [_normalize(item) for item in value]
+        return value
+
+    return canonical_json_bytes(_normalize(dict(description)))
+
 
 def _expiry(seconds: float) -> str:
     return (datetime.now(timezone.utc) + timedelta(seconds=seconds)).isoformat().replace("+00:00", "Z")
@@ -158,10 +198,9 @@ class RendezvousCoordinator:
         if message.get("worker_id") != session.worker_id or message.get("controller_id") != self.controller_id:
             raise ProtocolError("worker rendezvous message identity is invalid")
         if message["message_type"] == "worker.heartbeat":
-            old_desc_id = session.description.get("description_identity")
+            old_key = material_description_key(session.description)
             command = session.heartbeat(message["payload"]["description"])
-            new_desc_id = session.description.get("description_identity")
-            if old_desc_id != new_desc_id:
+            if material_description_key(session.description) != old_key:
                 self._record("description_changed", session)
             return self._ack(session, command)
         if message["message_type"] in {"execution.result", "bundle.response", "dispatch.ack", "replay.disposition"}:

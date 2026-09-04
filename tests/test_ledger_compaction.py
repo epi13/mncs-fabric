@@ -180,6 +180,91 @@ class TestLedgerCompaction(unittest.TestCase):
             self.assertEqual(coordinator.ledger.verify()["outcome"], "PASS")
 
 
+class TestMaterialDescriptionChange(unittest.TestCase):
+    def _descriptions(self, worker_id: str = "worker-03") -> tuple[dict, dict]:
+        from mncs_fabric.node import collect_node_capabilities
+        from mncs_fabric.resources import capture_resource_snapshot
+        from mncs_fabric.worker_state import build_worker_description
+
+        node = collect_node_capabilities(worker_id)
+        first = build_worker_description(
+            worker_id=worker_id,
+            node=node,
+            resource_snapshot=capture_resource_snapshot(
+                worker_id, node_fingerprint=node["node_fingerprint"]
+            ),
+        )
+        second = build_worker_description(
+            worker_id=worker_id,
+            node=node,
+            resource_snapshot=capture_resource_snapshot(
+                worker_id, node_fingerprint=node["node_fingerprint"]
+            ),
+        )
+        return first, second
+
+    def test_volatile_telemetry_drift_is_immaterial(self) -> None:
+        from mncs_fabric.rendezvous import material_description_key
+
+        first, second = self._descriptions()
+        # Fresh samples always differ (timestamps, available memory).
+        self.assertNotEqual(
+            first.get("description_identity"), second.get("description_identity")
+        )
+        self.assertEqual(material_description_key(first), material_description_key(second))
+
+    def test_stable_field_change_is_material(self) -> None:
+        import copy
+
+        from mncs_fabric.canonical import attach_identity
+        from mncs_fabric.rendezvous import material_description_key
+
+        first, _ = self._descriptions()
+        changed = copy.deepcopy(first)
+        changed["worker_service_version"] = "0.2.0a99"
+        changed.update(attach_identity(changed, "description_identity"))
+        self.assertNotEqual(
+            material_description_key(first), material_description_key(changed)
+        )
+
+    def test_heartbeat_drift_records_nothing_stable_change_records(self) -> None:
+        import copy
+
+        from mncs_fabric.canonical import attach_identity
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "rendezvous.jsonl"
+            coordinator = RendezvousCoordinator(
+                "test-controller",
+                path,
+                known_workers={"worker-03": {"membership_status": "ENROLLED"}},
+            )
+            first, second = self._descriptions()
+            opened = coordinator.open(
+                "worker-03",
+                "fp",
+                {"request_id": "req-1", "payload": {"description": first}},
+            )
+            session_id = opened["payload"]["session_id"]
+            base = len(coordinator.ledger.all_records())
+            message = {
+                "message_type": "worker.heartbeat",
+                "worker_id": "worker-03",
+                "controller_id": "test-controller",
+                "payload": {"description": second},
+            }
+            coordinator.message(session_id, message)
+            self.assertEqual(len(coordinator.ledger.all_records()), base)
+            changed = copy.deepcopy(second)
+            changed["worker_service_version"] = "0.2.0a99"
+            changed.update(attach_identity(changed, "description_identity"))
+            message["payload"] = {"description": changed}
+            coordinator.message(session_id, message)
+            records = coordinator.ledger.all_records()
+            self.assertEqual(len(records), base + 1)
+            self.assertEqual(records[-1]["record"].get("event"), "description_changed")
+
+
 class TestLedgerCli(unittest.TestCase):
     def test_compact_and_verify_commands(self) -> None:
         from mncs_fabric import cli

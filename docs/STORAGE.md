@@ -23,6 +23,12 @@ reader caches that retained full history grew resident memory into the
 multi-gigabyte range with it. Current builds only record rendezvous
 `connected`, `description_changed`, `revoked`, and `disconnected` events,
 and `FabricLedger` verifies streams without retaining history.
+`description_changed` fires only on material change: change detection
+compares a normalized key that ignores sample times, derived identities
+that embed those times, and volatile telemetry (available memory, load,
+free VRAM). Capability, version, topology-membership, and resource-total
+changes still record. Live scheduling always reads the full latest
+description from the session.
 
 `FabricLedger.compact(keep=..., reason=...)` reclaims a flooded ledger:
 the keep predicate selects retention while streaming, kept records are
