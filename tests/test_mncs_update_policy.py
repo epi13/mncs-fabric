@@ -97,7 +97,10 @@ class TestUpdatePolicyMncsExecution(unittest.TestCase):
                 ],
                 capture_output=True,
                 text=True,
-                timeout=1200,
+                # Full finite-domain execution is minutes-long by toolchain
+                # design (see docs/MNCS_UPDATE_POLICY.md pressure notes):
+                # ~9 min CPU locally, over 20 min on a hosted runner.
+                timeout=3600,
             )
             self.assertEqual(
                 completed.returncode,

@@ -49,8 +49,11 @@ not exist yet; see the pressure notes in the final report.
 - Exhaustive finite-domain execution is expensive: 245 cases over this
   14-state decision function took 9.4 min of host CPU (~2.3 s/case) on
   the research-bytecode backend, with ~8k canonical-hash operations per
-  trivial case. Compile happens once; the cost is per-case
-  observation/validation. Status is `PASS` with all 245
+  trivial case, and exceeded 20 minutes on a hosted GitHub runner (the
+  conformance test allows 3600 s; the workflow allows 90 min). Compile
+  happens once; the cost is per-case observation/validation — the
+  frozen-artifact `execute` path shows the same ~2 s/case marginal, so
+  no faster execution tier exists today. Status is `PASS` with all 245
   `expectation_met`, so this is scale cost, not a correctness cliff,
   but it bounds how large an executable Fabric policy can grow before
   the edit/execute loop degrades. Candidate owner: `mncs-language`
