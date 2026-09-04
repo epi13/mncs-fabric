@@ -153,8 +153,32 @@ class TestBoundedStorageArchitecture(unittest.TestCase):
             # Ledger record count MUST STILL BE 1 (connected), not 501!
             self.assertEqual(len(coord.ledger.all_records()), 1)
 
+            # Timestamp-only drift (a fresh sample with no material change,
+            # exactly what a per-beat worker report looks like) must also
+            # record nothing: the old identity-based comparison re-created
+            # the heartbeat flood in slower motion in production.
+            drift = _sample_worker_description("worker-1", sequence=2)
+            self.assertNotEqual(
+                drift.get("description_identity"), desc.get("description_identity")
+            )
+            drift_msg = {
+                "message_type": "worker.heartbeat",
+                "controller_id": "controller-1",
+                "worker_id": "worker-1",
+                "payload": {"description": drift},
+            }
+            drift_ack = coord.message(session_id, drift_msg)
+            self.assertEqual(drift_ack["message_type"], "worker.heartbeat.ack")
+            self.assertEqual(len(coord.ledger.all_records()), 1)
+
             # Now update description (e.g. capabilities change)
-            desc2 = _sample_worker_description("worker-1", sequence=2)
+            import copy
+
+            from mncs_fabric.canonical import attach_identity as _attach
+
+            desc2 = copy.deepcopy(drift)
+            desc2["worker_service_version"] = "0.2.0a99"
+            desc2.update(_attach(desc2, "description_identity"))
             hb_msg2 = {
                 "message_type": "worker.heartbeat",
                 "controller_id": "controller-1",
