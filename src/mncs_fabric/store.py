@@ -15,6 +15,7 @@ from .canonical import canonical_json_bytes, sha256_identity
 from .errors import StorageError
 
 LEDGER_SCHEMA = "mncs-fabric.ledger.v0.1"
+COMPACTION_SCHEMA = "mncs-fabric.ledger-compaction.v0.1"
 
 
 @dataclass(frozen=True)
@@ -465,3 +466,105 @@ class FabricLedger:
                 for entry in self._stream_unlocked()
                 if record_type is None or entry.get("record_type") == record_type
             ]
+
+    def compact(
+        self,
+        *,
+        keep: Callable[[dict[str, Any]], bool],
+        reason: str,
+        max_kept: int = 10000,
+    ) -> dict[str, Any]:
+        """Drop superseded entries and reseal the hash chain.
+
+        ``keep`` decides retention per validated entry while streaming. Kept
+        entries are rewritten with contiguous sequences and recomputed
+        ``previous_identity``/``entry_identity`` linkage; their record bytes
+        (and therefore ``record_identity`` values) are unchanged. A compaction
+        receipt binding the pre-compact head identity, the pre/post counts,
+        and the operator reason is appended as the final record.
+
+        Only entries whose entry identity is never referenced by another
+        record may be dropped; the caller selects a predicate with that
+        property (for example superseded rendezvous heartbeats). ``max_kept``
+        fails the compaction closed instead of buffering an unbounded kept
+        set in RAM.
+        """
+
+        if not callable(keep):
+            raise StorageError("ledger compaction requires a keep predicate")
+        if not isinstance(reason, str) or not reason or len(reason) > 512 or "\x00" in reason:
+            raise StorageError("ledger compaction reason must be bounded non-empty text")
+        if not isinstance(max_kept, int) or not 1 <= max_kept <= 100000:
+            raise StorageError("ledger compaction kept bound is outside the bounded range")
+        from datetime import datetime, timezone
+
+        with _exclusive_lock(self.path):
+            count, last_entry, diagnostics, _ = self._verify_unlocked()
+            if diagnostics:
+                raise StorageError("ledger has an unrepaired truncated tail")
+            kept: list[dict[str, Any]] = []
+            for entry in self._stream_unlocked():
+                if keep(entry):
+                    kept.append(entry)
+                    if len(kept) > max_kept:
+                        raise StorageError("ledger compaction kept set exceeds its bound")
+            dropped = count - len(kept)
+            resealed: list[dict[str, Any]] = []
+            previous_identity: str | None = None
+            for index, entry in enumerate(kept, start=1):
+                resealed_entry: dict[str, Any] = {
+                    "schema_version": LEDGER_SCHEMA,
+                    "sequence": index,
+                    "previous_identity": previous_identity,
+                    "record_type": entry.get("record_type"),
+                    "record": entry.get("record"),
+                    "record_identity": entry.get("record_identity"),
+                }
+                resealed_entry["entry_identity"] = sha256_identity(resealed_entry)
+                resealed.append(resealed_entry)
+                previous_identity = resealed_entry["entry_identity"]
+            receipt = {
+                "schema_version": COMPACTION_SCHEMA,
+                "reason": reason,
+                "pre_compact_head": last_entry["entry_identity"] if last_entry else None,
+                "pre_compact_count": count,
+                "kept_count": len(resealed),
+                "dropped_count": dropped,
+                "compacted_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                "claim_boundary": "compaction receipt; dropped entries were superseded and unreferenced",
+            }
+            receipt_identity = sha256_identity(receipt)
+            receipt_entry: dict[str, Any] = {
+                "schema_version": LEDGER_SCHEMA,
+                "sequence": len(resealed) + 1,
+                "previous_identity": previous_identity,
+                "record_type": "ledger.compaction",
+                "record": receipt,
+                "record_identity": receipt_identity,
+            }
+            receipt_entry["entry_identity"] = sha256_identity(receipt_entry)
+            resealed.append(receipt_entry)
+            staged = self.path.with_name(self.path.name + f".compact.{os.getpid()}.tmp")
+            with staged.open("wb") as stream:
+                for item in resealed:
+                    stream.write(canonical_json_bytes(item) + b"\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(staged, self.path)
+            stat = self.path.stat()
+            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            self._record_count = len(resealed)
+            self._last_entry = resealed[-1]
+            self._diagnostics = []
+            self._partial = False
+            return {
+                "schema_version": COMPACTION_SCHEMA,
+                "reason": reason,
+                "pre_compact_head": receipt["pre_compact_head"],
+                "pre_compact_count": count,
+                "kept_count": len(resealed) - 1,
+                "dropped_count": dropped,
+                "post_compact_count": len(resealed),
+                "compaction_identity": receipt_entry["entry_identity"],
+                "claim_boundary": receipt["claim_boundary"],
+            }

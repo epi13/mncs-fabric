@@ -369,6 +369,23 @@ def build_parser() -> argparse.ArgumentParser:
             help="bundle cache root; defaults to the controller execution-bundle consumer cache",
         )
 
+    ledger = sub.add_parser("ledger", help="verify or compact a controller-owned append-only ledger")
+    ledger_sub = ledger.add_subparsers(dest="ledger_command", required=True)
+    ledger_verify = ledger_sub.add_parser("verify", help="verify ledger hash linkage without retaining history")
+    ledger_verify.add_argument("path", type=_path, help="ledger file to verify")
+    ledger_compact = ledger_sub.add_parser(
+        "compact", help="drop superseded heartbeat records and reseal the hash chain"
+    )
+    ledger_compact.add_argument("path", type=_path, help="ledger file to compact")
+    ledger_compact.add_argument(
+        "--policy",
+        required=True,
+        choices=("rendezvous-heartbeats",),
+        help="retention policy; only superseded rendezvous heartbeats are dropped",
+    )
+    ledger_compact.add_argument("--reason", required=True, help="bounded operator reason recorded in the compaction receipt")
+    ledger_compact.add_argument("--dry-run", action="store_true", help="report drops without rewriting the ledger")
+
     fleet = sub.add_parser("fleet", help="inspect durable fleet membership and current presence")
     fleet_sub = fleet.add_subparsers(dest="fleet_command", required=True)
     fleet_list = fleet_sub.add_parser("list", help="list last-known fleet members")
@@ -713,6 +730,30 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = cache.gc(dry_run=args.dry_run or not args.confirm, confirm=args.confirm)
             write_json(None, result)
+            return 0
+        if args.command == "ledger":
+            from .rendezvous import RendezvousCoordinator, compact_superseded_heartbeats
+            from .store import FabricLedger
+
+            ledger = FabricLedger(args.path)
+            if args.ledger_command == "verify":
+                write_json(None, ledger.verify())
+                return 0
+            if args.dry_run:
+                import shutil
+                import tempfile
+
+                with tempfile.TemporaryDirectory(prefix="mncs-fabric-ledger-dry-run-") as tmp:
+                    shadow = Path(tmp) / args.path.name
+                    shutil.copy2(args.path, shadow)
+                    shadow_coordinator = RendezvousCoordinator("ledger-compaction", shadow)
+                    report = compact_superseded_heartbeats(
+                        shadow_coordinator, reason=f"dry-run: {args.reason}"
+                    )
+                write_json(None, {**report, "dry_run": True})
+                return 0
+            coordinator = RendezvousCoordinator("ledger-compaction", args.path)
+            write_json(None, compact_superseded_heartbeats(coordinator, reason=args.reason))
             return 0
         if args.command == "worker" and args.worker_command == "artifact-stage":
             admin = FabricAdminClient.connect(args.admin_socket, timeout=90.0)

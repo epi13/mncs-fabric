@@ -342,3 +342,41 @@ class RendezvousCoordinator:
         if self.ledger.path.exists():
             stat = self.ledger.path.stat()
             self._generation_cache_token = (stat.st_size, stat.st_mtime_ns)
+
+
+def compact_superseded_heartbeats(
+    coordinator: "RendezvousCoordinator", *, reason: str
+) -> dict[str, Any]:
+    """Drop superseded heartbeat records from a rendezvous ledger.
+
+    Heartbeat entries embed a full worker description on every beat, so a
+    long-lived session grows its ledger without bound. A heartbeat is
+    superseded by any later heartbeat for the same (worker_id, session_id);
+    heartbeat entry identities are never referenced by other records, and
+    per-worker generation maxima survive on the retained ``connected`` and
+    latest-heartbeat records. Only the newest heartbeat per session is kept;
+    every non-heartbeat event is retained.
+    """
+
+    latest: dict[tuple[str, str], int] = {}
+    for entry in iter_ledger_records(coordinator.ledger, record_type="worker.rendezvous"):
+        record = entry.get("record", {})
+        if not isinstance(record, dict) or record.get("event") != "heartbeat":
+            continue
+        worker_id = record.get("worker_id")
+        session_id = record.get("session_id")
+        sequence = entry.get("sequence")
+        if isinstance(worker_id, str) and isinstance(session_id, str) and isinstance(sequence, int):
+            if sequence > latest.get((worker_id, session_id), 0):
+                latest[(worker_id, session_id)] = sequence
+
+    def keep(entry: dict[str, Any]) -> bool:
+        if entry.get("record_type") != "worker.rendezvous":
+            return True
+        record = entry.get("record", {})
+        if not isinstance(record, dict) or record.get("event") != "heartbeat":
+            return True
+        key = (record.get("worker_id"), record.get("session_id"))
+        return entry.get("sequence") == latest.get(key)
+
+    return coordinator.ledger.compact(keep=keep, reason=reason)
