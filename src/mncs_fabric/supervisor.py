@@ -418,16 +418,75 @@ def apply_staged_upgrade(*, python: str, source: str, previous: str | None) -> d
     if not Path(source).exists():
         return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": f"upgrade source does not exist: {source}"}
     installable = installable_upgrade_source(source)
+    provenance = _verify_apply_provenance(installable)
+    if provenance.get("disposition") == "FAIL":
+        return provenance
     probed = run_argv([python, "-m", "pip", "install", "--disable-pip-version-check", "--upgrade", str(installable)], timeout=180.0)
     if probed["returncode"] != 0:
-        return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": "pip install of staged Fabric source failed", "stdout": probed["stdout"], "stderr": probed["stderr"], "rollback": {"capability": "partial", "previous_version": previous}}
+        return {"disposition": "FAIL", "failure_class": "PACKAGE_FAILURE", "detail": "pip install of staged Fabric source failed", "stdout": probed["stdout"], "stderr": probed["stderr"], "provenance": provenance, "rollback": {"capability": "partial", "previous_version": previous}}
     return {
         "disposition": "PASS",
         "detail": f"activated staged Fabric source {source}",
         "restart_required": True,
         "stdout": probed["stdout"],
         "stderr": probed["stderr"],
+        "provenance": provenance,
         "rollback": {"capability": "partial", "previous_version": previous},
+    }
+
+
+def _verify_apply_provenance(installable: Path) -> dict[str, Any]:
+    """Establish what the apply step knows about staged artifact integrity.
+
+    A content-addressed descriptor (``artifact.json``) beside the staged
+    file must match the staged bytes exactly; a mismatch fails closed so a
+    substituted artifact can never be pip-installed as a trusted update. A
+    staged file without any descriptor, or a live operator checkout
+    directory, cannot prove its bytes: apply proceeds only as explicitly
+    unverified, never as validated. Callers surface ``provenance`` verbatim
+    so evidence distinguishes verified updates from operator trust.
+    """
+
+    from .errors import ValidationError as ArtifactValidationError
+    from .package_artifact import read_artifact_descriptor, verify_package_artifact
+
+    if installable.is_dir():
+        return {
+            "status": "UNVERIFIED",
+            "mode": "operator-checkout",
+            "detail": "staged source is a live directory; no artifact digest covers it",
+            "claim_boundary": "operator-placed checkout; not content-addressed or attested",
+        }
+    candidates = [installable.parent, default_stage_dir()]
+    checked = [str(directory) for directory in candidates]
+    for directory in candidates:
+        descriptor = read_artifact_descriptor(directory)
+        if descriptor is None:
+            continue
+        try:
+            verify_package_artifact(installable, descriptor)
+        except ArtifactValidationError as exc:
+            return {
+                "disposition": "FAIL",
+                "failure_class": "PACKAGE_FAILURE",
+                "detail": f"staged artifact does not match its descriptor in {directory}: {exc}",
+                "provenance": {"status": "REJECTED", "mode": "descriptor-mismatch"},
+            }
+        return {
+            "status": "VERIFIED",
+            "mode": "descriptor",
+            "artifact_identity": descriptor["artifact_identity"],
+            "digest": descriptor["digest"],
+            "version": descriptor["version"],
+            "descriptor_dir": str(directory),
+            "claim_boundary": "descriptor digest and size match staged bytes; not signature attestation",
+        }
+    return {
+        "status": "UNVERIFIED",
+        "mode": "operator-file",
+        "detail": f"no artifact descriptor covers {installable}; staged bytes are operator trust only",
+        "descriptor_dirs_checked": checked,
+        "claim_boundary": "operator-placed file; not content-addressed or attested",
     }
 
 

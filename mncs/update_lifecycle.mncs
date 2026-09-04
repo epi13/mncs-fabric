@@ -1,0 +1,319 @@
+mncs 0.6;
+
+// Fabric worker update lifecycle as language-owned source.
+//
+// This module reconstructs the controller/worker update-state machine from
+// `src/mncs_fabric/update_lifecycle.py` (`_TRANSITIONS`) as finite-domain
+// MNCS source. Python remains authoritative for transport, timers, and
+// persistence; this module owns the transition relation itself, so the
+// MNCS compiler executes the exact decision Fabric depends on.
+//
+// Migration debt: the Python table is still the runtime authority. The
+// exhaustive corpus in `mncs/update_lifecycle_corpus.json` is executed by
+// the real toolchain (`mncs experiment run`) and
+// `tests/test_mncs_update_policy.py` asserts full agreement between the
+// compiled MNCS execution and the Python implementation on every one of
+// the 196 state pairs. A transcription error here fails that test; it
+// cannot silently diverge.
+module fabric.update_lifecycle;
+
+enum UpdateState {
+    UPDATE_PLANNED,
+    DRAINING,
+    UPDATE_APPLYING,
+    UPDATE_APPLIED,
+    RESTART_PENDING,
+    DISCONNECT_EXPECTED,
+    RECONNECTING,
+    VERSION_VERIFYING,
+    CERTIFYING,
+    ROLLBACK_APPLYING,
+    READY,
+    ROLLED_BACK,
+    FAILED,
+    QUARANTINED
+}
+
+enum TransitionVerdict { ALLOWED, DENIED }
+
+fn transition_allowed(from: UpdateState, to: UpdateState) -> (result: TransitionVerdict) {
+    return match from {
+        UPDATE_PLANNED => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.ALLOWED,
+            UPDATE_APPLYING => TransitionVerdict.ALLOWED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+        DRAINING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.ALLOWED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+        UPDATE_APPLYING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.ALLOWED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        UPDATE_APPLIED => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.ALLOWED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+        RESTART_PENDING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.ALLOWED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+        DISCONNECT_EXPECTED => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.ALLOWED,
+            VERSION_VERIFYING => TransitionVerdict.ALLOWED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        RECONNECTING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.ALLOWED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        VERSION_VERIFYING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.ALLOWED,
+            ROLLBACK_APPLYING => TransitionVerdict.ALLOWED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.ALLOWED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        CERTIFYING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.ALLOWED,
+            READY => TransitionVerdict.ALLOWED,
+            ROLLED_BACK => TransitionVerdict.ALLOWED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        ROLLBACK_APPLYING => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.ALLOWED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.ALLOWED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        READY => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+        ROLLED_BACK => match to {
+            UPDATE_PLANNED => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.ALLOWED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        FAILED => match to {
+            UPDATE_PLANNED => TransitionVerdict.ALLOWED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.ALLOWED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        QUARANTINED => match to {
+            UPDATE_PLANNED => TransitionVerdict.ALLOWED,
+            DRAINING => TransitionVerdict.DENIED,
+            UPDATE_APPLYING => TransitionVerdict.DENIED,
+            UPDATE_APPLIED => TransitionVerdict.DENIED,
+            RESTART_PENDING => TransitionVerdict.DENIED,
+            DISCONNECT_EXPECTED => TransitionVerdict.DENIED,
+            RECONNECTING => TransitionVerdict.DENIED,
+            VERSION_VERIFYING => TransitionVerdict.DENIED,
+            CERTIFYING => TransitionVerdict.DENIED,
+            ROLLBACK_APPLYING => TransitionVerdict.DENIED,
+            READY => TransitionVerdict.DENIED,
+            ROLLED_BACK => TransitionVerdict.DENIED,
+            FAILED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+    };
+}
+
+// The experiment targets this wrapper so source-level call semantics are in
+// the executed path rather than merely present in the module.
+fn candidate(from: UpdateState, to: UpdateState) -> (result: TransitionVerdict) {
+    return transition_allowed(from, to);
+}
+
+// Lexicographic Fabric version precedence over parsed integer tuples.
+// A release (no prerelease suffix) is encoded by the caller as a large
+// prerelease value so it sorts after every alpha of the same X.Y.Z.
+fn version_less(
+    a_major: i32,
+    a_minor: i32,
+    a_patch: i32,
+    a_pre: i32,
+    b_major: i32,
+    b_minor: i32,
+    b_patch: i32,
+    b_pre: i32
+) -> (result: bool) {
+    if a_major < b_major {
+        return true;
+    }
+    if a_major > b_major {
+        return false;
+    }
+    if a_minor < b_minor {
+        return true;
+    }
+    if a_minor > b_minor {
+        return false;
+    }
+    if a_patch < b_patch {
+        return true;
+    }
+    if a_patch > b_patch {
+        return false;
+    }
+    return a_pre < b_pre;
+}
+
+fn version_candidate(
+    a_major: i32,
+    a_minor: i32,
+    a_patch: i32,
+    a_pre: i32,
+    b_major: i32,
+    b_minor: i32,
+    b_patch: i32,
+    b_pre: i32
+) -> (result: bool) {
+    return version_less(a_major, a_minor, a_patch, a_pre, b_major, b_minor, b_patch, b_pre);
+}

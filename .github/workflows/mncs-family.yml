@@ -1,0 +1,84 @@
+name: mncs-family
+# Fabric MNCS family verification: the repository's bounded MNCS check
+# suite is projected into mncs.check-result/1 and composed by mncs-actions
+# under a declared boundary. The rendered badge is backed by that
+# aggregate verdict, never hand-edited.
+#
+# Revision pin: immutable mncs-actions commit SHA (see
+# epi13/mncs-actions docs/revision-coherence.md). Never @main: a historical
+# workflow revision must not silently execute a newer action implementation.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  mncs:
+    # Pinned mncs-actions revision; internal action pins bake the same
+    # implementation (see epi13/mncs-actions revision-binding.json).
+    uses: epi13/mncs-actions/.github/workflows/mncs-family-verify.yml@731bebd7682099b0c4e4c8eefd9c4d79f521118d
+    with:
+      required-checks: project-tests
+      boundary: fabric-mncs-checks
+      fail-on-unknown: true
+      project-command: python3 -m pip install --quiet -e . && python3 scripts/mncs-project-check.py --output .mncs/project-check.json
+      project-check-id: project-tests
+      project-provider: mncs-fabric-project
+      project-result-file: .mncs/project-check.json
+      project-evidence-dir: .mncs/project-evidence
+      aggregate-evidence-dir: .mncs/aggregate-evidence
+      badge-label: MNCS checks
+      badge-file: docs/mncs-badge.svg
+      badge-sidecar-file: docs/mncs-badge.json
+      carrier-revision: 731bebd7682099b0c4e4c8eefd9c4d79f521118d
+      upload-artifacts: true
+
+  publish-badge:
+    name: Publish committed MNCS badge
+    needs: mncs
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/main' && github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the tested revision
+        # actions/checkout v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+
+      - name: Render the committed badge
+        # The direct action is pinned to the same immutable implementation
+        # revision used inside the reusable workflow. Let the action resolve
+        # its own embedded revision-binding; the carrier revision is recorded
+        # separately below.
+        uses: epi13/mncs-actions/actions/render-badge@f6b70a897632e5c077633be7777847ee9c78feab
+        with:
+          verdict: ${{ needs.mncs.outputs.verdict || 'INVALID' }}
+          label: MNCS checks
+          output-file: docs/mncs-badge.svg
+          sidecar-file: docs/mncs-badge.json
+          repository: ${{ github.repository }}
+          subject-commit: ${{ github.sha }}
+          boundary: fabric-mncs-checks
+          aggregate-digest: ${{ needs.mncs.outputs['aggregate-digest'] }}
+          manifest-digest: ${{ needs.mncs.outputs['manifest-digest'] }}
+          carrier-revision: 731bebd7682099b0c4e4c8eefd9c4d79f521118d
+
+      - name: Commit the refreshed badge
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/mncs-badge.svg docs/mncs-badge.json
+          if git diff --cached --quiet; then
+            echo 'Badge is already current.'
+            exit 0
+          fi
+          git commit -m 'chore: refresh MNCS fabric badge'
+          git push origin HEAD:main
