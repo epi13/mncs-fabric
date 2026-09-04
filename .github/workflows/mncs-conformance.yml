@@ -1,0 +1,62 @@
+name: mncs-conformance
+# Execute the Fabric update policy as MNCS source with the real toolchain.
+# Full-corpus execution is minutes-long (finite-domain observation cost;
+# see docs/MNCS_UPDATE_POLICY.md pressure notes), so this workflow runs
+# only when the policy, its corpus, or this workflow changes, plus weekly.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - mncs/**
+      - tests/test_mncs_update_policy.py
+      - .github/workflows/mncs-conformance.yml
+  pull_request:
+    paths:
+      - mncs/**
+      - tests/test_mncs_update_policy.py
+      - .github/workflows/mncs-conformance.yml
+  schedule:
+    - cron: "23 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    name: MNCS language conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      # Pinned mncs-language revision the checked-in corpus was generated
+      # and executed against. Bump with the corpus in the same commit.
+      MNCS_LANGUAGE_REV: 4f3146a97f92389490d3e8dffdf08266e3390968
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: mncs-fabric
+      - uses: actions/checkout@v4
+        with:
+          repository: epi13/mncs-language
+          ref: ${{ env.MNCS_LANGUAGE_REV }}
+          path: mncs-language
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: mncs-language
+      - run: python -m pip install -e ./mncs-fabric
+      - run: cargo build -p mncs-cli
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/update_lifecycle.mncs
+        working-directory: mncs-language
+      - name: Regenerate corpus and fail on drift
+        run: |
+          python3 mncs/gen_update_lifecycle_corpus.py
+          git diff --exit-code -- mncs/update_lifecycle_corpus.json
+        working-directory: mncs-fabric
+      - run: MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1 MNCS_LANGUAGE_CLI=$GITHUB_WORKSPACE/mncs-language/target/debug/mncs python -m unittest tests.test_mncs_update_policy -v
+        working-directory: mncs-fabric

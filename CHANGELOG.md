@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- Reclaim flooded append-only ledgers with `FabricLedger.compact`: a
+  streaming keep predicate, resealed hash chain, `max_kept` bound, and a
+  `ledger.compaction` receipt binding the pre-compact head, counts, and
+  operator reason. `mncs-fabric ledger compact --policy
+  rendezvous-heartbeats` drops superseded heartbeat records (newest beat
+  per session plus all non-heartbeat events survive); `--dry-run`
+  reports from a copy. Production result: 199,649 records / 1.1 GB down
+  to 160 records / 884 KB with a PASS verify and generation maxima
+  intact. See `docs/STORAGE.md`.
+- Verify staged update artifacts at apply time
+  (`supervisor.apply_staged_upgrade`): a descriptor mismatch fails
+  closed with `PACKAGE_FAILURE` before pip runs, and the result carries
+  `provenance` (`VERIFIED` descriptor, `UNVERIFIED` operator-file, or
+  `UNVERIFIED` operator-checkout) so evidence never implies trust that
+  was not established. See `docs/WORKER_UPDATE_PROTOCOL.md`.
+- Reconstruct the worker update-state machine and version precedence in
+  `mncs/update_lifecycle.mncs`, executed by the `mncs-language`
+  toolchain over an exhaustive 245-case corpus
+  (`mncs/update_lifecycle_corpus.json`); `tests/test_mncs_update_policy.py`
+  asserts full execution agreement with the Python implementation. CI
+  gains a path-filtered `mncs-conformance` workflow (pinned toolchain,
+  corpus drift check) and an `mncs-family` workflow projecting the
+  bounded suite through `mncs-actions` behind the README badge. See
+  `docs/MNCS_UPDATE_POLICY.md`.
+
 - Add provenance classes to worker capability observations
   (`worker-observed`, `operator-asserted`, `consumer-declared`). Exact-target
   admission now trusts only worker-observed and operator-asserted evidence:

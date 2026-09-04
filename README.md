@@ -1,5 +1,13 @@
 # MNCS Fabric
 
+[![MNCS checks](docs/mncs-badge.svg)](docs/mncs-badge.json)
+
+The MNCS checks badge is rendered by `mncs-actions` from the aggregate
+`fabric-mncs-checks` boundary verdict (bounded ledger/provenance/policy
+suite via `.github/workflows/mncs-family.yml`). Green means that
+workflow's required checks passed on the pictured revision; the sidecar
+links the evidence. It is never hand-edited.
+
 Fabric 0.2.0a18 includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
