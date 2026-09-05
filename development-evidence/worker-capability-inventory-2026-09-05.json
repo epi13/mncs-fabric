@@ -1,0 +1,82 @@
+{
+ "captured_at": "2026-09-05T05:09:45.418000+00:00",
+ "coverage_notes": {
+  "arm": "no ARM/Raspberry Pi worker registered or observed.",
+  "cuda": "fabric-worker-01 (Quadro P620) and collamore02-windows (RTX 4060) expose NVIDIA GPUs in inventory; CUDA execution requires a CUDA toolchain selected per worker.",
+  "riscv": "no RISC-V worker registered; emulation runs on x86_64 hosts (qemu-user-static) and must be labeled execution.emulated.",
+  "sudo": "worker-03 advertises no privilege capability; its task user lacks passwordless sudo (proven by dispatched probe rc=1).",
+  "windows": "collamore02-windows registered+probed but NOT enrolled: exact-target dispatch refuses with TARGET_UNKNOWN (membership UNKNOWN). Enrollment requires worker-side action."
+ },
+ "schema_version": "mncs-fabric.worker-capability-inventory.v0.1",
+ "source": "mncs-fabric fleet refresh (live controller probes)",
+ "workers": [
+  {
+   "architecture": null,
+   "availability": "AVAILABLE",
+   "cpu_count": null,
+   "description_identity": "sha256:e14c40bc3c7de1d6cde7da6efa29ab08fd6403b2733c6136c38ce29c1f37d18a",
+   "evidence": "fleet refresh via controller.sock",
+   "gpus": [],
+   "observed_at": "2026-09-05T05:09:29.737047Z",
+   "os": null,
+   "os_version": null,
+   "python": null,
+   "tools": [
+    "arch:amd64",
+    "os:windows",
+    "python",
+    "python:3.11",
+    "tool:git",
+    "tool:powershell"
+   ],
+   "worker_id": "collamore02-windows"
+  },
+  {
+   "architecture": null,
+   "availability": "AVAILABLE",
+   "cpu_count": null,
+   "description_identity": "sha256:e15388e88e4e64a14ec22d532757c04be655d8e9ee87a331c63d5058cc296cb5",
+   "evidence": "fleet refresh via controller.sock",
+   "gpus": [],
+   "observed_at": "2026-09-05T05:09:21.668072Z",
+   "os": null,
+   "os_version": null,
+   "python": null,
+   "tools": [
+    "arch:x86_64",
+    "os:linux",
+    "python",
+    "python:3.14",
+    "tool:gcc",
+    "tool:git",
+    "tool:make",
+    "tool:podman"
+   ],
+   "worker_id": "fabric-worker-01"
+  },
+  {
+   "architecture": null,
+   "availability": "AVAILABLE",
+   "cpu_count": null,
+   "description_identity": null,
+   "evidence": "fleet refresh via controller.sock",
+   "gpus": [],
+   "observed_at": null,
+   "os": null,
+   "os_version": null,
+   "python": null,
+   "tools": [
+    "arch:x86_64",
+    "os:linux",
+    "python",
+    "python:3.14",
+    "tool:clang",
+    "tool:gcc",
+    "tool:git",
+    "tool:make",
+    "tool:podman"
+   ],
+   "worker_id": "worker-03"
+  }
+ ]
+}
