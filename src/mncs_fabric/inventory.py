@@ -54,6 +54,10 @@ TOOL_SPECS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("forge", ("--version",)),
     ("ollama", ("--version",)),
     ("bwrap", ("--version",)),
+    # The MNCS toolchain probe lets capability scheduling place semantic
+    # conformance jobs only where an mncs binary is observable. Absence is
+    # an honest search-path miss, never a fallback.
+    ("mncs", ("--version",)),
 )
 
 UPDATE_CLASSES = frozenset({"A", "B", "C", "D", "E"})

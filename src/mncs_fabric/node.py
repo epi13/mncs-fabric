@@ -13,7 +13,7 @@ from .canonical import attach_identity, sha256_identity
 from .models import NODE_SCHEMA
 from .topology import collect_network_topology
 
-_TOOL_NAMES = ("git", "gcc", "clang", "make", "rustc", "cargo", "podman", "docker", "pwsh", "powershell")
+_TOOL_NAMES = ("git", "gcc", "clang", "make", "rustc", "cargo", "podman", "docker", "pwsh", "powershell", "mncs")
 
 
 def utc_now() -> str:
