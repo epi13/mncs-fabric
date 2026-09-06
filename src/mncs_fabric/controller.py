@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import threading
@@ -51,6 +52,28 @@ from .management import ManagementStore
 from .providers import validate_action
 
 
+def _description_age_seconds(description: Mapping[str, Any] | None) -> float | None:
+    """Age a stored worker description from its own captured_at.
+
+    Returns ``None`` when no description exists (live-derived path).
+    A ledger restore after a restart therefore resolves stale instead
+    of inheriting a zero age it did not earn.
+    """
+    if not isinstance(description, Mapping):
+        return None
+    captured = description.get("captured_at")
+    if not isinstance(captured, str):
+        return None
+    try:
+        then = datetime.fromisoformat(captured.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        if then.tzinfo is None:
+            return None
+        return max(0.0, (now - then.astimezone(timezone.utc)).total_seconds())
+    except ValueError:
+        return None
+
+
 class LocalController:
     """Controller using explicit in-process worker calls, suitable for tests and Forge."""
 
@@ -60,6 +83,27 @@ class LocalController:
         self.workers: dict[str, LocalWorker] = {}
         management_path = Path(state_path).with_name(Path(state_path).stem + ".management.jsonl")
         self.fleet_manager = FleetManager(ManagementStore(management_path), controller_id=controller_id)
+        # Declared operator policy per worker. Authorization is declared
+        # here, never inferred from hardware or probe results; workers
+        # without an entry resolve under the stable reference policy.
+        self.worker_policies: dict[str, dict[str, Any]] = {}
+
+    def set_worker_policy(self, worker_id: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+        """Declare administrative policy for one worker identity."""
+        from .capability_resolution import validate_policy
+
+        if not worker_id:
+            raise ProtocolError("worker policy requires a worker identity")
+        checked = validate_policy(dict(policy))
+        self.worker_policies[worker_id] = checked
+        self.ledger.append("worker.policy", {"worker_identity": worker_id, "policy": checked})
+        return dict(checked)
+
+    def worker_policy(self, worker_id: str) -> dict[str, Any]:
+        from .capability_resolution import default_policy
+
+        declared = self.worker_policies.get(worker_id)
+        return dict(declared) if declared is not None else default_policy()
 
     def register(self, worker: LocalWorker) -> dict[str, Any]:
         if worker.worker_id in self.workers:
@@ -349,15 +393,15 @@ class LocalController:
         self.ledger.append("worker.capability.result", result)
         return result
 
-    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def dispatch(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None, intent: str = "normal") -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
         if placement_request is not None:
             validate_placement_request(placement_request)
-        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation, management_state=worker.management_state()["state"]) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request)
+        decision = schedule(checked, [WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_request is not None else None, runtime_observation=runtime_observation, runtime_capability_observation=runtime_capability_observation, management_state=worker.management_state()["state"], worker_policy=self.worker_policy(worker_id)) for worker_id, worker in self.workers.items()], replicas=replicas, placement=placement_request, intent=intent)
         if decision.disposition != "PASS":
-            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": [dict(item) for item in decision.admissions]}]
+            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "admissions": [dict(item) for item in decision.admissions], "resolution": dict(decision.resolution) if decision.resolution is not None else None}]
         outputs = []
         for worker_id in decision.worker_ids:
             response = self.dispatch_via(
@@ -513,7 +557,7 @@ class NetworkController(LocalController):
             raise ProtocolError("runtime observation does not match the current worker runtime profile")
         self.runtime_observations[worker_id] = checked
         transport, slot = self.remote_workers[worker_id]
-        self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=checked))
+        self.remote_workers[worker_id] = (transport, dataclasses.replace(slot, runtime_observation=checked))
         self.ledger.append("runtime.observation", checked)
 
     def set_runtime_capability_observation(self, worker_id: str, observation: dict[str, Any]) -> None:
@@ -526,7 +570,7 @@ class NetworkController(LocalController):
             raise ProtocolError("runtime capability observation does not match the current worker runtime profile")
         self.runtime_capability_observations[worker_id] = checked
         transport, slot = self.remote_workers[worker_id]
-        self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=checked))
+        self.remote_workers[worker_id] = (transport, dataclasses.replace(slot, runtime_capability_observation=checked))
         self.ledger.append("runtime.capability-observation", checked)
 
     def describe_via(self, transport: EnvelopeTransport, *, worker_id: str, request_id: str | None = None, timeout: float | None = None) -> dict[str, Any]:
@@ -582,7 +626,20 @@ class NetworkController(LocalController):
                 if current_capability is not None and (not isinstance(profile, dict) or current_capability.get("runtime_profile_identity") != profile.get("runtime_profile_identity")):
                     self.runtime_capability_observations.pop(worker_id, None)
                     current_capability = None
-                slot = WorkerSlot(worker_id=slot.worker_id, capabilities=frozenset(capability_names(node)), active=slot.active, concurrency_limit=slot.concurrency_limit, available=True, resource_snapshot=snapshot, runtime_observation=current_runtime, runtime_capability_observation=current_capability)
+                from .platform_probe import env_from_node
+
+                slot = dataclasses.replace(
+                    slot,
+                    capabilities=frozenset(capability_names(node)),
+                    available=True,
+                    liveness="AVAILABLE",
+                    capability_age_seconds=0.0,
+                    provenance="worker-observed",
+                    worker_env=env_from_node(node),
+                    resource_snapshot=snapshot,
+                    runtime_observation=current_runtime,
+                    runtime_capability_observation=current_capability,
+                )
                 self.remote_workers[worker_id] = (transport, slot)
                 if desc_changed:
                     # The immutable description is already persisted by
@@ -593,7 +650,11 @@ class NetworkController(LocalController):
                 else:
                     self.ledger.append("worker.liveness", liveness)
             else:
-                slot = WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active, concurrency_limit=slot.concurrency_limit, available=state == "AVAILABLE", resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation)
+                slot = dataclasses.replace(
+                    slot,
+                    available=state == "AVAILABLE",
+                    liveness="AVAILABLE" if state == "AVAILABLE" else "UNAVAILABLE",
+                )
                 self.remote_workers[worker_id] = (transport, slot)
                 self.ledger.append("worker.liveness", liveness)
             return self._worker_state_unlocked(worker_id, apply_lease=False)
@@ -876,16 +937,21 @@ class NetworkController(LocalController):
                 if description is not None:
                     self.remote_descriptions[worker_id] = description
                     from .node import capability_names
+                    from .platform_probe import env_from_node
+
                     snapshot = description["resource_snapshot"]
-                    slot = WorkerSlot(
-                        worker_id=slot.worker_id,
+                    # Restored descriptions are historical: age them from
+                    # their own captured_at so a stale restore resolves
+                    # stale instead of silently passing as fresh.
+                    slot = dataclasses.replace(
+                        slot,
                         capabilities=frozenset(capability_names(description["node"])),
-                        active=slot.active,
-                        concurrency_limit=slot.concurrency_limit,
                         available=True,
+                        liveness="AVAILABLE",
+                        capability_age_seconds=_description_age_seconds(description),
+                        provenance="worker-observed",
+                        worker_env=env_from_node(description["node"]),
                         resource_snapshot=snapshot,
-                        runtime_observation=slot.runtime_observation,
-                        runtime_capability_observation=slot.runtime_capability_observation,
                     )
                     self.remote_workers[worker_id] = (transport, slot)
                 if liveness is not None:
@@ -897,7 +963,42 @@ class NetworkController(LocalController):
             "update_recovery": update_recovery,
         }
 
-    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+    def _schedule_slots_remote(self) -> list[WorkerSlot]:
+        """Build schedule-time slots with policy, liveness, and age.
+
+        Stored slots carry last-observation values; scheduling needs the
+        current operator policy plus liveness and description age, so
+        attach them here from their sources of truth. Nothing here names
+        machines: every input is a per-worker property.
+        """
+        slots = []
+        for worker_id, (_, slot) in self.remote_workers.items():
+            liveness_record = self.remote_liveness.get(worker_id)
+            description = self.remote_descriptions.get(worker_id)
+            # Overrides apply only where an observation exists. A worker
+            # with no liveness record keeps its stored slot state (the
+            # historic registration path); a described worker is aged
+            # from its own captured_at so restores resolve stale.
+            if liveness_record is None:
+                liveness = slot.liveness
+                available = slot.available
+            else:
+                state = liveness_record.get("state", "UNKNOWN")
+                liveness = "AVAILABLE" if state == "AVAILABLE" else ("UNAVAILABLE" if state == "UNAVAILABLE" else "DISCONNECTED")
+                available = state == "AVAILABLE"
+            age = _description_age_seconds(description) if description is not None else slot.capability_age_seconds
+            slots.append(
+                dataclasses.replace(
+                    slot,
+                    worker_policy=self.worker_policy(worker_id),
+                    liveness=liveness,
+                    available=available,
+                    capability_age_seconds=age,
+                )
+            )
+        return slots
+
+    def dispatch_remote(self, plan: object, manifest: object, *, replicas: int = 1, request_id: str | None = None, challenge: dict[str, Any] | None = None, consumer_context: dict[str, Any] | None = None, execution_bundle: dict[str, str] | None = None, placement_request: dict[str, Any] | None = None, runtime_observation: dict[str, Any] | None = None, runtime_capability_observation: dict[str, Any] | None = None, intent: str = "normal") -> list[dict[str, Any]]:
         checked = validate_job_plan(plan)
         if not isinstance(manifest, dict) or manifest.get("manifest_identity") != checked["artifact_manifest_identity"]:
             raise ProtocolError("controller dispatch requires a matching manifest")
@@ -906,13 +1007,13 @@ class NetworkController(LocalController):
             # worker observation, not from an operator's stale registration.
             self.refresh_all()
         with self._remote_lock:
-            decision = schedule(checked, [slot for _, slot in self.remote_workers.values()], replicas=replicas, placement=placement_request)
+            decision = schedule(checked, self._schedule_slots_remote(), replicas=replicas, placement=placement_request, intent=intent)
             if decision.disposition == "PASS":
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=slot.active + 1, concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation))
+                    self.remote_workers[worker_id] = (transport, dataclasses.replace(slot, active=slot.active + 1))
         if decision.disposition != "PASS":
-            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids)}]
+            return [{"disposition": decision.disposition, "reason": decision.reason, "worker_ids": list(decision.worker_ids), "resolution": dict(decision.resolution) if decision.resolution is not None else None}]
         outputs: list[dict[str, Any]] = []
         try:
             for worker_id in decision.worker_ids:
@@ -932,7 +1033,7 @@ class NetworkController(LocalController):
             with self._remote_lock:
                 for worker_id in decision.worker_ids:
                     transport, slot = self.remote_workers[worker_id]
-                    self.remote_workers[worker_id] = (transport, WorkerSlot(worker_id=slot.worker_id, capabilities=slot.capabilities, active=max(0, slot.active - 1), concurrency_limit=slot.concurrency_limit, available=slot.available, resource_snapshot=slot.resource_snapshot, runtime_observation=slot.runtime_observation, runtime_capability_observation=slot.runtime_capability_observation))
+                    self.remote_workers[worker_id] = (transport, dataclasses.replace(slot, active=max(0, slot.active - 1)))
         return outputs
 
     def reconcile_dispatch(self, responses: list[dict[str, Any]], *, require_distinct_nodes: bool = True) -> dict[str, Any]:

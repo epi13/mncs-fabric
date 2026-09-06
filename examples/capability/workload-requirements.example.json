@@ -1,0 +1,49 @@
+{
+  "_comment": "Example workload requirement shapes for capability-aware scheduling. Each entry maps to mncs_fabric.capability_resolution.CapabilityQuery fields. Property vocabulary only: no worker names appear here.",
+  "linux_only_test": {
+    "require_all": ["os:linux"],
+    "intent": "normal"
+  },
+  "windows_native_test": {
+    "require_all": ["os:windows", "arch:x86_64"],
+    "intent": "normal"
+  },
+  "arm_native_test": {
+    "require_all": ["os:linux", "arch:aarch64"],
+    "intent": "normal"
+  },
+  "cuda_test": {
+    "require_all": ["os:linux"],
+    "req_env": {"require_cuda": true, "cuda_major": 6, "cuda_minor": 0},
+    "intent": "normal"
+  },
+  "ebpf_test": {
+    "require_all": ["os:linux", "kernel:ebpf"],
+    "req_env": {"require_ebpf": true},
+    "intent": "normal"
+  },
+  "riscv_either_path": {
+    "require_any": [["arch:riscv64", "emulation:riscv64"]],
+    "req_env": {"arch": "riscv64", "allow_emulation": true},
+    "intent": "normal"
+  },
+  "musl_conformance_prefers_alpine": {
+    "require_all": ["os:linux"],
+    "prefer": ["libc:musl"],
+    "intent": "normal"
+  },
+  "production_forbids_disposable": {
+    "require_all": ["os:linux"],
+    "forbid": ["policy:disposable"],
+    "intent": "normal"
+  },
+  "privileged_kernel_experiment": {
+    "require_all": ["os:linux", "kernel:ebpf"],
+    "req_env": {"require_ebpf": true, "min_mem_mib": 4096, "min_cpu_count": 2},
+    "intent": "privileged"
+  },
+  "toolchain_mutation_experiment": {
+    "require_all": ["os:linux"],
+    "intent": "mutating"
+  }
+}

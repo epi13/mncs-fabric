@@ -1,0 +1,453 @@
+{
+ "schema_version": "mncs-fabric.capability-fleet-evidence.v0.1",
+ "claim_boundary": "worker-observed capability snapshot plus deterministic query outcomes; not attestation, continuous availability, or conformance",
+ "unregistered_workers": {
+  "worker-03": "unregistered: pre-conversion experimental target (NixOS planned); no capabilities claimed",
+  "worker-04": "unregistered: pre-conversion experimental target (Alpine/musl planned); no capabilities claimed",
+  "raspberry-pi": "unregistered at collection time; no capabilities claimed"
+ },
+ "workers": [
+  {
+   "worker_id": "collamore02-windows",
+   "availability": "AVAILABLE",
+   "transport": "tls-mutual-authenticated",
+   "liveness_fresh": true,
+   "os": "windows",
+   "arch": "amd64",
+   "tools": [
+    "git",
+    "powershell"
+   ],
+   "has_platform_section": false,
+   "tokens": [
+    "arch:amd64",
+    "os:windows",
+    "python",
+    "python:3.11",
+    "tool:git",
+    "tool:powershell"
+   ]
+  },
+  {
+   "worker_id": "fabric-worker-01",
+   "availability": "AVAILABLE",
+   "transport": "tls-mutual-authenticated",
+   "liveness_fresh": true,
+   "os": "linux",
+   "arch": "x86_64",
+   "tools": [
+    "gcc",
+    "git",
+    "make",
+    "podman"
+   ],
+   "has_platform_section": false,
+   "tokens": [
+    "arch:x86_64",
+    "os:linux",
+    "python",
+    "python:3.14",
+    "tool:gcc",
+    "tool:git",
+    "tool:make",
+    "tool:podman"
+   ]
+  },
+  {
+   "worker_id": "controller",
+   "availability": "LOCAL",
+   "os": "linux",
+   "arch": "x86_64",
+   "tools": [
+    "cargo",
+    "clang",
+    "gcc",
+    "git",
+    "make",
+    "mncs",
+    "podman",
+    "rustc"
+   ],
+   "has_platform_section": true,
+   "tokens": [
+    "accel:cuda",
+    "accelerator:cuda",
+    "arch:x86_64",
+    "cuda:compute-6-1",
+    "init:systemd",
+    "kernel:btf",
+    "kernel:ebpf",
+    "libc:gnu",
+    "os:linux",
+    "python",
+    "python:3.14",
+    "shell:bash",
+    "shell:sh",
+    "tool:cargo",
+    "tool:clang",
+    "tool:gcc",
+    "tool:git",
+    "tool:make",
+    "tool:mncs",
+    "tool:podman",
+    "tool:rustc"
+   ]
+  }
+ ],
+ "queries": {
+  "linux-only": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller",
+    "fabric-worker-01"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:linux"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:linux"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  },
+  "windows-native": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "collamore02-windows"
+   ],
+   "selected": [
+    "collamore02-windows"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "controller",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:windows"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:windows"
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:windows"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:windows"
+    }
+   ],
+   "detail": "selected collamore02-windows by capability match and preference rank"
+  },
+  "x86_64": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "collamore02-windows",
+    "controller",
+    "fabric-worker-01"
+   ],
+   "selected": [
+    "collamore02-windows"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    }
+   ],
+   "detail": "selected collamore02-windows by capability match and preference rank"
+  },
+  "cuda-presence": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing accelerator:cuda"
+     ],
+     "preferred_hits": [],
+     "detail": "missing accelerator:cuda"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing accelerator:cuda"
+     ],
+     "preferred_hits": [],
+     "detail": "missing accelerator:cuda"
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  },
+  "ebpf": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing kernel:ebpf"
+     ],
+     "preferred_hits": [],
+     "detail": "missing kernel:ebpf"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing kernel:ebpf"
+     ],
+     "preferred_hits": [],
+     "detail": "missing kernel:ebpf"
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  },
+  "cuda-floor-6-0": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:linux",
+      "missing cuda.compute >= 6.0"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:linux; missing cuda.compute >= 6.0"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing cuda.compute >= 6.0"
+     ],
+     "preferred_hits": [],
+     "detail": "missing cuda.compute >= 6.0"
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  },
+  "musl-prefer": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller",
+    "fabric-worker-01"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:linux"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:linux"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  },
+  "privileged-stable-default": {
+   "verdict": "NO_ELIGIBLE_WORKER",
+   "eligible": [],
+   "selected": [],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:linux"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:linux"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": false,
+     "code": "POLICY_DENIED",
+     "missing": [
+      "missing policy for intent privileged"
+     ],
+     "preferred_hits": [],
+     "detail": "intent privileged denied by worker policy"
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": false,
+     "code": "POLICY_DENIED",
+     "missing": [
+      "missing policy for intent privileged"
+     ],
+     "preferred_hits": [],
+     "detail": "intent privileged denied by worker policy"
+    }
+   ],
+   "detail": "collamore02-windows: CAPABILITY_UNSATISFIED (missing os:linux); controller: POLICY_DENIED (intent privileged denied by worker policy); fabric-worker-01: POLICY_DENIED (intent privileged denied by worker policy)"
+  },
+  "normal-work": {
+   "verdict": "ELIGIBLE",
+   "eligible": [
+    "controller",
+    "fabric-worker-01"
+   ],
+   "selected": [
+    "controller"
+   ],
+   "per_worker": [
+    {
+     "worker_id": "collamore02-windows",
+     "eligible": false,
+     "code": "CAPABILITY_UNSATISFIED",
+     "missing": [
+      "missing os:linux"
+     ],
+     "preferred_hits": [],
+     "detail": "missing os:linux"
+    },
+    {
+     "worker_id": "controller",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    },
+    {
+     "worker_id": "fabric-worker-01",
+     "eligible": true,
+     "code": "ELIGIBLE",
+     "missing": [],
+     "preferred_hits": [],
+     "detail": ""
+    }
+   ],
+   "detail": "selected controller by capability match and preference rank"
+  }
+ }
+}
