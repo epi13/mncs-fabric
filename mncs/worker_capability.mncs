@@ -1,0 +1,175 @@
+mncs 0.6;
+
+// Fabric worker capability resolution as language-owned source.
+//
+// This module owns the pre-execution eligibility relation Fabric depends
+// on: which (workload, worker) pairs may execute, and the exact reason
+// when they may not. Python remains authoritative for transport, timers,
+// persistence, string classification, and hashing; this module owns the
+// decision itself, so the MNCS compiler executes the exact relation
+// Fabric depends on.
+//
+// Layering (each layer owns its question, no layer repeats another):
+// - mncs.std.platform.v1 owns environment matching (os/arch/libc/cuda/
+//   ebpf/wasm/ptx/resources, including the emulation path). Its verdict
+//   arrives here as one boolean, `env_ok`;
+// - this module owns resolution ordering: liveness, freshness,
+//   provenance trust, environment eligibility, and policy/intent
+//   compatibility, plus the machine-readable reason code;
+// - the host owns everything unbounded: strings, process execution,
+//   filesystem discovery, clocks, and identity hashing.
+//
+// Migration debt: the Python table in
+// `src/mncs_fabric/capability_resolution.py` (`resolve_code`) is still
+// the runtime authority. The exhaustive corpus in
+// `mncs/worker_capability_corpus.json` is executed by the real toolchain
+// (`mncs experiment run`) and `tests/test_mncs_capability_policy.py`
+// asserts full agreement between the compiled MNCS execution and the
+// Python implementation on every case. A transcription error here fails
+// that test; it cannot silently diverge.
+module fabric.worker_capability;
+
+// Provenance of a capability claim. Only the first two classes can prove
+// that a worker possesses a capability required for admission. Declared
+// policy is always operator-asserted; observed facts are worker-observed;
+// consumer hints stay consumer-declared and can never satisfy a
+// requirement, however plausible.
+enum Provenance { WorkerObserved, OperatorAsserted, ConsumerDeclared }
+
+// Administrative policy: composable declared permissions, never inferred
+// from hardware or from the fact that an operation happens to succeed.
+// A stable reference worker declares every permission false; an
+// experimental worker declares exactly the permissions its operator
+// granted, one boolean at a time.
+record WorkerPolicy {
+    experimental: bool,
+    disposable: bool,
+    allow_root_mutation: bool,
+    allow_reboot: bool,
+    allow_toolchain_install: bool,
+    resource_constrained: bool
+}
+
+// What the workload intends to do. Normal work runs anywhere eligible.
+// Mutating work (toolchain installs, system modification, reboot) and
+// privileged work (root-level mutation) additionally require explicit
+// policy permission; experimental status alone is never sufficient.
+enum WorkloadIntent { Normal, Mutating, Privileged }
+
+enum Liveness { Available, Unavailable, Disconnected }
+
+enum Freshness { Fresh, Stale }
+
+// Machine-readable resolution outcome. NoEligibleWorker is produced by
+// the fleet-level aggregation when no worker resolves Eligible; it is a
+// first-class scheduling result, not an execution failure.
+enum ResolutionCode {
+    Eligible,
+    CapabilityUnsatisfied,
+    PolicyDenied,
+    ProvenanceUnverified,
+    WorkerStale,
+    WorkerUnavailable,
+    WorkerDisconnected
+}
+
+// Only worker-observed and operator-asserted claims prove capability.
+fn provenance_trusted(provenance: Provenance) -> (result: bool) {
+    return match provenance {
+        WorkerObserved => true,
+        OperatorAsserted => true,
+        ConsumerDeclared => false,
+    };
+}
+
+// Freshness over bounded age seconds. A negative age (clock skew beyond
+// the host's accepted window is already rejected host-side; any residual
+// negative) and any age past the bound are both stale: Fabric must
+// revalidate, never assume capability state is permanent.
+fn freshness_of(age_seconds: i64, max_age_seconds: i64) -> (result: Freshness) {
+    if age_seconds < 0 {
+        return Freshness.Stale;
+    }
+    if age_seconds > max_age_seconds {
+        return Freshness.Stale;
+    }
+    return Freshness.Fresh;
+}
+
+// Intent compatibility against declared policy. A normal workload is
+// schedulable anywhere eligible; experimental status never grants
+// anything by itself. Mutating work needs experimental status plus the
+// toolchain permission; privileged work needs experimental status plus
+// the root-mutation permission. Stable workers therefore refuse both.
+fn intent_allowed(policy: WorkerPolicy, intent: WorkloadIntent) -> (result: bool) {
+    return match intent {
+        Normal => true,
+        Mutating => policy.experimental && policy.allow_toolchain_install,
+        Privileged => policy.experimental && policy.allow_root_mutation,
+    };
+}
+
+// Resolution ordering is load-bearing and pinned arm-for-arm with the
+// Python authority: reachability before freshness, freshness before
+// provenance, provenance before environment, environment before policy.
+// Each stage answers one question; a later stage never re-decides an
+// earlier one, so explanations name exactly one cause.
+fn resolve(liveness: Liveness, freshness: Freshness, provenance_ok: bool, env_ok: bool, intent_ok: bool) -> (result: ResolutionCode) {
+    return match liveness {
+        Unavailable => ResolutionCode.WorkerUnavailable,
+        Disconnected => ResolutionCode.WorkerDisconnected,
+        Available => match freshness {
+            Stale => ResolutionCode.WorkerStale,
+            Fresh => decide_fresh(provenance_ok, env_ok, intent_ok),
+        },
+    };
+}
+
+// Fresh-worker continuation of resolve, split so boolean stages use
+// total if/else rather than variant matching over non-variant inputs.
+fn decide_fresh(provenance_ok: bool, env_ok: bool, intent_ok: bool) -> (result: ResolutionCode) {
+    if provenance_ok {
+        if env_ok {
+            if intent_ok {
+                return ResolutionCode.Eligible;
+            }
+            return ResolutionCode.PolicyDenied;
+        }
+        return ResolutionCode.CapabilityUnsatisfied;
+    }
+    return ResolutionCode.ProvenanceUnverified;
+}
+
+fn is_eligible(code: ResolutionCode) -> (result: bool) {
+    return match code {
+        Eligible => true,
+        CapabilityUnsatisfied => false,
+        PolicyDenied => false,
+        ProvenanceUnverified => false,
+        WorkerStale => false,
+        WorkerUnavailable => false,
+        WorkerDisconnected => false,
+    };
+}
+
+// The experiment targets these wrappers so source-level call semantics
+// are in the executed path rather than merely present in the module.
+fn candidate_provenance(provenance: Provenance) -> (result: bool) {
+    return provenance_trusted(provenance);
+}
+
+fn candidate_freshness(age_seconds: i64, max_age_seconds: i64) -> (result: Freshness) {
+    return freshness_of(age_seconds, max_age_seconds);
+}
+
+fn candidate_intent(policy: WorkerPolicy, intent: WorkloadIntent) -> (result: bool) {
+    return intent_allowed(policy, intent);
+}
+
+fn candidate_resolve(liveness: Liveness, freshness: Freshness, provenance_ok: bool, env_ok: bool, intent_ok: bool) -> (result: ResolutionCode) {
+    return resolve(liveness, freshness, provenance_ok, env_ok, intent_ok);
+}
+
+fn candidate_eligible(code: ResolutionCode) -> (result: bool) {
+    return is_eligible(code);
+}

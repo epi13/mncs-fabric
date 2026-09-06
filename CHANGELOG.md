@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Resolve workload placement before execution with capability-aware
+  scheduling: `mncs/worker_capability.mncs` owns the eligibility
+  relation (liveness, freshness, provenance, environment, policy/intent)
+  over an exhaustive 84-case toolchain-executed corpus;
+  `src/mncs_fabric/capability_resolution.py` mirrors it with
+  required/optional/forbidden/preferred requirements, CUDA compute
+  floors, eBPF/WASM/PTX flags, memory/CPU floors, RISC-V emulation
+  paths, and declared worker policy. Incompatible workers are filtered
+  before dispatch with per-worker machine-readable reasons, and an
+  empty eligible set returns first-class `NO_ELIGIBLE_WORKER` instead
+  of a generic failure. Privileged/mutating intents require explicit
+  operator-declared policy (`set_worker_policy`); stable workers refuse
+  them. Workers advertise libc/init/shell/CUDA/eBPF/WASM/emulation facts
+  via bounded probes. See `docs/CAPABILITY_RESOLUTION.md` and
+  `development-evidence/capability-fleet-2026-09-06.json`.
+
 - Reclaim flooded append-only ledgers with `FabricLedger.compact`: a
   streaming keep predicate, resealed hash chain, `max_kept` bound, and a
   `ledger.compaction` receipt binding the pre-compact head, counts, and

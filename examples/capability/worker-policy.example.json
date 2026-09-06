@@ -1,0 +1,35 @@
+{
+  "_comment": "Example declared worker policies. Policy is operator-declared via LocalController.set_worker_policy, never inferred from probes. Stable workers deny everything; experimental workers grant exactly the permitted booleans.",
+  "stable_reference_worker": {
+    "experimental": false,
+    "disposable": false,
+    "allow_root_mutation": false,
+    "allow_reboot": false,
+    "allow_toolchain_install": false,
+    "resource_constrained": false
+  },
+  "experimental_privileged_worker": {
+    "experimental": true,
+    "disposable": true,
+    "allow_root_mutation": true,
+    "allow_reboot": true,
+    "allow_toolchain_install": true,
+    "resource_constrained": false
+  },
+  "experimental_toolchain_only_worker": {
+    "experimental": true,
+    "disposable": true,
+    "allow_root_mutation": false,
+    "allow_reboot": true,
+    "allow_toolchain_install": true,
+    "resource_constrained": false
+  },
+  "resource_constrained_arm_worker": {
+    "experimental": false,
+    "disposable": false,
+    "allow_root_mutation": false,
+    "allow_reboot": false,
+    "allow_toolchain_install": false,
+    "resource_constrained": true
+  }
+}

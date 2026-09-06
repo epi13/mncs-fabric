@@ -1063,8 +1063,8 @@ class FabricClient:
         checked = validate_job_plan(plan)
         if placement_value is not None:
             self.network.refresh_all()
-        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id), management_state=worker.management_state()["state"])) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
-        remote_items = [(worker_id, slot) for worker_id, (_, slot) in self.network.remote_workers.items() if worker_id not in self.blocked_worker_ids]
+        local_items = [(worker_id, WorkerSlot(worker_id=worker_id, capabilities=worker.capabilities(), resource_snapshot=worker.resource_snapshot() if placement_value is not None else None, runtime_observation=self.runtime_observations.get(worker_id), runtime_capability_observation=self.runtime_capability_observations.get(worker_id), management_state=worker.management_state()["state"], worker_policy=self.local.worker_policy(worker_id))) for worker_id, worker in self.local.workers.items() if worker_id not in self.blocked_worker_ids]
+        remote_items = [(slot.worker_id, slot) for slot in self.network._schedule_slots_remote() if slot.worker_id not in self.blocked_worker_ids]
         decision = schedule(checked, [slot for _, slot in local_items + remote_items], replicas=replicas, placement=placement_value)
         if decision.disposition != "PASS":
             return [{"schema_version": CONSUMER_RESULT_SCHEMA, "disposition": decision.disposition, "worker_identity": None, "request_identity": None, "job_identity": checked["job_identity"], "record": None, "record_identity": None, "receipt": None, "receipt_identity": None, "reason": decision.reason, "admissions": [dict(item) for item in decision.admissions]}]

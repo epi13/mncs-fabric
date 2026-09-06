@@ -1,0 +1,4538 @@
+{
+ "schema_version": "0.1",
+ "name": "fabric-worker-capability-exhaustive",
+ "cases": [
+  {
+   "id": "provenance-workerobserved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_provenance"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Provenance",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Provenance::WorkerObserved",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "provenance-operatorasserted",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_provenance"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Provenance",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Provenance::OperatorAsserted",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "provenance-consumerdeclared",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_provenance"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Provenance",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Provenance::ConsumerDeclared",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age--3600",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": -3600,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age--1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": -1,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-299",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 299,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-300",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-301",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 301,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "freshness-age-1000000",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_freshness"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1000000,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 300,
+       "type": {
+        "bits": 64,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-stable-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-stable-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-stable-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-bare-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-bare-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-bare-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-toolchain-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-toolchain-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-toolchain-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-root-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-root-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-root-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-reboot-only-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-reboot-only-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-experimental-reboot-only-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-constrained-toolchain-normal",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Normal",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-constrained-toolchain-mutating",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Mutating",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "intent-constrained-toolchain-privileged",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_intent"
+    },
+    "arguments": [
+     {
+      "record": {
+       "type_identity": "mncs:0.2:record-type:fabric.worker_capability::WorkerPolicy::allow_reboot%3Abool%3Ballow_root_mutation%3Abool%3Ballow_toolchain_install%3Abool%3Bdisposable%3Abool%3Bexperimental%3Abool%3Bresource_constrained%3Abool%3B",
+       "name": "WorkerPolicy",
+       "fields": [
+        [
+         "allow_reboot",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_root_mutation",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "allow_toolchain_install",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "disposable",
+         {
+          "boolean": {
+           "value": false
+          }
+         }
+        ],
+        [
+         "experimental",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ],
+        [
+         "resource_constrained",
+         {
+          "boolean": {
+           "value": true
+          }
+         }
+        ]
+       ]
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::WorkloadIntent",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::WorkloadIntent::Privileged",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::Eligible",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::PolicyDenied",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::CapabilityUnsatisfied",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::CapabilityUnsatisfied",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::ProvenanceUnverified",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::ProvenanceUnverified",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::ProvenanceUnverified",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-fresh-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::ProvenanceUnverified",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-available-stale-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Available",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+      "discriminant": 4
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-fresh-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-unavailable-stale-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Unavailable",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+      "discriminant": 5
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-fresh-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Fresh",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov1-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov1-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov1-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov1-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov0-env1-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov0-env1-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov0-env0-intent1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "resolve-disconnected-stale-prov0-env0-intent0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_resolve"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Liveness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Liveness::Disconnected",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::Freshness",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::Freshness::Stale",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+      "discriminant": 6
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-eligible",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::Eligible",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-capabilityunsatisfied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::CapabilityUnsatisfied",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-policydenied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::PolicyDenied",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-provenanceunverified",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::ProvenanceUnverified",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-workerstale",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerStale",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-workerunavailable",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerUnavailable",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "eligible-workerdisconnected",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.worker_capability",
+     "function": "candidate_eligible"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.worker_capability::ResolutionCode",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.worker_capability::ResolutionCode::WorkerDisconnected",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -23,6 +23,8 @@ TEST_COMMAND = (
     "tests.test_ledger_compaction",
     "tests.test_supervisor_provenance",
     "tests.test_mncs_update_policy.TestUpdatePolicyCorpusAgreement",
+    "tests.test_mncs_capability_policy.TestCapabilityCorpusAgreement",
+    "tests.test_capability_resolution",
     "tests.test_conformance",
     "tests.test_provenance",
     "tests.test_rollback",
