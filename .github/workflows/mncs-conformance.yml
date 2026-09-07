@@ -1,8 +1,11 @@
 name: mncs-conformance
-# Execute the Fabric update policy as MNCS source with the real toolchain.
+# Execute the Fabric MNCS core as MNCS source with the real toolchain:
+# update lifecycle, worker capability, management state, platform
+# decision, reconnect observation, and lifecycle status.
 # Full-corpus execution is minutes-long (finite-domain observation cost;
 # see docs/MNCS_UPDATE_POLICY.md pressure notes), so this workflow runs
-# only when the policy, its corpus, or this workflow changes, plus weekly.
+# only when the policy sources, their corpora, or this workflow changes,
+# plus weekly.
 
 on:
   push:
@@ -10,11 +13,21 @@ on:
     paths:
       - mncs/**
       - tests/test_mncs_update_policy.py
+      - tests/test_mncs_capability_policy.py
+      - tests/test_mncs_management_policy.py
+      - tests/test_mncs_platform_decision.py
+      - tests/test_mncs_reconnect_policy.py
+      - tests/test_mncs_lifecycle_status.py
       - .github/workflows/mncs-conformance.yml
   pull_request:
     paths:
       - mncs/**
       - tests/test_mncs_update_policy.py
+      - tests/test_mncs_capability_policy.py
+      - tests/test_mncs_management_policy.py
+      - tests/test_mncs_platform_decision.py
+      - tests/test_mncs_reconnect_policy.py
+      - tests/test_mncs_lifecycle_status.py
       - .github/workflows/mncs-conformance.yml
   schedule:
     - cron: "23 9 * * 1"
@@ -27,7 +40,7 @@ jobs:
   conformance:
     name: MNCS language conformance
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
     env:
       # Pinned mncs-language revision the checked-in corpus was generated
       # and executed against. Bump with the corpus in the same commit.
@@ -53,10 +66,25 @@ jobs:
         working-directory: mncs-language
       - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/update_lifecycle.mncs
         working-directory: mncs-language
-      - name: Regenerate corpus and fail on drift
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/worker_capability.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_management.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_platform_decision.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_reconnect.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_lifecycle_status.mncs
+        working-directory: mncs-language
+      - name: Regenerate corpora and fail on drift
         run: |
           python3 mncs/gen_update_lifecycle_corpus.py
-          git diff --exit-code -- mncs/update_lifecycle_corpus.json
+          python3 mncs/gen_capability_corpus.py
+          python3 mncs/gen_management_corpus.py
+          python3 mncs/gen_platform_decision_corpus.py
+          python3 mncs/gen_reconnect_corpus.py
+          python3 mncs/gen_lifecycle_status_corpus.py
+          git diff --exit-code -- mncs/*_corpus.json
         working-directory: mncs-fabric
-      - run: MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1 MNCS_LANGUAGE_CLI=$GITHUB_WORKSPACE/mncs-language/target/debug/mncs python -m unittest tests.test_mncs_update_policy -v
+      - run: MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1 MNCS_LANGUAGE_CLI=$GITHUB_WORKSPACE/mncs-language/target/debug/mncs python -m unittest tests.test_mncs_update_policy tests.test_mncs_capability_policy tests.test_mncs_management_policy tests.test_mncs_platform_decision tests.test_mncs_reconnect_policy tests.test_mncs_lifecycle_status -v
         working-directory: mncs-fabric

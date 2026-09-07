@@ -147,6 +147,7 @@ def _token_digest(token: str) -> str:
 
 
 def _record_status(records: list[dict[str, Any]], authorization_id: str, now: str) -> str:
+    """Derive authorization status; precedence owned by ``mncs/fabric_lifecycle_status.mncs``."""
     created = next(
         (entry["record"] for entry in records
          if entry["record_type"] == "enrollment.authorization"
@@ -169,6 +170,7 @@ def _record_status(records: list[dict[str, Any]], authorization_id: str, now: st
 
 
 def _request_status(records: list[dict[str, Any]], request_id: str, now: str) -> str:
+    """Derive request status; precedence owned by ``mncs/fabric_lifecycle_status.mncs``."""
     request = next(
         (entry["record"] for entry in records
          if entry["record_type"] == "enrollment.request"

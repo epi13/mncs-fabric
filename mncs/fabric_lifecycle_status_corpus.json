@@ -1,0 +1,1662 @@
+{
+ "schema_version": "0.1",
+ "name": "fabric-lifecycle-status-exhaustive",
+ "cases": [
+  {
+   "id": "auth-rev0-exp0-time0-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp0-time0-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp0-time1-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp0-time1-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp1-time0-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp1-time0-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp1-time1-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev0-exp1-time1-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp0-time0-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp0-time0-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp0-time1-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp0-time1-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp1-time0-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp1-time0-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp1-time1-con0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "auth-rev1-exp1-time1-con1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_authorization"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec0-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec0-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec0-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec1-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Approved",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec1-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Denied",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-active-dec1-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Active",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec0-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec0-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec0-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Pending",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec1-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Approved",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec1-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Denied",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-consumed-dec1-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Consumed",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec0-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec0-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec0-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec1-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Approved",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec1-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Denied",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-expired-dec1-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Expired",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec0-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec0-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec0-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec1-approved",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Approved",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Approved",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec1-denied",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Denied",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Denied",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "request-revoked-dec1-expired",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.lifecycle_status",
+     "function": "candidate_request"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::Decision",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::Decision::Expired",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::AuthStatus",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::AuthStatus::Revoked",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.lifecycle_status::RequestStatus",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.lifecycle_status::RequestStatus::Expired",
+      "discriminant": 3
+     }
+    }
+   ]
+  }
+ ]
+}

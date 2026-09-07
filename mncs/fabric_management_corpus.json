@@ -1,0 +1,2407 @@
+{
+ "schema_version": "0.1",
+ "name": "fabric-management-exhaustive",
+ "cases": [
+  {
+   "id": "transition-READY-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-READY-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-BUSY-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DRAINING-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-MAINTENANCE-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-VERIFYING-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-DEGRADED-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::ALLOWED",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "transition-QUARANTINED-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.management::TransitionVerdict",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.management::TransitionVerdict::DENIED",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-READY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-BUSY",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-DRAINING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-MAINTENANCE",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-VERIFYING",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-DEGRADED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "allows-work-QUARANTINED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_allows_work"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-READY-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-READY-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::READY",
+       "discriminant": 0
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-BUSY-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-BUSY-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::BUSY",
+       "discriminant": 1
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-DRAINING-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-DRAINING-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DRAINING",
+       "discriminant": 2
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-MAINTENANCE-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-MAINTENANCE-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::MAINTENANCE",
+       "discriminant": 3
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-VERIFYING-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-VERIFYING-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::VERIFYING",
+       "discriminant": 4
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-DEGRADED-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-DEGRADED-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::DEGRADED",
+       "discriminant": 5
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-QUARANTINED-failed-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "certification-QUARANTINED-failed-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.management",
+     "function": "candidate_certification"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.management::MgmtState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.management::MgmtState::QUARANTINED",
+       "discriminant": 6
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  }
+ ]
+}

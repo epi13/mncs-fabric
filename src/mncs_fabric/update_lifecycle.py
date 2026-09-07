@@ -210,6 +210,12 @@ def observe_reconnect(
     ``recovery=True`` is for controller restart. It does not fabricate a
     disconnect. If the enrolled worker is already present at the expected
     version, observation resumes at version verification.
+
+    Decision ownership (see ``mncs/fabric_reconnect.mncs``): the MNCS
+    module owns this classification over already validated boolean facts;
+    ``tests/test_mncs_reconnect_policy.py`` pins every arm mechanically so
+    the two cannot drift. Clocks, version parsing, artifact comparison, and
+    record validation stay host-side here.
     """
 
     checked = validate_update_transaction(transaction)

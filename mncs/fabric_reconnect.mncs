@@ -1,0 +1,249 @@
+mncs 0.6;
+
+// Fabric reconnect-observation core as language-owned source.
+//
+// This module reconstructs the pure decision inside
+// `src/mncs_fabric/update_lifecycle.py::observe_reconnect` as
+// finite-domain MNCS source: given the transaction state plus already
+// validated boolean facts, which observation was made and which state
+// follows. Python remains authoritative for ledgers, clocks, version
+// parsing, artifact comparison, and record validation; this module owns
+// the classification itself, so the MNCS compiler executes the exact
+// relation Fabric depends on.
+//
+// Caller reductions (pinned by the corpus, host-side by construction):
+// - `same_identity` is true when no worker id was observed (None) or the
+//   observed id matches the enrolled worker; false only when a mismatched
+//   id was actually observed. MNCS never observes the raw identity text.
+// - `version_matched` folds both version comparison and artifact-identity
+//   comparison: any mismatch (version or artifact) is false.
+// - `version_malformed` is true only when a version string was observed
+//   and fails to parse; an absent observation is false.
+// - `present_at_expected` folds the recovery check (connected, identity
+//   uncontested, version matched).
+// - states outside DISCONNECT_EXPECTED/RECONNECTING/VERSION_VERIFYING map
+//   to Other; there reconnect observation is not applicable, the
+//   observation stays AwaitingDisconnect, and the state is unchanged
+//   (Other), exactly as the Python implementation reports it.
+module fabric.reconnect;
+
+enum ReconnectState { DisconnectExpected, Reconnecting, VersionVerifying, Other }
+
+enum Observation {
+    AwaitingDisconnect,
+    ExpectedDisconnect,
+    AwaitingReconnect,
+    Reconnected,
+    DeadlineExpired,
+    WrongIdentity,
+    WrongVersion,
+    StillConnected,
+    MalformedVersion
+}
+
+enum NextState {
+    DisconnectExpected,
+    Reconnecting,
+    VersionVerifying,
+    Certifying,
+    RollbackApplying,
+    Failed,
+    Quarantined,
+    Other
+}
+
+fn observation_of(
+    state: ReconnectState,
+    expired: bool,
+    connected: bool,
+    seen_disconnect: bool,
+    same_identity: bool,
+    version_matched: bool,
+    version_malformed: bool,
+    recovery: bool,
+    present_at_expected: bool
+) -> (result: Observation) {
+    if recovery {
+        if present_at_expected {
+            return match state {
+                DisconnectExpected => Observation.Reconnected,
+                Reconnecting => Observation.Reconnected,
+                VersionVerifying => observe_version_verifying(same_identity, version_matched, version_malformed),
+                Other => Observation.AwaitingDisconnect,
+            };
+        }
+        return observe_state(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed);
+    }
+    return observe_state(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed);
+}
+
+fn observe_state(
+    state: ReconnectState,
+    expired: bool,
+    connected: bool,
+    seen_disconnect: bool,
+    same_identity: bool,
+    version_matched: bool,
+    version_malformed: bool
+) -> (result: Observation) {
+    return match state {
+        DisconnectExpected => observe_disconnect_expected(expired, connected, seen_disconnect),
+        Reconnecting => observe_reconnecting(expired, connected, same_identity),
+        VersionVerifying => observe_version_verifying(same_identity, version_matched, version_malformed),
+        Other => Observation.AwaitingDisconnect,
+    };
+}
+
+fn observe_disconnect_expected(expired: bool, connected: bool, seen_disconnect: bool) -> (result: Observation) {
+    if expired {
+        if connected {
+            if seen_disconnect {
+                return Observation.Reconnected;
+            }
+            return Observation.StillConnected;
+        }
+        return Observation.DeadlineExpired;
+    }
+    if connected {
+        if seen_disconnect {
+            return Observation.Reconnected;
+        }
+        return Observation.AwaitingDisconnect;
+    }
+    return Observation.ExpectedDisconnect;
+}
+
+fn observe_reconnecting(expired: bool, connected: bool, same_identity: bool) -> (result: Observation) {
+    if expired {
+        if connected {
+            if same_identity {
+                return Observation.Reconnected;
+            }
+            return Observation.WrongIdentity;
+        }
+        return Observation.DeadlineExpired;
+    }
+    if connected {
+        if same_identity {
+            return Observation.Reconnected;
+        }
+        return Observation.WrongIdentity;
+    }
+    return Observation.AwaitingReconnect;
+}
+
+fn observe_version_verifying(same_identity: bool, version_matched: bool, version_malformed: bool) -> (result: Observation) {
+    if same_identity {
+        if version_malformed {
+            return Observation.MalformedVersion;
+        }
+        if version_matched {
+            return Observation.Reconnected;
+        }
+        return Observation.WrongVersion;
+    }
+    return Observation.WrongIdentity;
+}
+
+fn next_state_of(
+    state: ReconnectState,
+    expired: bool,
+    connected: bool,
+    seen_disconnect: bool,
+    same_identity: bool,
+    version_matched: bool,
+    version_malformed: bool,
+    recovery: bool,
+    present_at_expected: bool
+) -> (result: NextState) {
+    // Controller-restart recovery resumes at version verification: the
+    // worker is already present at the expected version, so the
+    // RECONNECTED observation advances past RECONNECTING. Every other
+    // path derives the next state from the observation alone.
+    if recovery {
+        if present_at_expected {
+            return match state {
+                DisconnectExpected => NextState.VersionVerifying,
+                Reconnecting => NextState.VersionVerifying,
+                VersionVerifying => next_for_observation(
+                    state,
+                    observation_of(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed, recovery, present_at_expected)
+                ),
+                Other => NextState.Other,
+            };
+        }
+        return next_for_observation(
+            state,
+            observation_of(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed, recovery, present_at_expected)
+        );
+    }
+    return next_for_observation(
+        state,
+        observation_of(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed, recovery, present_at_expected)
+    );
+}
+
+fn next_for_observation(state: ReconnectState, observation: Observation) -> (result: NextState) {
+    return match observation {
+        // AwaitingDisconnect arises inside DISCONNECT_EXPECTED (the restart
+        // is pending) and as the not-applicable marker for Other states;
+        // the state it preserves therefore depends on where it was made.
+        AwaitingDisconnect => match state {
+            DisconnectExpected => NextState.DisconnectExpected,
+            Reconnecting => NextState.Other,
+            VersionVerifying => NextState.Other,
+            Other => NextState.Other,
+        },
+        ExpectedDisconnect => NextState.Reconnecting,
+        AwaitingReconnect => NextState.Reconnecting,
+        Reconnected => next_for_reconnected(state),
+        DeadlineExpired => NextState.Failed,
+        WrongIdentity => NextState.Quarantined,
+        WrongVersion => NextState.RollbackApplying,
+        StillConnected => NextState.Failed,
+        MalformedVersion => NextState.Failed,
+    };
+}
+
+// A RECONNECTED observation advances the lifecycle: recovery (or a fresh
+// reconnect inside DISCONNECT_EXPECTED) re-enters at RECONNECTING, a
+// reconnect inside RECONNECTING proceeds to version verification, and a
+// version match inside VERSION_VERIFYING proceeds to certification.
+fn next_for_reconnected(state: ReconnectState) -> (result: NextState) {
+    return match state {
+        DisconnectExpected => NextState.Reconnecting,
+        Reconnecting => NextState.VersionVerifying,
+        VersionVerifying => NextState.Certifying,
+        Other => NextState.Other,
+    };
+}
+
+// The experiment targets these wrappers so source-level call semantics are
+// in the executed path rather than merely present in the module.
+fn candidate_observation(
+    state: ReconnectState,
+    expired: bool,
+    connected: bool,
+    seen_disconnect: bool,
+    same_identity: bool,
+    version_matched: bool,
+    version_malformed: bool,
+    recovery: bool,
+    present_at_expected: bool
+) -> (result: Observation) {
+    return observation_of(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed, recovery, present_at_expected);
+}
+
+fn candidate_next(
+    state: ReconnectState,
+    expired: bool,
+    connected: bool,
+    seen_disconnect: bool,
+    same_identity: bool,
+    version_matched: bool,
+    version_malformed: bool,
+    recovery: bool,
+    present_at_expected: bool
+) -> (result: NextState) {
+    return next_state_of(state, expired, connected, seen_disconnect, same_identity, version_matched, version_malformed, recovery, present_at_expected);
+}

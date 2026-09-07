@@ -1,0 +1,302 @@
+mncs 0.6;
+
+// Fabric platform-decision core as language-owned source.
+//
+// This module reconstructs Section 1 of
+// `src/mncs_fabric/capability_resolution.py` (the finite platform
+// vocabulary: OS/arch/libc/CUDA/resources/flags plus the composed
+// environment check) as finite-domain MNCS source. It is the Fabric-side
+// counterpart of the reusable `mncs.std.platform.v1`; the two must agree
+// arm-for-arm, and `tests/test_mncs_platform_decision.py` pins every arm
+// mechanically so neither can drift silently.
+//
+// Layering:
+// - the host classifies unbounded text (`classify_os`, `classify_arch`,
+//   `classify_libc`, subprocess discovery, clocks, hashing) before calling
+//   in; MNCS never observes a raw string, so a new platform string can
+//   never silently reinterpret an existing arm;
+// - this module owns the decision over already-classified finite values;
+// - fleet aggregation, preference ranking, and token synthesis stay
+//   host-side (unbounded sets), with ranking pressure recorded in
+//   `development-pressure/mncs-language-pressure.json`.
+module fabric.platform_decision;
+
+enum Os { Linux, Windows, MacOs, Unknown }
+
+enum Arch { X86_64, Aarch64, Riscv64, X86, Arm32, Unknown }
+
+enum Libc { Gnu, Musl, WasiC, WinCrt, Unknown }
+
+enum Accel { None, Cuda, Rocm, Metal, Unknown }
+
+enum ExecMode { Native, Emulated }
+
+enum ReqOs { Any, Linux, Windows, MacOs }
+
+enum ReqArch { Any, X86_64, Aarch64, Riscv64, X86, Arm32 }
+
+enum ReqLibc { Any, Gnu, Musl, WasiC, WinCrt }
+
+record WorkerEnv {
+    os: Os,
+    arch: Arch,
+    libc: Libc,
+    accel: Accel,
+    exec: ExecMode,
+    cuda_major: i32,
+    cuda_minor: i32,
+    has_ebpf: bool,
+    has_wasm: bool,
+    has_ptx: bool,
+    mem_mib: i64,
+    cpu_count: i32,
+    emulates_req_arch: bool
+}
+
+record WorkloadReq {
+    os: ReqOs,
+    arch: ReqArch,
+    libc: ReqLibc,
+    require_cuda: bool,
+    cuda_major: i32,
+    cuda_minor: i32,
+    require_ebpf: bool,
+    require_wasm: bool,
+    require_ptx: bool,
+    allow_emulation: bool,
+    min_mem_mib: i64,
+    min_cpu_count: i32
+}
+
+// Only requirements say "any"; an Unknown observation satisfies nothing
+// concrete, so it is honest rather than a wildcard.
+fn os_satisfies(req: ReqOs, got: Os) -> (result: bool) {
+    return match req {
+        Any => true,
+        Linux => match got {
+            Linux => true,
+            Windows => false,
+            MacOs => false,
+            Unknown => false,
+        },
+        Windows => match got {
+            Linux => false,
+            Windows => true,
+            MacOs => false,
+            Unknown => false,
+        },
+        MacOs => match got {
+            Linux => false,
+            Windows => false,
+            MacOs => true,
+            Unknown => false,
+        },
+    };
+}
+
+fn arch_matches(req: ReqArch, got: Arch) -> (result: bool) {
+    return match req {
+        Any => true,
+        X86_64 => match got {
+            X86_64 => true,
+            Aarch64 => false,
+            Riscv64 => false,
+            X86 => false,
+            Arm32 => false,
+            Unknown => false,
+        },
+        Aarch64 => match got {
+            X86_64 => false,
+            Aarch64 => true,
+            Riscv64 => false,
+            X86 => false,
+            Arm32 => false,
+            Unknown => false,
+        },
+        Riscv64 => match got {
+            X86_64 => false,
+            Aarch64 => false,
+            Riscv64 => true,
+            X86 => false,
+            Arm32 => false,
+            Unknown => false,
+        },
+        X86 => match got {
+            X86_64 => false,
+            Aarch64 => false,
+            Riscv64 => false,
+            X86 => true,
+            Arm32 => false,
+            Unknown => false,
+        },
+        Arm32 => match got {
+            X86_64 => false,
+            Aarch64 => false,
+            Riscv64 => false,
+            X86 => false,
+            Arm32 => true,
+            Unknown => false,
+        },
+    };
+}
+
+// A direct architecture hit still honors the execution mode: a native
+// requirement on an emulated worker holds only when the workload allows
+// emulation. A miss holds only through the declared emulation path.
+fn arch_satisfies(req: ReqArch, got: Arch, allow_emulation: bool, emulates_req_arch: bool, exec_mode: ExecMode) -> (result: bool) {
+    if arch_matches(req, got) {
+        return match exec_mode {
+            Native => true,
+            Emulated => allow_emulation,
+        };
+    }
+    if allow_emulation {
+        if emulates_req_arch {
+            return match exec_mode {
+                Native => false,
+                Emulated => true,
+            };
+        }
+        return false;
+    }
+    return false;
+}
+
+fn libc_satisfies(req: ReqLibc, got: Libc) -> (result: bool) {
+    return match req {
+        Any => true,
+        Gnu => match got {
+            Gnu => true,
+            Musl => false,
+            WasiC => false,
+            WinCrt => false,
+            Unknown => false,
+        },
+        Musl => match got {
+            Gnu => false,
+            Musl => true,
+            WasiC => false,
+            WinCrt => false,
+            Unknown => false,
+        },
+        WasiC => match got {
+            Gnu => false,
+            Musl => false,
+            WasiC => true,
+            WinCrt => false,
+            Unknown => false,
+        },
+        WinCrt => match got {
+            Gnu => false,
+            Musl => false,
+            WasiC => false,
+            WinCrt => true,
+            Unknown => false,
+        },
+    };
+}
+
+// No CUDA requirement is trivially satisfied. A requirement needs the
+// CUDA accelerator at or above the compute floor; anything else fails.
+fn cuda_satisfies(require: bool, req_major: i32, req_minor: i32, got: Accel, got_major: i32, got_minor: i32) -> (result: bool) {
+    if require {
+        return match got {
+            Cuda => cuda_at_floor(req_major, req_minor, got_major, got_minor),
+            None => false,
+            Rocm => false,
+            Metal => false,
+            Unknown => false,
+        };
+    }
+    return true;
+}
+
+fn cuda_at_floor(req_major: i32, req_minor: i32, got_major: i32, got_minor: i32) -> (result: bool) {
+    if got_major < req_major {
+        return false;
+    }
+    if got_major > req_major {
+        return true;
+    }
+    if got_minor < req_minor {
+        return false;
+    }
+    return true;
+}
+
+fn resources_satisfy(min_mem_mib: i64, min_cpu_count: i32, got_mem_mib: i64, got_cpu_count: i32) -> (result: bool) {
+    if min_mem_mib <= got_mem_mib {
+        return min_cpu_count <= got_cpu_count;
+    }
+    return false;
+}
+
+// An unset requirement holds unconditionally; a set one needs the flag.
+fn flag_satisfies(require: bool, got: bool) -> (result: bool) {
+    if require {
+        return got;
+    }
+    return true;
+}
+
+// Composed environment check: every required dimension must hold. Stages
+// nest rather than short-circuit-list so each dimension answers exactly
+// once and the structure mirrors the Python `all(checks)` arm-for-arm.
+fn env_satisfies(req: WorkloadReq, env: WorkerEnv) -> (result: bool) {
+    if os_satisfies(req.os, env.os) {
+        if arch_satisfies(req.arch, env.arch, req.allow_emulation, env.emulates_req_arch, env.exec) {
+            if libc_satisfies(req.libc, env.libc) {
+                if cuda_satisfies(req.require_cuda, req.cuda_major, req.cuda_minor, env.accel, env.cuda_major, env.cuda_minor) {
+                    if flag_satisfies(req.require_ebpf, env.has_ebpf) {
+                        if flag_satisfies(req.require_wasm, env.has_wasm) {
+                            if flag_satisfies(req.require_ptx, env.has_ptx) {
+                                return resources_satisfy(req.min_mem_mib, req.min_cpu_count, env.mem_mib, env.cpu_count);
+                            }
+                            return false;
+                        }
+                        return false;
+                    }
+                    return false;
+                }
+                return false;
+            }
+            return false;
+        }
+        return false;
+    }
+    return false;
+}
+
+// The experiment targets these wrappers so source-level call semantics are
+// in the executed path rather than merely present in the module.
+fn candidate_os(req: ReqOs, got: Os) -> (result: bool) {
+    return os_satisfies(req, got);
+}
+
+fn candidate_arch_match(req: ReqArch, got: Arch) -> (result: bool) {
+    return arch_matches(req, got);
+}
+
+fn candidate_arch(req: ReqArch, got: Arch, allow_emulation: bool, emulates_req_arch: bool, exec_mode: ExecMode) -> (result: bool) {
+    return arch_satisfies(req, got, allow_emulation, emulates_req_arch, exec_mode);
+}
+
+fn candidate_libc(req: ReqLibc, got: Libc) -> (result: bool) {
+    return libc_satisfies(req, got);
+}
+
+fn candidate_cuda(require: bool, req_major: i32, req_minor: i32, got: Accel, got_major: i32, got_minor: i32) -> (result: bool) {
+    return cuda_satisfies(require, req_major, req_minor, got, got_major, got_minor);
+}
+
+fn candidate_resources(min_mem_mib: i64, min_cpu_count: i32, got_mem_mib: i64, got_cpu_count: i32) -> (result: bool) {
+    return resources_satisfy(min_mem_mib, min_cpu_count, got_mem_mib, got_cpu_count);
+}
+
+fn candidate_flag(require: bool, got: bool) -> (result: bool) {
+    return flag_satisfies(require, got);
+}
+
+fn candidate_env(req: WorkloadReq, env: WorkerEnv) -> (result: bool) {
+    return env_satisfies(req, env);
+}

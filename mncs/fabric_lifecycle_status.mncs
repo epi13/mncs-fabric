@@ -1,0 +1,70 @@
+mncs 0.6;
+
+// Fabric enrollment-authorization status lattice as language-owned source.
+//
+// This module reconstructs the pure status derivation inside
+// `src/mncs_fabric/lifecycle.py` (`_record_status` and `_request_status`)
+// as finite-domain MNCS source: given already established boolean facts,
+// which authorization/request status holds. Python remains authoritative
+// for ledgers, clocks, token digests, identity checks, and record
+// validation; this module owns the precedence lattice itself, so the MNCS
+// compiler executes the exact relation Fabric depends on.
+//
+// Precedence (pinned by the corpus):
+// - authorization: REVOKED outranks EXPIRED, EXPIRED (event or deadline)
+//   outranks CONSUMED, CONSUMED outranks ACTIVE. The caller reduces clock
+//   comparison to `expired_by_time` and ledger scans to the three event
+//   booleans; MNCS never observes timestamps or digests.
+// - request: a recorded decision outranks everything; otherwise an
+//   expired or revoked authorization expires the request; otherwise the
+//   request is still pending. Unknown authorizations and requests stay
+//   host-side errors, never a status value.
+module fabric.lifecycle_status;
+
+enum AuthStatus { Active, Consumed, Expired, Revoked }
+
+enum Decision { Approved, Denied, Expired }
+
+enum RequestStatus { Pending, Approved, Denied, Expired }
+
+fn authorization_status(has_revoked: bool, has_expired_event: bool, expired_by_time: bool, has_consumed: bool) -> (result: AuthStatus) {
+    if has_revoked {
+        return AuthStatus.Revoked;
+    }
+    if has_expired_event {
+        return AuthStatus.Expired;
+    }
+    if expired_by_time {
+        return AuthStatus.Expired;
+    }
+    if has_consumed {
+        return AuthStatus.Consumed;
+    }
+    return AuthStatus.Active;
+}
+
+fn request_status(has_decision: bool, decision: Decision, auth: AuthStatus) -> (result: RequestStatus) {
+    if has_decision {
+        return match decision {
+            Approved => RequestStatus.Approved,
+            Denied => RequestStatus.Denied,
+            Expired => RequestStatus.Expired,
+        };
+    }
+    return match auth {
+        Active => RequestStatus.Pending,
+        Consumed => RequestStatus.Pending,
+        Expired => RequestStatus.Expired,
+        Revoked => RequestStatus.Expired,
+    };
+}
+
+// The experiment targets these wrappers so source-level call semantics are
+// in the executed path rather than merely present in the module.
+fn candidate_authorization(has_revoked: bool, has_expired_event: bool, expired_by_time: bool, has_consumed: bool) -> (result: AuthStatus) {
+    return authorization_status(has_revoked, has_expired_event, expired_by_time, has_consumed);
+}
+
+fn candidate_request(has_decision: bool, decision: Decision, auth: AuthStatus) -> (result: RequestStatus) {
+    return request_status(has_decision, decision, auth);
+}
