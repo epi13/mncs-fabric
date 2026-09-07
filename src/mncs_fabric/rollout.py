@@ -98,7 +98,12 @@ def validate_rollout(value: object) -> dict[str, Any]:
 
 
 def deployment_succeeded(outcome: Mapping[str, Any]) -> bool:
-    """Package deploy/restart/certify completed; scheduler READY is separate."""
+    """Package deploy/restart/certify completed; scheduler READY is separate.
+
+    Decision ownership (see ``mncs/fabric_rollout_outcome.mncs``): the MNCS
+    module owns this classification over already-read facts;
+    ``tests/test_mncs_rollout_outcome.py`` pins every arm mechanically.
+    """
 
     receipt = outcome.get("receipt") or {}
     certification = outcome.get("certification") or {}
@@ -116,7 +121,11 @@ def deployment_succeeded(outcome: Mapping[str, Any]) -> bool:
 
 
 def canary_succeeded(outcome: Mapping[str, Any]) -> bool:
-    """A canary is successful only after post-restart READY, not after apply."""
+    """A canary is successful only after post-restart READY, not after apply.
+
+    Decision ownership: see ``mncs/fabric_rollout_outcome.mncs`` (pinned by
+    ``tests/test_mncs_rollout_outcome.py``).
+    """
 
     management = outcome.get("management") or {}
     transaction = outcome.get("update_transaction") or {}
@@ -142,6 +151,7 @@ def canary_succeeded(outcome: Mapping[str, Any]) -> bool:
 
 
 def canary_failed(outcome: Mapping[str, Any]) -> bool:
+    """Decision ownership: see ``mncs/fabric_rollout_outcome.mncs``."""
     management = (outcome.get("management") or {}).get("state")
     receipt = (outcome.get("receipt") or {}).get("disposition")
     observation = ((outcome.get("observation") or {}).get("observation") if isinstance(outcome.get("observation"), Mapping) else None)

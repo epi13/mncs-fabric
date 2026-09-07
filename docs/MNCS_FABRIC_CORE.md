@@ -1,7 +1,8 @@
 # Fabric MNCS core
 
-Six MNCS-language modules now execute real Fabric decisions on the real
-`mncs-language` toolchain (`research-bytecode`, Source Profile 0.6).
+Ten MNCS modules execute real Fabric decisions on the real
+`mncs-language` toolchain (pin `0216d64`; `research-bytecode`
+everywhere, `mncs-portable-wasm-mvp` + `mncs-c11` spot evidence).
 This document describes what each module owns, what stays host-side,
 and how to add the next one. The rule for everything below:
 
@@ -12,82 +13,97 @@ and how to add the next one. The rule for everything below:
 
 ## Modules
 
-- `mncs/worker_capability.mncs` (`fabric.worker_capability`, 84 cases):
-  provenance trust, freshness lattice, intent/policy compatibility, and
-  the ordered resolution codes ending in `Eligible` or a
-  machine-readable reason (`NO_ELIGIBLE_WORKER` is the fleet-level
-  verdict built on top). Python mirror:
+- `fabric.worker_capability` (84 cases): provenance trust, freshness
+  lattice, intent/policy compatibility, and the ordered resolution
+  codes ending in `Eligible` or a machine-readable reason. Production
+  decisions can additionally be answered from its compiled artifact
+  through `MncsAuthority` (see below). Python mirror:
   `src/mncs_fabric/capability_resolution.py` Sec. 2.
-- `mncs/update_lifecycle.mncs` (`fabric.update_lifecycle`, 245 cases):
-  the 14-state update transition relation plus lexicographic version
-  precedence over parsed tuples. Python mirrors:
-  `src/mncs_fabric/update_lifecycle.py` (`_TRANSITIONS`),
-  `src/mncs_fabric/versioning.py`.
-- `mncs/fabric_management.mncs` (`fabric.management`, 70 cases):
-  the 7-state controller management machine, the READY/BUSY scheduling
-  gate, and the READY/certification invariant. The strict table has no
-  reflexive arm: Python's `can_transition` self-transition closure and
-  the `None`-means-schedulable default stay host-side. Python mirror:
-  `src/mncs_fabric/management.py`.
-- `mncs/fabric_platform_decision.mncs` (`fabric.platform_decision`,
-  449 cases): OS/arch/libc/CUDA/resource/flag predicates plus the
-  composed `env_satisfies` over `WorkerEnv`/`WorkloadReq` records. An
-  `Unknown` observation satisfies nothing; only requirements say `Any`.
-  Re-declares the `mncs.std.platform.v1` vocabulary (imports are not
-  yet stable enough to reuse it; see pressure P-004). Python mirror:
+- `fabric.update_lifecycle` (245 cases): the 14-state update transition
+  relation plus lexicographic version precedence over parsed tuples.
+- `mncs.std.platform.v1` (461 cases, **not a Fabric file**): the shared
+  standard library owns the platform vocabulary and decision
+  (OS/arch/libc/CUDA/resources/flags plus `env_satisfies`).
+  Fabric's former duplicate (`fabric.platform_decision`) was deleted;
+  `tests/test_mncs_platform_decision.py` executes the stdlib file
+  itself against Python-computed expectations, including an
+  init-independence proof. Python mirror:
   `src/mncs_fabric/capability_resolution.py` Sec. 1.
-- `mncs/fabric_reconnect.mncs` (`fabric.reconnect`, 328 cases): the
-  `observe_reconnect` classification (observation + next state) over
-  reduced boolean facts. Identity text folds to `same_identity`,
-  version/artifact comparison folds to `version_matched`, parse failure
-  folds to `version_malformed`, recovery folds to `present_at_expected`;
-  states outside the reconnect lifecycle fold to `Other` (with the
-  not-applicable observation pinned as `AwaitingDisconnect`, exactly as
-  Python reports it). Python mirror:
-  `src/mncs_fabric/update_lifecycle.py::observe_reconnect`.
-- `mncs/fabric_lifecycle_status.mncs` (`fabric.lifecycle_status`,
-  40 cases): enrollment authorization precedence (REVOKED > EXPIRED >
-  CONSUMED > ACTIVE) and request status (recorded decision wins,
-  otherwise expired/revoked authorization expires the request). Unknown
-  authorizations/requests stay host-side errors, never status values.
-  Python mirrors: `src/mncs_fabric/lifecycle.py::_record_status`,
-  `_request_status`.
+- `fabric.management` (70 cases): the 7-state controller management
+  machine, the READY/BUSY scheduling gate, and the READY/certification
+  invariant. Also green on WASM and C11.
+- `fabric.reconnect` (328 cases): the `observe_reconnect`
+  classification (observation + next state) over reduced boolean facts.
+- `fabric.lifecycle_status` (40 cases): enrollment authorization
+  precedence (REVOKED > EXPIRED > CONSUMED > ACTIVE) and request status.
+- `fabric.availability` (168 cases): window openness over normalized
+  minutes, including the always-open empty window and midnight wrap.
+  The model split lives here: the host reduces clocks/timezones/
+  day-sets to `(day_in, begin, finish, now)`; MNCS decides.
+- `fabric.rollout_outcome` (1376 cases): deployment success, canary
+  success (stricter certification gate), and canary-failure
+  classification over reduced facts.
+- `fabric.scheduler_rank` (104 cases): the pairwise fleet-rank
+  comparator behind the sort key, replica sufficiency, slot admission,
+  and replica bounds. The sort and the identity tie-break stay
+  host-side (P-007).
+- `fabric.work_item` (26 cases): terminal classification (reads the
+  real `_TERMINAL` set), priority order (checked against the real tick
+  sort key), and dispatch holds (pause outranks missing eligibility).
+- `pressure.text_probe` (13 cases, reproducer): bounded byte-token
+  matching and digit accumulation at profile 0.7 with
+  `mncs.core.bytes.v1` reuse, green on 3 backends. Pins the remaining
+  text gap (P-014): fixed widths and byte-exactness only.
 
-## Authority model (transitional, explicit)
+## Authority model: pilot reversal
 
-For each module, Python is still the production runtime authority and
-the corpus generator reads the Python tables. The MNCS module is the
-CI-executed authority: `mncs experiment run` compiles and executes every
-case, and `tests/test_mncs_*` fails on any divergence. Removing the
-Python arms waits on a host-callable artifact story (pressure P-010);
-until then, duplication is pinned, named, and bounded — never silent.
+For most modules Python is still the production runtime authority and
+the corpus generator reads the Python tables, while MNCS is the
+CI-executed authority. One subsystem goes further:
+`src/mncs_fabric/mncs_authority.py` (`MncsAuthority`) pins a backend
+artifact identity, marshals typed rows, and answers a whole fleet in
+one `mncs experiment execute` batch (~280 ms fixed, ~0 marginal).
+`resolve_fleet`/`schedule` take `authority=` explicitly; artifact and
+backend identity land in `FleetResolution`/`ScheduleDecision` evidence.
+There is no silent fallback: misconfiguration raises `AuthorityError`.
+The production default stays Python for measured latency and
+deployment reasons; flipping it needs a real embedding API (P-010
+remainder). `tests/test_mncs_authority.py` proves MNCS answers all 48
+resolve arms and agrees with legacy verdict-for-verdict.
 
 ## How to add the next module
 
 1. Pick a pure decision: finite inputs, finite/boolean/integer outputs,
    no strings, no IO, no absent values (or document the folding).
-2. Write `mncs/fabric_<name>.mncs` at Profile 0.6 (enums, records,
+2. Check whether the standard library already owns it (`library/` in
+   mncs-language). If yes, write a parity corpus against the std file
+   instead of a new module. If a new module needs std vocabulary,
+   `use` it (imports work; see the text reproducer) — never re-declare.
+3. Write `mncs/fabric_<name>.mncs` at Profile 0.6 (enums, records,
    exhaustive match, strict booleans, same-width comparisons only).
    Expose `candidate_*` wrappers as the executed entrypoints.
-3. Write `mncs/gen_<name>_corpus.py` reading the Python authority (not
+4. Write `mncs/gen_<name>_corpus.py` reading the Python authority (not
    reimplementing it). Encode records exactly as `mncs abi` reports
    them: `mncs:0.2:record-type:{module}::{Type}::{percent-encoded
    name:type; spec}`, `name`, and alphabetically ordered `[name, value]`
    field lists. Enum-typed fields name the bare type.
-4. Write `tests/test_mncs_<name>.py` with both tiers: corpus-vs-Python
+5. Write `tests/test_mncs_<name>.py` with both tiers: corpus-vs-Python
    agreement (always runs; rebuild the Python-side evidence from the
    decoded arguments, never trust the corpus) and gated toolchain
    execution (the `MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1` pattern).
-5. Wire the workflow: source-study line, generator line, and test name
+6. Wire the workflow: source-study line, generator line, and test name
    in `.github/workflows/mncs-conformance.yml`.
-6. Record new gaps in `development-pressure/mncs-language-pressure.json`
+7. Record new gaps in `development-pressure/mncs-language-pressure.json`
    (never work around the language); update
    `development-pressure/conversion-inventory.json`.
 
 ## Security invariants preserved
 
 Scheduling is by capability, never worker name (no name appears in any
-`.mncs` source, corpus, or test). Evidence rules are untouched:
-emulated stays emulated-shaped, compile-only stays compile-only, and no
-remote/local fallback logic moved or changed. No new network behavior;
-the threat model is unchanged.
+`.mncs` source, corpus, or test; the rank comparator answers a strict
+question and the identity tie-break stays host-side). Evidence rules
+are untouched: emulated stays emulated-shaped, compile-only stays
+compile-only, and no remote/local fallback logic moved or changed. No
+new network behavior; the threat model is unchanged. The authority
+pilot records artifact identity in evidence rather than hiding the
+answering implementation.

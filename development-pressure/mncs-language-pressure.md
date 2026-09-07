@@ -3,100 +3,90 @@
 Machine-readable source: `mncs-language-pressure.json` (schema
 `mncs-fabric.language-pressure.v0.1`). Per-subsystem conversion state:
 `conversion-inventory.json`. This document ranks the findings for the
-follow-up mncs-language campaign. Nothing here was worked around: every
-blocked conversion below names the exact boundary where Python remains
+mncs-language repair campaign. Nothing here was worked around: every
+blocked conversion names the exact boundary where Python remains
 the runtime authority.
 
-Toolchain observed: mncs-language `8d79250` (feature branch
-`feat/std-platform-capability`; CI pin unchanged at `4f3146a`),
-`research-bytecode` backend, Source Profile 0.6.
+## Evidence baseline (one truth)
 
-## What converted (executed, not merely parsed)
+- Fabric tree: this campaign (post-PR #73 continuation).
+- Language: `0216d64` (mncs-language origin/main; CI pin). The PR #73
+  review flagged dev-rev `8d79250` vs pin `4f3146a` drift; resolved by
+  bumping to mainline `0216d64` (which contains
+  `library/std/platform.mncs`) and re-executing all six PR #73 corpora
+  PASS there (1216/1216) before migrating. All new corpora are
+  generated and executed at `0216d64`.
+- Profiles `0.6` (core) and `0.7` (text pressure reproducer only).
+- Backends: `research-bytecode` everywhere; `mncs-portable-wasm-mvp`
+  and `mncs-c11` spot evidence (management 70/70, text probe 13/13).
 
-Six MNCS modules, 1216 corpus cases, all PASS on the real toolchain:
+## What converted this campaign
 
-| module | cases | owns |
-| --- | --- | --- |
-| `fabric.worker_capability` (pre-existing) | 84 | provenance/freshness/intent ordering |
-| `fabric.update_lifecycle` (pre-existing) | 245 | update transitions, version precedence |
-| `fabric.management` (new) | 70 | mgmt transitions, sched gate, READY invariant |
-| `fabric.platform_decision` (new) | 449 | OS/arch/libc/CUDA/resource/flag + `env_satisfies` |
-| `fabric.reconnect` (new) | 328 | reconnect classification + next state |
-| `fabric.lifecycle_status` (new) | 40 | auth/request status lattice |
+- **Authority pilot (P-010)**: `MncsAuthority` answers ordered
+  resolution codes from the compiled artifact in one
+  `experiment execute` batch (~280 ms fixed, ~0 marginal);
+  `resolve_fleet`/`schedule` take `authority=` explicitly and bind
+  artifact/backend identity into evidence. MNCS answers all 48 resolve
+  arms; fleet+scheduler agree with legacy verdict-for-verdict.
+- **Std reuse (P-004 resolved)**: `fabric.platform_decision` (~302
+  lines) deleted; the parity corpus executes `mncs.std.platform.v1`
+  itself (461 cases, incl. init-independence proof).
+- **New cores**: availability windows (168), rollout outcomes (1376),
+  scheduler rank (104), work item (26) — all PASS at the pin.
+- **Text pressure**: `pressure.text_probe` proves byte-token matching
+  and digit accumulation on 3 backends; pins exact-width and
+  case-sensitivity limits (P-014).
+- Corpus total: 1216 -> 2915 executable cases.
 
-Each has a generator (`mncs/gen_*_corpus.py`), a checked-in corpus, and a
-parity test (`tests/test_mncs_*`) with two tiers: corpus-vs-Python
-agreement (always runs) and compiled execution (gated behind
-`MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1`, runs in `mncs-conformance`).
+## Resolved / narrowed since PR #73
 
-Zero subsystems are fully MNCS-authoritative at runtime yet: Python
-remains the production runtime authority everywhere (see P-010). Eight
-subsystem cores are MNCS-pinned and CI-executed (`MNCS_PARTIAL`); the
-rest is inventoried in `conversion-inventory.json`.
+- **P-004 imports**: RESOLVED. `use` elaborates, executes, preserves
+  declaring-module identities; duplication deleted (see above).
+- **P-005 text**: NARROWED. Byte mechanics + `mncs.core.bytes.v1`
+  reuse proven; remainder moves to P-014 (views, folding, feeding).
+- **P-010 embedding**: PILOT-PROVEN. Mechanism exists and is measured;
+  default flip needs a real embedding API (ms cost, no subprocess).
+- **P-011 backends**: EVIDENCE-ADDED. First 3-backend Fabric results.
 
-## Ranked pressure for the next campaign
+## Ranked pressure for the repair campaign
 
 ### Tier 1 — unlocks the most Fabric code
 
-1. **P-010 host-callable MNCS artifacts** (`FFI_HOST_BOUNDARY`, blocked,
-   high). Every duplicated arm is pinned, but nothing can call the MNCS
-   side in production. A call-into-compiled-MNCS contract (value
-   encoding, artifact identity in receipts) lets `resolve_code` pilot the
-   reversal, then the other five decision cores, deleting ~1.5k lines of
-   mirrored Python logic over time.
-2. **P-006 IO effects** (`RUNTIME`, blocked, high). Transport, storage,
-   evidence hashing, clocks, subprocess: the entire controller/worker/
-   evidence half of Fabric. Start with clock + hash + file effects; the
-   Fabric transport is the designated first consumer. Nothing here was
-   weakened: evidence guarantees are intact because the move did not
-   happen.
-3. **P-007 sets/maps/iteration/sorting** (`LANGUAGE_SEMANTICS`, blocked,
-   high). Fleet aggregation, token-set algebra, ledger folding. Moving
-   `resolve_fleet` ranking into MNCS removes the second semantic layer
-   in scheduling. Depends on bounded-collection semantics; coordinate
-   with profiles 0.7–0.10 owners.
-4. **P-005 bounded text** (`STDLIB`, blocked, high). All classifiers and
-   version/identity parsing. The host-classifies/MNCS-decides split is
-   sound and documented, but every new platform string still means
-   editing Python. Needs an RFC before any classifier moves.
+1. **P-014 variable-length text/views** (new, blocked, high).
+   `classify_arch/os/libc`, version parsing, protocol validation.
+   Fixed-width proof exists; views-based variable matching is the next
+   step, then move classifier arms one by one (~600 lines Python).
+2. **P-006 IO effects** (still blocked, high). Transport, storage,
+   evidence hashing, clocks, subprocess. Start with clock + hash +
+   file; Fabric transport is the designated consumer.
+3. **P-007 sets/sorting** (still blocked, high). Fleet aggregation,
+   token-set algebra, ledger folding. The rank comparator moved; the
+   sort itself waits on bounded collections.
+4. **Embedding API** (P-010 remainder, awkward, high). Host-callable
+   entrypoints with ms cost so the proven pilot can become the
+   default; unlocks deleting the mirrored resolve arms.
 
-### Tier 2 — multiplies velocity / removes drift risk
+### Tier 2 — velocity / drift risk
 
-5. **P-004 stable module imports** (`MODULE_SYSTEM`, awkward, medium).
-   Removes the std-platform vocabulary duplication (`fabric` re-declares
-   7 enums). Delete ~150 lines of mirrored declarations once imports
-   reconcile nominal finite/record identities.
-6. **P-008 services/concurrency** (`RUNTIME`, blocked, high but
-   longer-term). Heartbeats, leases, queue ticks, retries. State
-   relations are already extracted; the loops come after P-006.
-7. **P-002 argument-mismatch diagnostics** (`DIAGNOSTICS`, awkward,
-   medium). One-line fix (print expected vs received identities),
-   found the hard way during this campaign. Immediate payoff for every
-   future corpus author.
-8. **P-003 shared corpus-value builder** (`TOOLING`, awkward, medium).
-   One supported encoder (or `mncs corpus lint` against `mncs abi`)
-   replaces per-module copy-paste that already caused one real bug here.
+5. **P-008 services/timers** (blocked, high, longer-term). State
+   relations extracted (management, update, reconnect, rollout, work
+   item); loops wait on P-006.
+6. **P-002 mismatch diagnostics + P-003 corpus builder + P-013 empty
+   expected** (awkward, low/medium). Cheap, immediate payoff.
+7. **Weekly multi-backend matrix** (P-011 remainder). LLVM/Cranelift/
+   RV32/eBPF/PTX still uncovered.
 
-### Tier 3 — known costs, tracked
+### Tier 3 — tracked
 
-9. **P-009 execution/observation cost** (`PERFORMANCE`, awkward, medium).
-   ~2 s/case for deeply-nested relations (update corpus) vs seconds for
-   887 small-decision cases; cost scales with relation complexity. The
-   six-module conformance job keeps a 150 min timeout. Profile
-   canonical-hash volume per trivial case first.
-10. **P-011 multi-backend evidence** (`BACKEND`, awkward, medium). All
-    Fabric evidence is single-backend. Weekly matrix over the six
-    corpora; file backend findings separately.
-11. **P-001 mixed-width comparison** (`TYPE_SYSTEM`, awkward, medium).
-    Decide promotion or bless conversions; small, well-isolated.
-12. **P-012 Option/None** (`TYPE_SYSTEM`, awkward, low). Three absence
-    policies waiting (freshness-None, management-None, artifact-None).
+8. **P-009 cost** (awkward, medium). Heavy corpora need the 150 min
+   budget; small relations run in seconds.
+9. **P-001 mixed-width ints, P-012 Option types** (awkward, low/medium).
+   Small, isolated.
 
-## Dependencies between fixes
+## Dependencies
 
-- P-010 before any Python-arm deletion (else coverage without authority).
-- P-006 before P-008 (effects before services).
-- P-007 before fleet-aggregation migration; independent of P-005.
-- P-002/P-003 independent, cheapest, do first.
-- P-011 (matrix) should ride along with any backend-affecting fix to
-  catch accidental single-backend reliance.
+- P-014 before classifier migration; independent of P-007.
+- P-006 before P-008.
+- Embedding API before Python-arm deletion (coverage without authority
+  is the current pinned state, not the destination).
+- Matrix job rides along with any backend-affecting fix.

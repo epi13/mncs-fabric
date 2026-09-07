@@ -1,0 +1,52 @@
+mncs 0.6;
+
+// Fabric availability-window decision as language-owned source.
+//
+// This module reconstructs the pure window relation inside
+// `src/mncs_fabric/availability.py::window_contains` as finite-domain
+// MNCS source: given a normalized instant and window bound (minutes
+// since midnight), is the instant inside? Python remains authoritative
+// for timezones, wall clocks, day-of-week derivation, day-set
+// membership, and policy validation; this module owns the interval
+// decision itself.
+//
+// Effects/decisions split (the model for the whole campaign):
+// - the host obtains normalized time facts (weekday, minutes) and
+//   reduces (day, window) membership to `day_in`;
+// - MNCS decides whether the normalized instant satisfies the window,
+//   including the two load-bearing edges: an empty window
+//   (begin == finish) is always open, and an inverted window
+//   (begin > finish) wraps midnight.
+//
+// Corpus pins `window_open` against `window_contains` over boundary
+// minutes with `day_in` both true and false.
+module fabric.availability;
+
+fn window_open(day_in: bool, begin_minutes: i32, finish_minutes: i32, now_minutes: i32) -> (result: bool) {
+    if day_in {
+        return window_contains(begin_minutes, finish_minutes, now_minutes);
+    }
+    return false;
+}
+
+fn window_contains(begin_minutes: i32, finish_minutes: i32, now_minutes: i32) -> (result: bool) {
+    if begin_minutes < finish_minutes {
+        if begin_minutes <= now_minutes {
+            return now_minutes < finish_minutes;
+        }
+        return false;
+    }
+    if begin_minutes > finish_minutes {
+        if now_minutes >= begin_minutes {
+            return true;
+        }
+        return now_minutes < finish_minutes;
+    }
+    return true;
+}
+
+// The experiment targets this wrapper so source-level call semantics are
+// in the executed path rather than merely present in the module.
+fn candidate(day_in: bool, begin_minutes: i32, finish_minutes: i32, now_minutes: i32) -> (result: bool) {
+    return window_open(day_in, begin_minutes, finish_minutes, now_minutes);
+}

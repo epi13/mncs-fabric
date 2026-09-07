@@ -204,6 +204,13 @@ class WorkQueue:
         now: datetime | None = None,
         dispatcher: Callable[[dict[str, Any], str], Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
+        """Advance the queue one step.
+
+        Per-item decisions (terminal classification, priority order,
+        dispatch holds) are owned by ``mncs/fabric_work_item.mncs`` and
+        pinned by ``tests/test_mncs_work_item.py``; ledgers, clocks, and
+        dispatch effects stay host-side here.
+        """
         validate_availability_policy(policy)
         if self.paused():
             return {"paused": True, "dispatched": [], "held": [item["work_id"] for item in self.queued()]}

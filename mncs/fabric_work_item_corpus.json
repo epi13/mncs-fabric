@@ -1,0 +1,904 @@
+{
+ "schema_version": "0.1",
+ "name": "fabric-work-item",
+ "cases": [
+  {
+   "id": "terminal-QUEUED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::Queued",
+       "discriminant": 0
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "terminal-DISPATCHED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::Dispatched",
+       "discriminant": 1
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "terminal-COMPLETED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::Completed",
+       "discriminant": 2
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "terminal-FAILED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::Failed",
+       "discriminant": 3
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "terminal-CANCELLED",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::Cancelled",
+       "discriminant": 4
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "terminal-OTHER",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_terminal"
+    },
+    "arguments": [
+     {
+      "finite": {
+       "type_identity": "mncs:0.2:finite-type:fabric.work_item::WorkState",
+       "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::WorkState::NonTerminal",
+       "discriminant": 5
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-1-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-1-50",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-1-100",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-1-200",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-50-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-50-50",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-50-100",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-50-200",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-100-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-100-50",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-100-100",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-100-200",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-200-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-200-50",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 50,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-200-100",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 100,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "priority-200-200",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_priority"
+    },
+    "arguments": [
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 200,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "hold-paused0-eligible0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_hold"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.work_item::HoldReason",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::HoldReason::NoEligibleHold",
+      "discriminant": 2
+     }
+    }
+   ]
+  },
+  {
+   "id": "hold-paused0-eligible1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_hold"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.work_item::HoldReason",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::HoldReason::Dispatch",
+      "discriminant": 0
+     }
+    }
+   ]
+  },
+  {
+   "id": "hold-paused1-eligible0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_hold"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": false
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.work_item::HoldReason",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::HoldReason::PausedHold",
+      "discriminant": 1
+     }
+    }
+   ]
+  },
+  {
+   "id": "hold-paused1-eligible1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.work_item",
+     "function": "candidate_hold"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "boolean": {
+       "value": true
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "finite": {
+      "type_identity": "mncs:0.2:finite-type:fabric.work_item::HoldReason",
+      "variant_identity": "mncs:0.2:finite-variant:fabric.work_item::HoldReason::PausedHold",
+      "discriminant": 1
+     }
+    }
+   ]
+  }
+ ]
+}

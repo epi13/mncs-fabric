@@ -1,16 +1,22 @@
 #!/usr/bin/env python3
-"""Generate the exhaustive execution corpus for mncs/fabric_platform_decision.mncs.
+"""Generate the parity corpus pinning Fabric decisions to mncs.std.platform.v1.
 
-Reads the Python platform-decision functions (the current runtime
-authority in `src/mncs_fabric/capability_resolution.py`) and emits every
-decision arm as an MNCS ExecutionCorpus. `mncs experiment run` executes
-the compiled module; `tests/test_mncs_platform_decision.py` asserts the
-execution agrees with Python on every case.
+Fabric's platform vocabulary is the shared standard library, not a Fabric
+copy: this corpus calls ``mncs.std.platform.v1`` entrypoints directly with
+expectations computed from the Python authority in
+``src/mncs_fabric/capability_resolution.py``. `mncs experiment run`
+executes the *standard library file itself*
+(``<mncs-language>/library/std/platform.mncs`` at the pinned revision);
+``tests/test_mncs_platform_decision.py`` asserts the execution agrees with
+Python on every case.
 
-Run from the repository root: python3 mncs/gen_platform_decision_corpus.py
+The worker environment carries an ``init`` fact the composed check
+ignores on both sides. Env scenarios run under two init values to prove
+that independence rather than assume it.
+
+Run from the repository root: python3 mncs/gen_std_platform_parity.py
 """
 
-import itertools
 import json
 import os
 import sys
@@ -31,7 +37,7 @@ from mncs_fabric.capability_resolution import (  # noqa: E402
     resources_satisfy,
 )
 
-MODULE = "fabric.platform_decision"
+MODULE = "mncs.std.platform.v1"
 
 OS_MNCS = ["Linux", "Windows", "MacOs", "Unknown"]
 OS_PY = ["linux", "windows", "macos", "unknown"]
@@ -43,10 +49,13 @@ REQ_ARCH_MNCS = ["Any", "X86_64", "Aarch64", "Riscv64", "X86", "Arm32"]
 REQ_ARCH_PY = ["any", "x86_64", "aarch64", "riscv64", "x86", "arm32"]
 LIBC_MNCS = ["Gnu", "Musl", "WasiC", "WinCrt", "Unknown"]
 LIBC_PY = ["gnu", "musl", "wasi-c", "win-crt", "unknown"]
+REQ_LIBC_MNCS = ["Any", "Gnu", "Musl", "WasiC", "WinCrt"]
+REQ_LIBC_PY = ["any", "gnu", "musl", "wasi-c", "win-crt"]
 ACCEL_MNCS = ["None", "Cuda", "Rocm", "Metal", "Unknown"]
 ACCEL_PY = ["none", "cuda", "rocm", "metal", "unknown"]
 EXEC_MNCS = ["Native", "Emulated"]
 EXEC_PY = ["native", "emulated"]
+INIT_MNCS = ["Systemd", "OpenRC", "SysV", "Launchd", "WinService", "Unknown"]
 
 
 def finite(module, type_name, variant_name, discriminant):
@@ -90,7 +99,7 @@ def record(module, type_name, fields):
     # Encoding matches mncs-model serde: percent-encoded `name:type;` spec
     # over alphabetically sorted fields, plus the record name, with fields
     # as an ordered list of [name, value] pairs. Enum-typed fields name the
-    # bare variant type (as in StatusSummary's `status:Status` precedent).
+    # bare variant type. Verified byte-identical against `mncs abi` output.
     names = sorted(fields)
     spec = "".join(f"{name}:{fields[name][1]};" for name in names)
     return {
@@ -113,6 +122,7 @@ def env_record(env):
             "os": (finite(MODULE, "Os", env["os_mncs"], OS_MNCS.index(env["os_mncs"])), "Os"),
             "arch": (finite(MODULE, "Arch", env["arch_mncs"], ARCH_MNCS.index(env["arch_mncs"])), "Arch"),
             "libc": (finite(MODULE, "Libc", env["libc_mncs"], LIBC_MNCS.index(env["libc_mncs"])), "Libc"),
+            "init": (finite(MODULE, "Init", env["init_mncs"], INIT_MNCS.index(env["init_mncs"])), "Init"),
             "accel": (finite(MODULE, "Accel", env["accel_mncs"], ACCEL_MNCS.index(env["accel_mncs"])), "Accel"),
             "exec": (finite(MODULE, "ExecMode", env["exec_mncs"], EXEC_MNCS.index(env["exec_mncs"])), "ExecMode"),
             "cuda_major": (integer32(env["cuda_major"]), "i32"),
@@ -170,7 +180,7 @@ def py_req(req):
     return {
         "os": REQ_OS_PY[REQ_OS_MNCS.index(req["os_mncs"])],
         "arch": REQ_ARCH_PY[REQ_ARCH_MNCS.index(req["arch_mncs"])],
-        "libc": REQ_LIBC_PY[LIBC_MNCS.index(req["libc_mncs"])] if "libc_mncs" in req else "any",
+        "libc": REQ_LIBC_PY[REQ_LIBC_MNCS.index(req["libc_mncs"])],
         "require_cuda": req["require_cuda"],
         "cuda_major": req["cuda_major"],
         "cuda_minor": req["cuda_minor"],
@@ -181,10 +191,6 @@ def py_req(req):
         "min_mem_mib": req["min_mem_mib"],
         "min_cpu_count": req["min_cpu_count"],
     }
-
-
-REQ_LIBC_MNCS = ["Any", "Gnu", "Musl", "WasiC", "WinCrt"]
-REQ_LIBC_PY = ["any", "gnu", "musl", "wasi-c", "win-crt"]
 
 
 def main():
@@ -207,7 +213,7 @@ def main():
             cases.append(
                 case(
                     f"arch-match-{req_mncs}-{got_mncs}",
-                    "candidate_arch_match",
+                    "arch_matches",
                     [
                         finite(MODULE, "ReqArch", req_mncs, REQ_ARCH_MNCS.index(req_mncs)),
                         finite(MODULE, "Arch", got_mncs, ARCH_MNCS.index(got_mncs)),
@@ -303,6 +309,7 @@ def main():
             )
     base_env = {
         "os_mncs": "Linux", "arch_mncs": "X86_64", "libc_mncs": "Gnu",
+        "init_mncs": "Unknown",
         "accel_mncs": "None", "exec_mncs": "Native",
         "cuda_major": 0, "cuda_minor": 0,
         "has_ebpf": False, "has_wasm": True, "has_ptx": False,
@@ -327,21 +334,25 @@ def main():
     scenarios.append(("any-os", {"os_mncs": "Unknown"}, {"os_mncs": "Any"}))
     scenarios.append(("wasm-missing", {"has_wasm": False}, {}))
     for name, env_delta, req_delta in scenarios:
-        env = dict(base_env)
-        env.update(env_delta)
-        req = dict(base_req)
-        req.update(req_delta)
-        expected = env_satisfies(py_req(req), py_env(env))
-        env["libc_mncs"] = env["libc_mncs"]
-        cases.append(
-            case(f"env-{name}", "candidate_env", [req_record(req), env_record(env)], boolean(expected))
-        )
+        for init in ("Unknown", "Systemd"):
+            env = dict(base_env)
+            env.update(env_delta)
+            env["init_mncs"] = init
+            req = dict(base_req)
+            req.update(req_delta)
+            # Python ignores init on both sides; the std module must agree
+            # under either value, proving init-independence.
+            expected = env_satisfies(py_req(req), py_env(env))
+            cases.append(
+                case(f"env-{name}-init-{init.lower()}", "candidate_env",
+                     [req_record(req), env_record(env)], boolean(expected))
+            )
     document = {
         "schema_version": "0.1",
-        "name": "fabric-platform-decision-exhaustive",
+        "name": "fabric-std-platform-parity",
         "cases": cases,
     }
-    out = os.path.join(HERE, "fabric_platform_decision_corpus.json")
+    out = os.path.join(HERE, "std_platform_parity_corpus.json")
     with open(out, "w") as handle:
         json.dump(document, handle, indent=1)
         handle.write("\n")

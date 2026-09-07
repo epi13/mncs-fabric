@@ -1,0 +1,165 @@
+mncs 0.6;
+
+// Fabric rollout-outcome predicates as language-owned source.
+//
+// This module reconstructs the pure outcome classification inside
+// `src/mncs_fabric/rollout.py` (`deployment_succeeded`,
+// `canary_succeeded`, `canary_failed`) as finite-domain MNCS source.
+// Python remains authoritative for ledgers, receipt fetching,
+// certification records, and observation parsing; this module owns the
+// boolean/enum decision over already-read facts.
+//
+// Caller reductions (pinned by the corpus, host-side by construction):
+// - every receipt/certification/conformance question folds to bools
+//   (`receipt_fail`, `cert_present` + `cert_ok`, `conformance_blocking`,
+//   `disposition_fail`, `observation_bad`);
+// - the update-transaction state folds to TxnClass (Absent covers a
+//   missing or empty state; anything outside READY/ROLLED_BACK is
+//   Other, including FAILED/QUARANTINED which `canary_failed` reads
+//   through `txn_bad` instead);
+// - the management state folds to MgmtClass (QUARANTINED maps before
+//   the intermediate set, matching the Python check order;
+//   Intermediate covers MAINTENANCE, RESTART_PENDING,
+//   DISCONNECT_EXPECTED, RECONNECTING, VERSION_VERIFYING, CERTIFYING,
+//   DEGRADED, VERIFYING, DRAINING, and ROLLBACK_APPLYING).
+module fabric.rollout_outcome;
+
+enum TxnClass { Ready, RolledBack, Other, Absent }
+
+enum MgmtClass { Ready, Quarantined, Intermediate, Other }
+
+// Package deploy/restart/certify completed; scheduler READY is separate.
+fn deployment_ok(
+    restart_required: bool,
+    receipt_fail: bool,
+    cert_present: bool,
+    cert_ok: bool,
+    txn: TxnClass
+) -> (result: bool) {
+    if restart_required {
+        return false;
+    }
+    if receipt_fail {
+        return false;
+    }
+    if cert_present {
+        if cert_ok {
+            return deployment_txn_ok(txn);
+        }
+        return false;
+    }
+    return deployment_txn_ok(txn);
+}
+
+fn deployment_txn_ok(txn: TxnClass) -> (result: bool) {
+    return match txn {
+        Ready => true,
+        RolledBack => true,
+        Other => false,
+        Absent => true,
+    };
+}
+
+// A canary succeeds only after post-restart READY, not after apply.
+// Certification, when present, must read CERTIFIED (stricter than the
+// deployment gate, which also accepts an empty disposition).
+fn canary_ok(
+    restart_required: bool,
+    receipt_fail: bool,
+    mgmt: MgmtClass,
+    txn: TxnClass,
+    cert_present: bool,
+    cert_ok: bool,
+    conformance_blocking: bool
+) -> (result: bool) {
+    if restart_required {
+        return false;
+    }
+    if receipt_fail {
+        return false;
+    }
+    return match mgmt {
+        Ready => canary_ready_ok(txn, cert_present, cert_ok, conformance_blocking),
+        Quarantined => false,
+        Intermediate => false,
+        Other => false,
+    };
+}
+
+fn canary_ready_ok(
+    txn: TxnClass,
+    cert_present: bool,
+    cert_ok: bool,
+    conformance_blocking: bool
+) -> (result: bool) {
+    if conformance_blocking {
+        return false;
+    }
+    if cert_present {
+        if cert_ok {
+            return deployment_txn_ok(txn);
+        }
+        return false;
+    }
+    return deployment_txn_ok(txn);
+}
+
+// Any single hard failure signal fails the canary. All inputs are
+// already reduced; the observation and transaction classes fold the
+// Python string sets (DEADLINE_EXPIRED/WRONG_VERSION/WRONG_IDENTITY/
+// STILL_CONNECTED/MALFORMED_VERSION, FAILED/QUARANTINED).
+fn canary_bad(
+    receipt_fail: bool,
+    mgmt_quarantined: bool,
+    disposition_fail: bool,
+    observation_bad: bool,
+    txn_bad: bool
+) -> (result: bool) {
+    if receipt_fail {
+        return true;
+    }
+    if mgmt_quarantined {
+        return true;
+    }
+    if disposition_fail {
+        return true;
+    }
+    if observation_bad {
+        return true;
+    }
+    return txn_bad;
+}
+
+// The experiment targets these wrappers so source-level call semantics
+// are in the executed path rather than merely present in the module.
+fn candidate_deployment(
+    restart_required: bool,
+    receipt_fail: bool,
+    cert_present: bool,
+    cert_ok: bool,
+    txn: TxnClass
+) -> (result: bool) {
+    return deployment_ok(restart_required, receipt_fail, cert_present, cert_ok, txn);
+}
+
+fn candidate_canary(
+    restart_required: bool,
+    receipt_fail: bool,
+    mgmt: MgmtClass,
+    txn: TxnClass,
+    cert_present: bool,
+    cert_ok: bool,
+    conformance_blocking: bool
+) -> (result: bool) {
+    return canary_ok(restart_required, receipt_fail, mgmt, txn, cert_present, cert_ok, conformance_blocking);
+}
+
+fn candidate_canary_bad(
+    receipt_fail: bool,
+    mgmt_quarantined: bool,
+    disposition_fail: bool,
+    observation_bad: bool,
+    txn_bad: bool
+) -> (result: bool) {
+    return canary_bad(receipt_fail, mgmt_quarantined, disposition_fail, observation_bad, txn_bad);
+}

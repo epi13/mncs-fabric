@@ -1,0 +1,72 @@
+mncs 0.6;
+
+// Fabric scheduler comparison/admission relations as language-owned
+// source.
+//
+// This module reconstructs the pure numeric relations inside
+// `src/mncs_fabric/capability_resolution.py::resolve_fleet` (preference
+// ranking) and `src/mncs_fabric/scheduler.py::schedule` (replica bounds,
+// concurrency admission) as finite-domain MNCS source. Python remains
+// authoritative for token sets, worker records, and the fleet sort
+// itself (ordering a sequence is outside the current envelope: P-007);
+// this module owns the pairwise comparisons the sort consults, so the
+// MNCS compiler executes the exact relations ranking depends on.
+//
+// Boundaries (pinned by the corpus):
+// - ranking compares (preference hits, resource-constrained flag)
+//   only. The final tie-break over worker identity text stays
+//   host-side: MNCS never observes worker names.
+// - `rank_prefers` answers whether `a` sorts strictly before `b`. A
+//   full tie answers false; the caller breaks it by identity.
+module fabric.scheduler_rank;
+
+// More preference hits wins; a tie prefers the non-constrained worker;
+// a full tie is false so the caller falls through to identity order.
+fn rank_prefers(a_pref_hits: i32, a_constrained: bool, b_pref_hits: i32, b_constrained: bool) -> (result: bool) {
+    if a_pref_hits < b_pref_hits {
+        return false;
+    }
+    if a_pref_hits > b_pref_hits {
+        return true;
+    }
+    if a_constrained {
+        return false;
+    }
+    return b_constrained;
+}
+
+// The fleet holds enough eligible workers for the requested replicas.
+fn replicas_satisfied(eligible_count: i32, replicas: i32) -> (result: bool) {
+    return eligible_count >= replicas;
+}
+
+// A worker slot admits another unit of work while below its limit.
+fn slot_admits(active: i32, concurrency_limit: i32) -> (result: bool) {
+    return active < concurrency_limit;
+}
+
+// Replica counts are bounded exactly as the scheduler requires.
+fn replicas_valid(replicas: i32) -> (result: bool) {
+    if replicas < 1 {
+        return false;
+    }
+    return replicas <= 64;
+}
+
+// The experiment targets these wrappers so source-level call semantics
+// are in the executed path rather than merely present in the module.
+fn candidate_rank(a_pref_hits: i32, a_constrained: bool, b_pref_hits: i32, b_constrained: bool) -> (result: bool) {
+    return rank_prefers(a_pref_hits, a_constrained, b_pref_hits, b_constrained);
+}
+
+fn candidate_replicas(eligible_count: i32, replicas: i32) -> (result: bool) {
+    return replicas_satisfied(eligible_count, replicas);
+}
+
+fn candidate_slot(active: i32, concurrency_limit: i32) -> (result: bool) {
+    return slot_admits(active, concurrency_limit);
+}
+
+fn candidate_replicas_valid(replicas: i32) -> (result: bool) {
+    return replicas_valid(replicas);
+}

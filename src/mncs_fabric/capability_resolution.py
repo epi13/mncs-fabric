@@ -508,15 +508,19 @@ class FleetResolution:
     selected: tuple[str, ...] = ()
     per_worker: tuple[WorkerResolution, ...] = ()
     detail: str = ""
+    authority: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        value: dict[str, Any] = {
             "verdict": self.verdict,
             "eligible": list(self.eligible),
             "selected": list(self.selected),
             "per_worker": [item.as_dict() for item in self.per_worker],
             "detail": self.detail,
         }
+        if self.authority is not None:
+            value["authority"] = dict(self.authority)
+        return value
 
 
 def _missing_detail(missing: Iterable[str]) -> str:
@@ -530,8 +534,37 @@ def _missing_detail(missing: Iterable[str]) -> str:
     return "capability-unsatisfied"
 
 
-def resolve_worker(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerResolution:
-    """Resolve one worker through the MNCS-ordered stages plus token checks."""
+@dataclass(frozen=True)
+class WorkerBaseInputs:
+    """The five MNCS-owned scalars plus the host-side facts around them.
+
+    The five scalars (liveness, freshness, provenance_ok, env_ok,
+    intent_ok) are exactly what ``fabric.worker_capability`` decides
+    over. Everything else (tokens, missing lists, policy records) is
+    unbounded host text/structure that MNCS cannot observe, used for the
+    text-dependent refinements Python applies after the base code.
+    """
+
+    liveness: str
+    freshness: str
+    provenance_ok: bool
+    env_ok: bool
+    intent_ok: bool
+    policy: dict[str, Any]
+    tokens: frozenset[str]
+    missing: tuple[str, ...]
+    forbidden_hit: str | None
+
+
+def worker_base_inputs(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerBaseInputs:
+    """Compute the MNCS-ordered base inputs for one worker.
+
+    Pure and total over already validated snapshots. The caller obtains
+    the base code either from :func:`resolve_code` (legacy Python path)
+    or from a compiled MNCS authority
+    (``mncs_fabric.mncs_authority.MncsAuthority``), then finishes with
+    :func:`finish_worker_resolution`.
+    """
     liveness = worker.liveness if worker.liveness in LIVENESS_VALUES else "DISCONNECTED"
     if not worker.available and liveness == "AVAILABLE":
         liveness = "UNAVAILABLE"
@@ -600,16 +633,36 @@ def resolve_worker(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerReso
 
     env_ok = not missing
     intent_ok = intent_allowed(policy, query.intent)
-    code = resolve_code(
+    return WorkerBaseInputs(
         liveness=liveness,
         freshness=freshness,
         provenance_ok=provenance_ok,
         env_ok=env_ok,
         intent_ok=intent_ok,
+        policy=policy,
+        tokens=frozenset(tokens),
+        missing=tuple(missing),
+        forbidden_hit=forbidden_hit,
     )
-    if code == "ELIGIBLE" and forbidden_hit is not None:
+
+
+def finish_worker_resolution(
+    query: CapabilityQuery, worker: WorkerSnapshot, base: WorkerBaseInputs, code: str
+) -> WorkerResolution:
+    """Apply text-dependent refinements to an MNCS- or Python-decided base code.
+
+    The base ``code`` is the ordered resolution verdict (from
+    :func:`resolve_code` or a compiled MNCS authority answering the same
+    relation). The refinements below need capability *strings*
+    (toolchain/runtime prefixes, forbidden tokens), which MNCS cannot
+    observe, so they stay host-side by construction (pressure P-005).
+    """
+    missing = list(base.missing)
+    if code not in RESOLUTION_CODES:
+        raise ValidationError(f"resolution code {code!r} is unsupported")
+    if code == "ELIGIBLE" and base.forbidden_hit is not None:
         code = "POLICY_DENIED"
-    elif code == "CAPABILITY_UNSATISFIED" and forbidden_hit is not None and not [
+    elif code == "CAPABILITY_UNSATISFIED" and base.forbidden_hit is not None and not [
         item for item in missing if item.startswith("missing")
     ]:
         code = "POLICY_DENIED"
@@ -619,7 +672,7 @@ def resolve_worker(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerReso
             code = "TOOLCHAIN_MISSING"
         elif detail == "runtime-missing":
             code = "RUNTIME_MISSING"
-    preferred = tuple(sorted(set(query.prefer) & tokens))
+    preferred = tuple(sorted(set(query.prefer) & base.tokens))
     detail_text = "; ".join(missing)
     if code == "POLICY_DENIED" and not missing:
         detail_text = f"intent {query.intent} denied by worker policy"
@@ -634,8 +687,25 @@ def resolve_worker(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerReso
     )
 
 
+def resolve_worker(query: CapabilityQuery, worker: WorkerSnapshot) -> WorkerResolution:
+    """Resolve one worker through the MNCS-ordered stages plus token checks."""
+    base = worker_base_inputs(query, worker)
+    code = resolve_code(
+        liveness=base.liveness,
+        freshness=base.freshness,
+        provenance_ok=base.provenance_ok,
+        env_ok=base.env_ok,
+        intent_ok=base.intent_ok,
+    )
+    return finish_worker_resolution(query, worker, base, code)
+
+
 def resolve_fleet(
-    query: CapabilityQuery, workers: Iterable[WorkerSnapshot], *, replicas: int = 1
+    query: CapabilityQuery,
+    workers: Iterable[WorkerSnapshot],
+    *,
+    replicas: int = 1,
+    authority: Any | None = None,
 ) -> FleetResolution:
     """Fleet resolution with deterministic preference ranking.
 
@@ -643,19 +713,52 @@ def resolve_fleet(
     prefers more ``prefer`` hits, then non-resource-constrained workers,
     then lexicographic worker id. Experimental status alone never wins
     selection; intent gating already ran inside ``resolve_worker``.
+
+    When ``authority`` (an ``mncs_fabric.mncs_authority.MncsAuthority``)
+    is provided, the ordered base code for every worker is answered by
+    the compiled MNCS implementation in one batch call instead of the
+    legacy Python :func:`resolve_code`. The fleet carries the
+    artifact/backend identity in that case. ``authority=None`` keeps the
+    legacy calculation openly; there is no per-decision fallback.
     """
     if not isinstance(replicas, int) or replicas < 1 or replicas > 64:
         raise ValidationError("replicas must be between 1 and 64")
-    resolutions = tuple(resolve_worker(query, worker) for worker in workers)
+    worker_list = list(workers)
+    authority_evidence: dict[str, str] | None = None
+    if authority is None:
+        resolutions = tuple(resolve_worker(query, worker) for worker in worker_list)
+    else:
+        from .mncs_authority import ResolveInputs
+
+        bases = tuple(worker_base_inputs(query, worker) for worker in worker_list)
+        rows = [
+            ResolveInputs(
+                liveness=base.liveness,
+                freshness=base.freshness,
+                provenance_ok=base.provenance_ok,
+                env_ok=base.env_ok,
+                intent_ok=base.intent_ok,
+            )
+            for base in bases
+        ]
+        codes = authority.resolve_codes(rows)
+        resolutions = tuple(
+            finish_worker_resolution(query, worker, base, code)
+            for worker, base, code in zip(worker_list, bases, codes)
+        )
+        authority_evidence = dict(authority.evidence())
     eligible = [item for item in resolutions if item.eligible]
 
     constrained_ids: set[str] = set()
-    for worker in workers:
+    for worker in worker_list:
         policy = validate_policy(worker.policy or {})
         if policy.get("resource_constrained"):
             constrained_ids.add(worker.worker_id)
 
     def _ranked(item: WorkerResolution) -> tuple[int, int, str]:
+        # Pairwise order owned by mncs/fabric_scheduler_rank.mncs::rank_prefers
+        # (preferred hits, then unconstrained); the identity tie-break is
+        # host-side. Pinned by tests/test_mncs_scheduler_rank.py.
         return (-len(item.preferred_hits), 1 if item.worker_id in constrained_ids else 0, item.worker_id)
 
     eligible.sort(key=_ranked)
@@ -671,6 +774,7 @@ def resolve_fleet(
             selected=(),
             per_worker=tuple(sorted(resolutions, key=lambda item: item.worker_id)),
             detail=detail,
+            authority=authority_evidence,
         )
     selected = tuple(item.worker_id for item in eligible[:replicas])
     return FleetResolution(
@@ -679,15 +783,19 @@ def resolve_fleet(
         selected=selected,
         per_worker=tuple(sorted(resolutions, key=lambda item: item.worker_id)),
         detail=f"selected {', '.join(selected)} by capability match and preference rank",
+        authority=authority_evidence,
     )
 
 
 def explain_selection(fleet: FleetResolution) -> dict[str, Any]:
     """Machine-consumable scheduling explanation from one fleet resolution."""
-    return {
+    explanation: dict[str, Any] = {
         "verdict": fleet.verdict,
         "selected": list(fleet.selected),
         "eligible": list(fleet.eligible),
         "per_worker": [item.as_dict() for item in fleet.per_worker],
         "detail": fleet.detail,
     }
+    if fleet.authority is not None:
+        explanation["authority"] = dict(fleet.authority)
+    return explanation

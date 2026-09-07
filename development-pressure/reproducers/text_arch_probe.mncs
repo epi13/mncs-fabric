@@ -1,0 +1,54 @@
+mncs 0.7;
+
+module pressure.text_probe;
+
+use mncs.core.bytes.v1;
+
+// 'x' '8' '6' '_' '6' '4' — exact six-byte token only. Variable-length
+// platform strings (amd64, arm64, riscv64, i386, ...) need views and
+// cannot reach this entrypoint: that is the recorded pressure.
+fn is_x86_64_token(word: [byte; 6]) -> (result: bool) {
+    let x: bool = (word[0] as i64) == 120;
+    let e1: bool = (word[1] as i64) == 56;
+    let s: bool = (word[2] as i64) == 54;
+    let u: bool = (word[3] as i64) == 95;
+    let e2: bool = (word[4] as i64) == 54;
+    let f: bool = (word[5] as i64) == 52;
+    return x && e1 && s && u && e2 && f;
+}
+
+// 'a' 'a' 'r' 'c' 'h' '6' '4' — exact seven-byte token only.
+fn is_aarch64_token(word: [byte; 7]) -> (result: bool) {
+    let a0: bool = (word[0] as i64) == 97;
+    let a1: bool = (word[1] as i64) == 97;
+    let r: bool = (word[2] as i64) == 114;
+    let c: bool = (word[3] as i64) == 99;
+    let h: bool = (word[4] as i64) == 104;
+    let s: bool = (word[5] as i64) == 54;
+    let f: bool = (word[6] as i64) == 52;
+    return a0 && a1 && r && c && h && s && f;
+}
+
+// Two ASCII digits accumulate to an integer; anything else is -1.
+// Uses the shared byte classifiers (import reuse), not restated bounds.
+fn parse_two_digit(d0: byte, d1: byte) -> (result: i64) {
+    if is_digit(d0) {
+        if is_digit(d1) {
+            return digit_value(d0) * 10 + digit_value(d1);
+        }
+        return 0 - 1;
+    }
+    return 0 - 1;
+}
+
+fn candidate_x86(word: [byte; 6]) -> (result: bool) {
+    return is_x86_64_token(word);
+}
+
+fn candidate_aarch64(word: [byte; 7]) -> (result: bool) {
+    return is_aarch64_token(word);
+}
+
+fn candidate_digits(d0: byte, d1: byte) -> (result: i64) {
+    return parse_two_digit(d0, d1);
+}

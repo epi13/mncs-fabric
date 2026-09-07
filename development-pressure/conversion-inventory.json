@@ -1,66 +1,349 @@
 {
   "schema_version": "mncs-fabric.conversion-inventory.v0.1",
-  "generated_by": "mncs-fabric conversion campaign (feat/mncs-fabric-conversion)",
+  "generated_by": "mncs-fabric conversion campaigns PR #73 + continuation (feat/mncs-authority-and-reuse)",
   "metrics": {
-    "production_python_loc_before": 28031,
-    "production_python_loc_after": 28055,
-    "python_delta_note": "Net +24 lines: decision-ownership docstrings only. No new Python semantics were added; no Python was removed (migration-oracle strategy).",
-    "mncs_production_loc_before": 494,
-    "mncs_production_loc_after": 1266,
-    "mncs_modules_before": 2,
-    "mncs_modules_after": 6,
-    "corpus_cases_before": 329,
-    "corpus_cases_after": 1216,
-    "semantic_subsystems_converted_partial": 8,
+    "production_python_loc_before": 28055,
+    "production_python_loc_after": 28436,
+    "python_delta_note": "Net +381: MncsAuthority embedding glue (~250) + authority threading/refactor + ownership docstrings. No new Python decision semantics; resolve_code demoted to default-with-oracle.",
+    "mncs_production_loc_before": 1266,
+    "mncs_production_loc_after": 1318,
+    "mncs_delta_note": "Deleted fabric.platform_decision (~302, now std-owned); added availability (52), rollout_outcome (165), scheduler_rank (72), work_item (65). Plus 54-line pressure reproducer (not core).",
+    "mncs_modules_before": 6,
+    "mncs_modules_after": 9,
+    "mncs_modules_note": "9 Fabric modules (platform decision deleted, 4 added) + std.platform.v1 executed directly + 1 pressure reproducer.",
+    "corpus_cases_before": 1216,
+    "corpus_cases_after": 2915,
+    "semantic_subsystems_converted_partial": 13,
     "semantic_subsystems_fully_authoritative": 0,
-    "foreign_semantic_modules_removed": 0,
-    "pressure_findings": 12
+    "authority_pilots_proven": 1,
+    "authority_note": "Capability-resolution ordering answers from compiled MNCS in authority mode (tested, evidence-bound); production default stays Python for measured latency reasons. Zero subsystems flipped by default: authority count stays honestly 0.",
+    "foreign_semantic_modules_removed": 1,
+    "removed_note": "mncs/fabric_platform_decision.mncs deleted (vocabulary now std-owned). Zero Python semantic modules removed (oracle strategy).",
+    "pressure_findings": 14,
+    "pressure_resolved": 1,
+    "pressure_narrowed": 1,
+    "pressure_pilot_proven": 1
   },
   "mncs_modules": [
-    {"module": "fabric.worker_capability", "source": "mncs/worker_capability.mncs", "corpus_cases": 84, "owns": "provenance trust, freshness lattice, intent/policy compatibility, ordered resolution codes", "status": "pre-existing, unchanged"},
-    {"module": "fabric.update_lifecycle", "source": "mncs/update_lifecycle.mncs", "corpus_cases": 245, "owns": "update-state transition relation, version precedence", "status": "pre-existing, unchanged"},
-    {"module": "fabric.management", "source": "mncs/fabric_management.mncs", "corpus_cases": 70, "owns": "management-state transitions, scheduling gate, READY/certification invariant", "status": "new this campaign, executed PASS (research-bytecode)"},
-    {"module": "fabric.platform_decision", "source": "mncs/fabric_platform_decision.mncs", "corpus_cases": 449, "owns": "OS/arch/libc/CUDA/resource/flag predicates plus composed env_satisfies", "status": "new this campaign, executed PASS (research-bytecode)"},
-    {"module": "fabric.reconnect", "source": "mncs/fabric_reconnect.mncs", "corpus_cases": 328, "owns": "reconnect observation classification + next-state derivation", "status": "new this campaign, executed PASS (research-bytecode)"},
-    {"module": "fabric.lifecycle_status", "source": "mncs/fabric_lifecycle_status.mncs", "corpus_cases": 40, "owns": "enrollment authorization/request status precedence lattice", "status": "new this campaign, executed PASS (research-bytecode)"}
+    {
+      "module": "fabric.worker_capability",
+      "source": "mncs/worker_capability.mncs",
+      "corpus_cases": 84,
+      "owns": "provenance trust, freshness lattice, intent/policy compatibility, ordered resolution codes",
+      "status": "pre-existing; authority pilot answers candidate_resolve from its artifact"
+    },
+    {
+      "module": "fabric.update_lifecycle",
+      "source": "mncs/update_lifecycle.mncs",
+      "corpus_cases": 245,
+      "owns": "update-state transition relation, version precedence",
+      "status": "pre-existing, unchanged"
+    },
+    {
+      "module": "fabric.management",
+      "source": "mncs/fabric_management.mncs",
+      "corpus_cases": 70,
+      "owns": "management-state transitions, scheduling gate, READY/certification invariant",
+      "status": "PR #73; now also 70/70 on wasm-mvp + C11"
+    },
+    {
+      "module": "mncs.std.platform.v1",
+      "source": "<mncs-language>/library/std/platform.mncs",
+      "corpus_cases": 461,
+      "owns": "OS/arch/libc/CUDA/resource/flag predicates + env_satisfies (Fabric duplicate deleted)",
+      "status": "new reuse; executed at pin 0216d64"
+    },
+    {
+      "module": "fabric.reconnect",
+      "source": "mncs/fabric_reconnect.mncs",
+      "corpus_cases": 328,
+      "owns": "reconnect observation classification + next-state derivation",
+      "status": "PR #73, unchanged"
+    },
+    {
+      "module": "fabric.lifecycle_status",
+      "source": "mncs/fabric_lifecycle_status.mncs",
+      "corpus_cases": 40,
+      "owns": "enrollment authorization/request status precedence lattice",
+      "status": "PR #73, unchanged"
+    },
+    {
+      "module": "fabric.availability",
+      "source": "mncs/fabric_availability.mncs",
+      "corpus_cases": 168,
+      "owns": "window openness over normalized minutes (empty-window + midnight-wrap edges)",
+      "status": "new this campaign, executed PASS at pin"
+    },
+    {
+      "module": "fabric.rollout_outcome",
+      "source": "mncs/fabric_rollout_outcome.mncs",
+      "corpus_cases": 1376,
+      "owns": "deployment/canary success + canary-failure classification",
+      "status": "new this campaign, executed PASS at pin"
+    },
+    {
+      "module": "fabric.scheduler_rank",
+      "source": "mncs/fabric_scheduler_rank.mncs",
+      "corpus_cases": 104,
+      "owns": "pairwise rank comparator, replica sufficiency, slot admission, replica bounds",
+      "status": "new this campaign, executed PASS at pin"
+    },
+    {
+      "module": "fabric.work_item",
+      "source": "mncs/fabric_work_item.mncs",
+      "corpus_cases": 26,
+      "owns": "terminal classification, priority order, dispatch holds",
+      "status": "new this campaign, executed PASS at pin"
+    },
+    {
+      "module": "pressure.text_probe",
+      "source": "development-pressure/reproducers/text_arch_probe.mncs",
+      "corpus_cases": 13,
+      "owns": "bounded byte-token matching + digit accumulation (pressure, not production core)",
+      "status": "new reproducer; 3 backends PASS"
+    }
   ],
   "subsystems": [
-    {"subsystem": "capability matching / environment decision", "python": "capability_resolution.py Sec.1", "classification": "MNCS_PARTIAL", "mncs": "fabric.platform_decision", "note": "Decision pinned+executed; text classification host-side (P-005)."},
-    {"subsystem": "capability resolution ordering", "python": "capability_resolution.py Sec.2", "classification": "MNCS_PARTIAL", "mncs": "fabric.worker_capability", "note": "Pre-existing; ordering pinned+executed."},
-    {"subsystem": "fleet aggregation / preference ranking", "python": "capability_resolution.py Sec.4, scheduler.py", "classification": "NOT_STARTED", "pressure": "P-007", "note": "Needs sets/sorting; ranking never consults worker names (rule preserved)."},
-    {"subsystem": "scheduler admission", "python": "scheduler.py", "classification": "MNCS_PARTIAL", "mncs": "fabric.worker_capability + fabric.platform_decision (cores)", "note": "Eligibility core MNCS-pinned; replica/placement/concurrency Python."},
-    {"subsystem": "update lifecycle transitions", "python": "update_lifecycle.py", "classification": "MNCS_PARTIAL", "mncs": "fabric.update_lifecycle + fabric.reconnect", "note": "Transition table + reconnect classification pinned+executed; clocks/ledgers host-side."},
-    {"subsystem": "version ordering", "python": "versioning.py", "classification": "MNCS_PARTIAL", "mncs": "fabric.update_lifecycle::version_less", "note": "Ordering over parsed tuples pinned; string parsing host-side (P-005)."},
-    {"subsystem": "management lifecycle", "python": "management.py", "classification": "MNCS_PARTIAL", "mncs": "fabric.management", "note": "Strict table + gate + invariant pinned+executed; reflexive closure + None default host-side (P-012)."},
-    {"subsystem": "enrollment authorization/request status", "python": "lifecycle.py _record_status/_request_status", "classification": "MNCS_PARTIAL", "mncs": "fabric.lifecycle_status", "note": "Precedence lattice pinned+executed; ledger/clock/digest host-side."},
-    {"subsystem": "fleet membership / enrollment flow", "python": "lifecycle.py LifecycleStore", "classification": "NOT_STARTED", "pressure": "P-006, P-008", "note": "Needs ledger persistence + identity; status lattice extracted first."},
-    {"subsystem": "work queue semantics", "python": "work_queue.py", "classification": "NOT_STARTED", "pressure": "P-006, P-008", "note": "Needs persistence + clocks; tick/dispatch stays Python."},
-    {"subsystem": "desired-state reconciliation", "python": "desired_state.py, reconcile.py", "classification": "NOT_STARTED", "pressure": "P-007", "note": "Set-diff semantics over records; after collections land."},
-    {"subsystem": "protocol validation", "python": "protocol.py, models.py", "classification": "BLOCKED_LANGUAGE", "pressure": "P-005", "note": "Bounded-text/regex validation has no MNCS surface."},
-    {"subsystem": "canonical encoding / identities", "python": "canonical.py", "classification": "HOST_GLUE_ONLY", "note": "hashlib + JSON canonicalization are intrinsically host effects; permanent glue by design (see P-006 for the hash-effect path)."},
-    {"subsystem": "evidence / provenance / receipts", "python": "evidence.py, provenance.py, receipts.py", "classification": "BLOCKED_RUNTIME", "pressure": "P-006", "note": "Hashing + clocks + transport-bound; guarantees must not be weakened to fit."},
-    {"subsystem": "transport / service transport", "python": "transport.py, service_transport.py, faults.py", "classification": "BLOCKED_RUNTIME", "pressure": "P-006", "note": "Sockets/HTTP/streams absent from MNCS; faults.py is test-harness glue."},
-    {"subsystem": "controller / controller service", "python": "controller.py, controller_service.py", "classification": "NOT_STARTED", "pressure": "P-008", "note": "Needs service/timer story; consults MNCS-owned relations already."},
-    {"subsystem": "worker / worker backend / worker state", "python": "worker.py, worker_backend.py, worker_state.py", "classification": "NOT_STARTED", "pressure": "P-006, P-008", "note": "Needs process execution + attestation-adjacent IO."},
-    {"subsystem": "storage / ledgers", "python": "store.py", "classification": "BLOCKED_RUNTIME", "pressure": "P-006", "note": "Filesystem effects absent."},
-    {"subsystem": "bundles / transfer / artifacts", "python": "bundles.py, bundle_transfer.py, artifacts.py, package_artifact.py", "classification": "BLOCKED_RUNTIME", "pressure": "P-006", "note": "Filesystem + hashing + transfer."},
-    {"subsystem": "execution / executor", "python": "executor.py, runtime.py", "classification": "BLOCKED_RUNTIME", "pressure": "P-006, P-008, P-010", "note": "Subprocess + anti-fallback evidence rules must survive any move."},
-    {"subsystem": "topology / inventory / resources", "python": "topology.py, inventory.py, resources.py", "classification": "NOT_STARTED", "pressure": "P-007", "note": "Snapshot validation needs text + collections; placement core is a follow-up candidate."},
-    {"subsystem": "commissioning / maintenance / rollout", "python": "commissioning.py, maintenance.py, rollout.py", "classification": "NOT_STARTED", "pressure": "P-008", "note": "State-machine shaped; extract transition cores after services land."},
-    {"subsystem": "contracts / conformance / semantic conformance", "python": "contracts.py, conformance.py, semantic_conformance.py", "classification": "NOT_STARTED", "pressure": "P-005, P-007", "note": "Schema/text validation bound."},
-    {"subsystem": "auth / containment / rendezvous", "python": "auth.py, containment.py, rendezvous.py", "classification": "NOT_STARTED", "pressure": "P-006", "note": "Crypto/network bound; no new network behavior added (threat model untouched)."},
-    {"subsystem": "API / CLI", "python": "api.py, cli.py", "classification": "NOT_STARTED", "pressure": "P-010", "note": "CLI parsing + packaging; destination is an MNCS-built artifact (P-010)."},
-    {"subsystem": "availability windows", "python": "availability.py", "classification": "NOT_STARTED", "pressure": "P-006", "note": "Timezone/clock bound; pure window-match core is a follow-up candidate."},
-    {"subsystem": "certify / challenges / providers / targets", "python": "certify.py, challenges.py, providers.py, targets.py, target_index.py", "classification": "NOT_STARTED", "pressure": "P-005, P-006", "note": "Untriaged beyond inventory; no changes this campaign."},
-    {"subsystem": "reconcile / collections / node / runtime_identity / enrollment / fleet_ops / fleet_refresh / management store / service / supervisor / jcs / io / errors / registry", "python": "multiple", "classification": "NOT_STARTED", "note": "Untriaged small modules; no changes this campaign. Errors/faults/io are permanent host glue shapes."}
+    {
+      "subsystem": "capability matching / environment decision",
+      "python": "capability_resolution.py Sec.1",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "mncs.std.platform.v1 (duplicate deleted; parity corpus executes std)",
+      "note": "Vocabulary now std-owned; text classification host-side (P-014)."
+    },
+    {
+      "subsystem": "capability resolution ordering",
+      "python": "capability_resolution.py Sec.2 + resolve_code (default-with-oracle)",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.worker_capability + MncsAuthority pilot",
+      "note": "AUTHORITY PILOT: compiled MNCS answers base codes in authority mode (tested, evidence-bound); default stays Python (measured ~280ms/batch)."
+    },
+    {
+      "subsystem": "fleet aggregation / preference ranking",
+      "python": "capability_resolution.py Sec.4, scheduler.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.scheduler_rank (comparator)",
+      "note": "Comparator moved; sort + token sets stay Python (P-007)."
+    },
+    {
+      "subsystem": "scheduler admission",
+      "python": "scheduler.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.worker_capability + std.platform.v1 + fabric.scheduler_rank + authority threading",
+      "note": "Eligibility + rank comparator + bounds MNCS-pinned; sort + identity tie-break Python (P-007)."
+    },
+    {
+      "subsystem": "update lifecycle transitions",
+      "python": "update_lifecycle.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.update_lifecycle + fabric.reconnect",
+      "note": "Transition table + reconnect classification pinned+executed; clocks/ledgers host-side."
+    },
+    {
+      "subsystem": "version ordering",
+      "python": "versioning.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.update_lifecycle::version_less",
+      "note": "Ordering over parsed tuples pinned; string parsing host-side (P-005)."
+    },
+    {
+      "subsystem": "management lifecycle",
+      "python": "management.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.management",
+      "note": "Strict table + gate + invariant pinned+executed; reflexive closure + None default host-side (P-012)."
+    },
+    {
+      "subsystem": "enrollment authorization/request status",
+      "python": "lifecycle.py _record_status/_request_status",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.lifecycle_status",
+      "note": "Precedence lattice pinned+executed; ledger/clock/digest host-side."
+    },
+    {
+      "subsystem": "fleet membership / enrollment flow",
+      "python": "lifecycle.py LifecycleStore",
+      "classification": "NOT_STARTED",
+      "pressure": "P-006, P-008",
+      "note": "Needs ledger persistence + identity; status lattice extracted first."
+    },
+    {
+      "subsystem": "work queue semantics",
+      "python": "work_queue.py",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.work_item",
+      "note": "New: terminal/priority/hold decisions; ledger/clocks/dispatch host-side (P-006, P-008)."
+    },
+    {
+      "subsystem": "desired-state reconciliation",
+      "python": "desired_state.py, reconcile.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-007",
+      "note": "Set-diff semantics over records; after collections land."
+    },
+    {
+      "subsystem": "protocol validation",
+      "python": "protocol.py, models.py",
+      "classification": "BLOCKED_LANGUAGE",
+      "pressure": "P-005",
+      "note": "Bounded-text/regex validation has no MNCS surface."
+    },
+    {
+      "subsystem": "canonical encoding / identities",
+      "python": "canonical.py",
+      "classification": "HOST_GLUE_ONLY",
+      "note": "hashlib + JSON canonicalization are intrinsically host effects; permanent glue by design (see P-006 for the hash-effect path)."
+    },
+    {
+      "subsystem": "evidence / provenance / receipts",
+      "python": "evidence.py, provenance.py, receipts.py",
+      "classification": "BLOCKED_RUNTIME",
+      "pressure": "P-006",
+      "note": "Hashing + clocks + transport-bound; guarantees must not be weakened to fit."
+    },
+    {
+      "subsystem": "transport / service transport",
+      "python": "transport.py, service_transport.py, faults.py",
+      "classification": "BLOCKED_RUNTIME",
+      "pressure": "P-006",
+      "note": "Sockets/HTTP/streams absent from MNCS; faults.py is test-harness glue."
+    },
+    {
+      "subsystem": "controller / controller service",
+      "python": "controller.py, controller_service.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-008",
+      "note": "Needs service/timer story; consults MNCS-owned relations already."
+    },
+    {
+      "subsystem": "worker / worker backend / worker state",
+      "python": "worker.py, worker_backend.py, worker_state.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-006, P-008",
+      "note": "Needs process execution + attestation-adjacent IO."
+    },
+    {
+      "subsystem": "storage / ledgers",
+      "python": "store.py",
+      "classification": "BLOCKED_RUNTIME",
+      "pressure": "P-006",
+      "note": "Filesystem effects absent."
+    },
+    {
+      "subsystem": "bundles / transfer / artifacts",
+      "python": "bundles.py, bundle_transfer.py, artifacts.py, package_artifact.py",
+      "classification": "BLOCKED_RUNTIME",
+      "pressure": "P-006",
+      "note": "Filesystem + hashing + transfer."
+    },
+    {
+      "subsystem": "execution / executor",
+      "python": "executor.py, runtime.py",
+      "classification": "BLOCKED_RUNTIME",
+      "pressure": "P-006, P-008, P-010",
+      "note": "Subprocess + anti-fallback evidence rules must survive any move."
+    },
+    {
+      "subsystem": "topology / inventory / resources",
+      "python": "topology.py, inventory.py, resources.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-007",
+      "note": "Snapshot validation needs text + collections; placement core is a follow-up candidate."
+    },
+    {
+      "subsystem": "commissioning / maintenance / rollout",
+      "python": "commissioning.py, maintenance.py, rollout.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-008",
+      "note": "State-machine shaped; extract transition cores after services land."
+    },
+    {
+      "subsystem": "contracts / conformance / semantic conformance",
+      "python": "contracts.py, conformance.py, semantic_conformance.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-005, P-007",
+      "note": "Schema/text validation bound."
+    },
+    {
+      "subsystem": "auth / containment / rendezvous",
+      "python": "auth.py, containment.py, rendezvous.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-006",
+      "note": "Crypto/network bound; no new network behavior added (threat model untouched)."
+    },
+    {
+      "subsystem": "API / CLI",
+      "python": "api.py, cli.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-010",
+      "note": "CLI parsing + packaging; destination is an MNCS-built artifact (P-010)."
+    },
+    {
+      "subsystem": "availability windows",
+      "python": "availability.py window_contains",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.availability",
+      "note": "New: interval decision MNCS-owned; clocks/timezones/day-sets host-side (model split proven)."
+    },
+    {
+      "subsystem": "certify / challenges / providers / targets",
+      "python": "certify.py, challenges.py, providers.py, targets.py, target_index.py",
+      "classification": "NOT_STARTED",
+      "pressure": "P-005, P-006",
+      "note": "Untriaged beyond inventory; no changes this campaign."
+    },
+    {
+      "subsystem": "reconcile / collections / node / runtime_identity / enrollment / fleet_ops / fleet_refresh / management store / service / supervisor / jcs / io / errors / registry",
+      "python": "multiple",
+      "classification": "NOT_STARTED",
+      "note": "Untriaged small modules; no changes this campaign. Errors/faults/io are permanent host glue shapes."
+    },
+    {
+      "subsystem": "rollout outcomes",
+      "python": "rollout.py deployment/canary predicates",
+      "classification": "MNCS_PARTIAL",
+      "mncs": "fabric.rollout_outcome",
+      "note": "New: full outcome classification incl. canary strictness split."
+    }
   ],
   "remaining_python_categories": {
-    "migration_oracle": ["capability_resolution.py (decision cores pinned, runtime authority)", "management.py", "update_lifecycle.py (transitions + reconnect)", "versioning.py (ordering)", "lifecycle.py (status lattice)"],
-    "test_harness": ["faults.py", "tests/ (68 files, behavioral oracle, passing)"],
-    "host_bootstrap_glue": ["canonical.py (hash/JSON boundary)", "node.py (clocks)", "io.py", "errors.py", "deploy/ systemd units, installer stubs (untouched)"],
-    "external_compatibility_adapter": ["api.py, cli.py (product surface until P-010 lands)"],
-    "blocked_by_language_gap": ["protocol.py, models.py, contracts.py (P-005 strings)", "scheduler fleet math (P-007 collections)"],
-    "blocked_by_stdlib_gap": ["classifiers (P-005)", "availability windows (clocks)"],
-    "blocked_by_runtime_gap": ["transport/service/storage/bundles/execution/worker/controller (P-006, P-008, P-010)"]
+    "migration_oracle": [
+      "capability_resolution.py (decision cores pinned, runtime authority)",
+      "management.py",
+      "update_lifecycle.py (transitions + reconnect)",
+      "versioning.py (ordering)",
+      "lifecycle.py (status lattice)",
+      "resolve_code (default path; MNCS authority proven in authority mode)",
+      "rollout.py outcome predicates",
+      "availability.py window relation",
+      "work_queue.py item relations",
+      "scheduler rank relations"
+    ],
+    "test_harness": [
+      "faults.py",
+      "tests/ (68 files, behavioral oracle, passing)"
+    ],
+    "host_bootstrap_glue": [
+      "canonical.py (hash/JSON boundary)",
+      "node.py (clocks)",
+      "io.py",
+      "errors.py",
+      "deploy/ systemd units, installer stubs (untouched)",
+      "mncs_authority.py (embedding glue: artifact pinning, marshalling, subprocess boundary)"
+    ],
+    "external_compatibility_adapter": [
+      "api.py, cli.py (product surface until P-010 lands)"
+    ],
+    "blocked_by_language_gap": [
+      "protocol.py, models.py, contracts.py (P-005 strings)",
+      "scheduler fleet math (P-007 collections)"
+    ],
+    "blocked_by_stdlib_gap": [
+      "classifiers (P-005)",
+      "availability windows (clocks)"
+    ],
+    "blocked_by_runtime_gap": [
+      "transport/service/storage/bundles/execution/worker/controller (P-006, P-008, P-010)"
+    ]
   }
 }
