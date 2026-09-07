@@ -189,8 +189,8 @@ class TokenResolutionTests(unittest.TestCase):
 class StructuredResolutionTests(unittest.TestCase):
     def test_cuda_floor_filters(self):
         query = CapabilityQuery(req_env={"require_cuda": True, "cuda_major": 7, "cuda_minor": 0})
-        ok_worker = snapshot("new-gpu", env=fedora_env(cuda_major=8, cuda_minor=0))
-        old_worker = snapshot("old-gpu", env=fedora_env(cuda_major=6, cuda_minor=1))
+        ok_worker = snapshot("node-c81d", env=fedora_env(cuda_major=8, cuda_minor=0))
+        old_worker = snapshot("node-2f07", env=fedora_env(cuda_major=6, cuda_minor=1))
         self.assertTrue(resolve_worker(query, ok_worker).eligible)
         denied = resolve_worker(query, old_worker)
         self.assertEqual(denied.code, "CAPABILITY_UNSATISFIED")
@@ -205,8 +205,8 @@ class StructuredResolutionTests(unittest.TestCase):
 
     def test_memory_floor_filters(self):
         query = CapabilityQuery(req_env={"min_mem_mib": 4096, "min_cpu_count": 4})
-        self.assertTrue(resolve_worker(query, snapshot("big")).eligible)
-        denied = resolve_worker(query, snapshot("small", env=fedora_env(mem_mib=1024, cpu_count=2)))
+        self.assertTrue(resolve_worker(query, snapshot("node-9b44")).eligible)
+        denied = resolve_worker(query, snapshot("node-51e0", env=fedora_env(mem_mib=1024, cpu_count=2)))
         self.assertEqual(denied.code, "CAPABILITY_UNSATISFIED")
         self.assertTrue(any("resources" in item for item in denied.missing))
 
@@ -433,23 +433,23 @@ class SchedulerIntegrationTests(unittest.TestCase):
         self.assertEqual(by_id["stable-fedora"]["code"], "POLICY_DENIED")
 
     def test_scheduler_refuses_stale_observations(self):
-        workers = [slot("stale-worker", {"os:linux"}, capability_age_seconds=3600.0)]
+        workers = [slot("node-d3a9", {"os:linux"}, capability_age_seconds=3600.0)]
         decision = schedule(plan(["os:linux"]), workers)
         self.assertEqual(decision.disposition, "UNKNOWN")
         by_id = {item["worker_id"]: item for item in decision.resolution["per_worker"]}
-        self.assertEqual(by_id["stale-worker"]["code"], "WORKER_STALE")
+        self.assertEqual(by_id["node-d3a9"]["code"], "WORKER_STALE")
 
     def test_scheduler_structured_query_with_cuda_floor(self):
         from mncs_fabric.capability_resolution import CapabilityQuery as Query
 
         workers = [
-            slot("old-gpu", {"os:linux"}, env=fedora_env(cuda_major=6, cuda_minor=1)),
-            slot("new-gpu", {"os:linux"}, env=fedora_env(cuda_major=8, cuda_minor=0)),
+            slot("node-2f07", {"os:linux"}, env=fedora_env(cuda_major=6, cuda_minor=1)),
+            slot("node-c81d", {"os:linux"}, env=fedora_env(cuda_major=8, cuda_minor=0)),
         ]
         query = Query(req_env={"require_cuda": True, "cuda_major": 7, "cuda_minor": 0})
         decision = schedule(plan(["os:linux"]), workers, query=query)
         self.assertEqual(decision.disposition, "PASS")
-        self.assertEqual(list(decision.worker_ids), ["new-gpu"])
+        self.assertEqual(list(decision.worker_ids), ["node-c81d"])
 
     def test_explain_eligibility_matches_scheduling(self):
         workers = [slot("a", {"os:linux"}), slot("b", {"os:windows"})]

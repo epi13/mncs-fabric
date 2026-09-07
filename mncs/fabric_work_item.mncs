@@ -9,13 +9,18 @@ mncs 0.6;
 // effects, and the queue fold itself; this module owns the per-item
 // decisions the tick consults.
 //
+// Priority contract (pinned by the corpus, clarified alongside
+// `WorkQueue.enqueue` validation): priorities are signed 64-bit.
+// Lower values dispatch first. A stored zero means "no priority given"
+// and folds to the default 100, exactly as the queue's long-standing
+// falsy-means-default read does; absent values stay host-side. The
+// work-id tie-break over identity text stays host-side.
+//
 // Boundaries (pinned by the corpus):
 // - terminal states are exactly COMPLETED, FAILED, CANCELLED. Every
 //   other recorded state (QUEUED, DISPATCHED, operator PAUSED/RESUMED
 //   markers) folds to NonTerminal; unknown strings stay host-side
 //   errors, never a status value.
-// - lower priority values dispatch first; the work-id tie-break over
-//   identity text stays host-side.
 // - the hold reason answers why an item did not dispatch: an operator
 //   pause outranks missing eligibility.
 module fabric.work_item;
@@ -36,8 +41,18 @@ fn is_terminal(state: WorkState) -> (result: bool) {
 }
 
 // Lower priority values dispatch first (the queue sorts ascending).
-fn higher_priority(a_priority: i32, b_priority: i32) -> (result: bool) {
+fn higher_priority(a_priority: i64, b_priority: i64) -> (result: bool) {
     return a_priority < b_priority;
+}
+
+// The queue's falsy-means-default read, made explicit: a stored zero
+// carries no priority and sorts as the default 100. Every other value
+// sorts as itself, including negatives and the i64 extremes.
+fn effective_priority(raw_priority: i64) -> (result: i64) {
+    if raw_priority == 0 {
+        return 100;
+    }
+    return raw_priority;
 }
 
 fn hold_reason(paused: bool, eligible_found: bool) -> (result: HoldReason) {
@@ -56,8 +71,12 @@ fn candidate_terminal(state: WorkState) -> (result: bool) {
     return is_terminal(state);
 }
 
-fn candidate_priority(a_priority: i32, b_priority: i32) -> (result: bool) {
+fn candidate_priority(a_priority: i64, b_priority: i64) -> (result: bool) {
     return higher_priority(a_priority, b_priority);
+}
+
+fn candidate_effective(raw_priority: i64) -> (result: i64) {
+    return effective_priority(raw_priority);
 }
 
 fn candidate_hold(paused: bool, eligible_found: bool) -> (result: HoldReason) {

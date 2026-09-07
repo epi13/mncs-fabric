@@ -2,17 +2,17 @@
   "schema_version": "mncs-fabric.conversion-inventory.v0.1",
   "generated_by": "mncs-fabric conversion campaigns PR #73 + continuation (feat/mncs-authority-and-reuse)",
   "metrics": {
-    "production_python_loc_before": 28055,
-    "production_python_loc_after": 28436,
-    "python_delta_note": "Net +381: MncsAuthority embedding glue (~250) + authority threading/refactor + ownership docstrings. No new Python decision semantics; resolve_code demoted to default-with-oracle.",
-    "mncs_production_loc_before": 1266,
-    "mncs_production_loc_after": 1318,
-    "mncs_delta_note": "Deleted fabric.platform_decision (~302, now std-owned); added availability (52), rollout_outcome (165), scheduler_rank (72), work_item (65). Plus 54-line pressure reproducer (not core).",
+    "production_python_loc_before": 28436,
+    "production_python_loc_after": 28543,
+    "python_delta_note": "Net +107: TOCTOU-hardened MncsAuthority (snapshot bytes, case-id correlation, output bounds) + checked_priority validation + worker_base_inputs/finish split was already counted. No new Python decision semantics.",
+    "mncs_production_loc_before": 1318,
+    "mncs_production_loc_after": 1337,
+    "mncs_delta_note": "work_item widened i32->i64 + effective_priority fold; no other MNCS logic changed.",
     "mncs_modules_before": 6,
     "mncs_modules_after": 9,
     "mncs_modules_note": "9 Fabric modules (platform decision deleted, 4 added) + std.platform.v1 executed directly + 1 pressure reproducer.",
-    "corpus_cases_before": 1216,
-    "corpus_cases_after": 2915,
+    "corpus_cases_before": 2915,
+    "corpus_cases_after": 3055,
     "semantic_subsystems_converted_partial": 13,
     "semantic_subsystems_fully_authoritative": 0,
     "authority_pilots_proven": 1,
@@ -22,7 +22,8 @@
     "pressure_findings": 14,
     "pressure_resolved": 1,
     "pressure_narrowed": 1,
-    "pressure_pilot_proven": 1
+    "pressure_pilot_proven": 1,
+    "corpus_delta_note": "work_item 26->166 (i64 domain boundaries + effective fold)."
   },
   "mncs_modules": [
     {
@@ -91,9 +92,9 @@
     {
       "module": "fabric.work_item",
       "source": "mncs/fabric_work_item.mncs",
-      "corpus_cases": 26,
-      "owns": "terminal classification, priority order, dispatch holds",
-      "status": "new this campaign, executed PASS at pin"
+      "corpus_cases": 166,
+      "owns": "terminal classification, i64 priority order + zero-fold, dispatch holds",
+      "status": "widened to clarified i64 contract this pass; executed PASS at pin"
     },
     {
       "module": "pressure.text_probe",

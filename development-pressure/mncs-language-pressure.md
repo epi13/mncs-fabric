@@ -90,3 +90,23 @@ the runtime authority.
 - Embedding API before Python-arm deletion (coverage without authority
   is the current pinned state, not the destination).
 - Matrix job rides along with any backend-affecting fix.
+
+## Fabric-side hardening audit (not upstreamed)
+
+The hardening pass fixed three Fabric mistakes in place; none of them
+is a language pressure and none was sent upstream:
+
+- artifact TOCTOU (review): `MncsAuthority` now executes verified
+  in-memory bytes via fresh exclusive files, correlates answers by
+  case ID, bounds output, and is tamper-tested. Evidence carries the
+  SHA-256 of the executed bytes.
+- semantic worker IDs (review): authority and capability fixtures now
+  use opaque identities with rename-invariance proof.
+- priority domain (review): clarified as signed 64-bit with explicit
+  `checked_priority` validation; the MNCS relation widened to match.
+  The zero-folds-to-100 read is preserved byte-for-byte, not narrowed.
+
+Audit conclusion: every remaining ledger item above is a genuine
+language/compiler/runtime/stdlib limitation, evidenced by a minimal
+reproducer that reaches the language's limits rather than Fabric's.
+No Fabric defect materially contaminates the pressure evidence.
