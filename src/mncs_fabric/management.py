@@ -3,6 +3,19 @@
 Liveness remains an authenticated contact observation.  Management state is
 the operator/controller lifecycle used to keep maintenance and the scheduler
 from colliding.  A worker that fails certification does not become READY.
+
+Decision ownership (see ``mncs/fabric_management.mncs``):
+
+- the MNCS module owns the strict transition relation (``_TRANSITIONS``
+  without the reflexive closure), the scheduling gate
+  (``SCHEDULABLE_STATES``), and the READY/certification invariant. The
+  functions below implement those arms exactly;
+  ``tests/test_mncs_management_policy.py`` pins every arm mechanically so
+  the two cannot drift;
+- this Python module additionally owns what MNCS cannot express today:
+  ledgers, timestamps, identity hashing, and record validation, plus the
+  host-side reflexive closure in ``can_transition`` and the unknown-state
+  default in ``management_allows_work``.
 """
 
 from __future__ import annotations

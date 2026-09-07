@@ -1,0 +1,151 @@
+mncs 0.6;
+
+// Fabric worker management lifecycle as language-owned source.
+//
+// This module reconstructs the controller-owned management-state machine
+// from `src/mncs_fabric/management.py` (`_TRANSITIONS`, `SCHEDULABLE_STATES`,
+// and the READY/certification invariant) as finite-domain MNCS source.
+// Python remains authoritative for ledgers, timestamps, identity hashing,
+// and record validation; this module owns the transition relation itself,
+// so the MNCS compiler executes the exact decision Fabric depends on.
+//
+// Boundary notes (pinned by the corpus, not silent divergence):
+// - the strict table below has no reflexive arm: READY -> READY is DENIED
+//   here. Python's `can_transition` adds a reflexive closure
+//   (`current == target` is True) at the call site; that closure stays
+//   host-side and is out of scope for this module.
+// - `allows_work` covers known states only. Python's
+//   `management_allows_work(None)` (unknown management state) returns true;
+//   the unknown-state default stays host-side because MNCS never observes
+//   an absent value as a variant.
+// - certification status is reduced to one boolean (`cert_failed`): only
+//   the FAILED/CERTIFIED distinction constrains READY. FAILED versus
+//   UNKNOWN versus NOT_RUN bookkeeping stays host-side.
+module fabric.management;
+
+enum MgmtState {
+    READY,
+    BUSY,
+    DRAINING,
+    MAINTENANCE,
+    VERIFYING,
+    DEGRADED,
+    QUARANTINED
+}
+
+enum TransitionVerdict { ALLOWED, DENIED }
+
+fn transition_allowed(from: MgmtState, to: MgmtState) -> (result: TransitionVerdict) {
+    return match from {
+        READY => match to {
+            READY => TransitionVerdict.DENIED,
+            BUSY => TransitionVerdict.ALLOWED,
+            DRAINING => TransitionVerdict.ALLOWED,
+            MAINTENANCE => TransitionVerdict.ALLOWED,
+            VERIFYING => TransitionVerdict.ALLOWED,
+            DEGRADED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        BUSY => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.ALLOWED,
+            MAINTENANCE => TransitionVerdict.DENIED,
+            VERIFYING => TransitionVerdict.DENIED,
+            DEGRADED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        DRAINING => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            MAINTENANCE => TransitionVerdict.ALLOWED,
+            VERIFYING => TransitionVerdict.DENIED,
+            DEGRADED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        MAINTENANCE => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            MAINTENANCE => TransitionVerdict.DENIED,
+            VERIFYING => TransitionVerdict.ALLOWED,
+            DEGRADED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        VERIFYING => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.DENIED,
+            MAINTENANCE => TransitionVerdict.ALLOWED,
+            VERIFYING => TransitionVerdict.DENIED,
+            DEGRADED => TransitionVerdict.ALLOWED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        DEGRADED => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.ALLOWED,
+            MAINTENANCE => TransitionVerdict.ALLOWED,
+            VERIFYING => TransitionVerdict.DENIED,
+            DEGRADED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.ALLOWED,
+        },
+        QUARANTINED => match to {
+            READY => TransitionVerdict.ALLOWED,
+            BUSY => TransitionVerdict.DENIED,
+            DRAINING => TransitionVerdict.ALLOWED,
+            MAINTENANCE => TransitionVerdict.ALLOWED,
+            VERIFYING => TransitionVerdict.ALLOWED,
+            DEGRADED => TransitionVerdict.DENIED,
+            QUARANTINED => TransitionVerdict.DENIED,
+        },
+    };
+}
+
+// Only READY and BUSY workers accept work. Every other state (draining,
+// maintenance, verifying, degraded, quarantined) holds scheduling until
+// the operator/controller lifecycle releases it.
+fn allows_work(state: MgmtState) -> (result: bool) {
+    return match state {
+        READY => true,
+        BUSY => true,
+        DRAINING => false,
+        MAINTENANCE => false,
+        VERIFYING => false,
+        DEGRADED => false,
+        QUARANTINED => false,
+    };
+}
+
+// A worker that failed certification never presents as READY. The caller
+// reduces certification status to `cert_failed` (true only for FAILED);
+// all other statuses constrain nothing.
+fn certification_allows(state: MgmtState, cert_failed: bool) -> (result: bool) {
+    if cert_failed {
+        return match state {
+            READY => false,
+            BUSY => true,
+            DRAINING => true,
+            MAINTENANCE => true,
+            VERIFYING => true,
+            DEGRADED => true,
+            QUARANTINED => true,
+        };
+    }
+    return true;
+}
+
+// The experiment targets these wrappers so source-level call semantics are
+// in the executed path rather than merely present in the module.
+fn candidate(from: MgmtState, to: MgmtState) -> (result: TransitionVerdict) {
+    return transition_allowed(from, to);
+}
+
+fn candidate_allows_work(state: MgmtState) -> (result: bool) {
+    return allows_work(state);
+}
+
+fn candidate_certification(state: MgmtState, cert_failed: bool) -> (result: bool) {
+    return certification_allows(state, cert_failed);
+}

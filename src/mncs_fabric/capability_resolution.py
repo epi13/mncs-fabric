@@ -30,7 +30,10 @@ from typing import Any, Iterable, Mapping
 from .errors import ValidationError
 
 # ---------------------------------------------------------------------------
-# Section 1: MIRROR of mncs.std.platform.v1 (finite platform vocabulary).
+# Section 1: MIRROR of mncs/fabric_platform_decision.mncs (finite platform
+# vocabulary) and mncs.std.platform.v1. The MNCS module owns the decision
+# over already-classified finite values; `tests/test_mncs_platform_decision.py`
+# pins every arm mechanically so the two cannot drift.
 # ---------------------------------------------------------------------------
 
 OS_VALUES = ("linux", "windows", "macos", "unknown")
