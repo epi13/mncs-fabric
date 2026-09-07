@@ -256,6 +256,23 @@ class MncsAuthority:
             raise AuthorityError(f"MNCS authority answered {case_id} with unknown code {variant!r}")
         return CODE_PY[variant]
 
+    def _spawn(self, argv: list[str]) -> "subprocess.CompletedProcess[str]":
+        """Run the authority CLI and return the completed process.
+
+        Isolated from _execute so tests can route a script fixture
+        through an interpreter on platforms without shebang execution.
+        Never uses a shell; spawn failures fail closed as AuthorityError.
+        """
+        try:
+            return subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise AuthorityError(f"MNCS authority execution failed: {exc}") from exc
+
     def _execute(self, corpus: dict[str, Any]) -> list[Any]:
         """Execute the verified in-memory bytes against one batch corpus.
 
@@ -271,15 +288,9 @@ class MncsAuthority:
                 json.dump(corpus, handle)
             with os.fdopen(artifact_fd, "wb") as handle:
                 handle.write(self._artifact_bytes)
-            try:
-                completed = subprocess.run(
-                    [self._cli, "experiment", "execute", artifact_path, corpus_path],
-                    capture_output=True,
-                    text=True,
-                    timeout=self._timeout,
-                )
-            except (OSError, subprocess.SubprocessError) as exc:
-                raise AuthorityError(f"MNCS authority execution failed: {exc}") from exc
+            completed = self._spawn(
+                [self._cli, "experiment", "execute", artifact_path, corpus_path]
+            )
         finally:
             for path in (corpus_path, artifact_path):
                 try:

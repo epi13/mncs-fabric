@@ -223,8 +223,24 @@ class StubCliTestBase(unittest.TestCase):
                     "backend": {"name": "stub"}}
         cls.artifact = Path(cls._tmp.name) / "artifact.json"
         cls.artifact.write_text(json.dumps(artifact), encoding="utf-8")
-        cls.authority = MncsAuthority(cli=str(cls.stub), artifact=str(cls.artifact),
-                                      expected_artifact_identity="pin-stub")
+        if os.name == "nt":
+            # Windows cannot execute a shebang script directly
+            # (WinError 193); route the identical argv through this
+            # interpreter. The stub observes the same sys.argv on
+            # every platform, so correlation coverage is unchanged.
+            stub_script = str(cls.stub)
+
+            class WindowsStubAuthority(MncsAuthority):
+                def _spawn(self, argv: list[str]):  # type: ignore[override]
+                    return super()._spawn(
+                        [sys.executable, stub_script, *argv[1:]])
+
+            cls.authority = WindowsStubAuthority(
+                cli=sys.executable, artifact=str(cls.artifact),
+                expected_artifact_identity="pin-stub")
+        else:
+            cls.authority = MncsAuthority(cli=str(cls.stub), artifact=str(cls.artifact),
+                                          expected_artifact_identity="pin-stub")
 
     @classmethod
     def tearDownClass(cls) -> None:
