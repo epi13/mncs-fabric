@@ -32,11 +32,11 @@ the runtime authority.
   lines) deleted; the parity corpus executes `mncs.std.platform.v1`
   itself (461 cases, incl. init-independence proof).
 - **New cores**: availability windows (168), rollout outcomes (1376),
-  scheduler rank (104), work item (26) — all PASS at the pin.
+  scheduler rank (104), work item (166) — all PASS at the pin.
 - **Text pressure**: `pressure.text_probe` proves byte-token matching
   and digit accumulation on 3 backends; pins exact-width and
   case-sensitivity limits (P-014).
-- Corpus total: 1216 -> 2915 executable cases.
+- Corpus total: 1216 -> 3055 executable cases.
 
 ## Resolved / narrowed since PR #73
 
