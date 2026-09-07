@@ -1,0 +1,644 @@
+{
+ "schema_version": "0.1",
+ "name": "pressure-text-probe",
+ "cases": [
+  {
+   "id": "x86-x86_64",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_x86"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 120
+         }
+        },
+        {
+         "byte": {
+          "value": 56
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 95
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 52
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "x86-aarch6",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_x86"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 114
+         }
+        },
+        {
+         "byte": {
+          "value": 99
+         }
+        },
+        {
+         "byte": {
+          "value": 104
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "x86-X86_64",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_x86"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 88
+         }
+        },
+        {
+         "byte": {
+          "value": 56
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 95
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 52
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "x86-x86_65",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_x86"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 120
+         }
+        },
+        {
+         "byte": {
+          "value": 56
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 95
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 53
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "aarch64-aarch64",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_aarch64"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 114
+         }
+        },
+        {
+         "byte": {
+          "value": 99
+         }
+        },
+        {
+         "byte": {
+          "value": 104
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 52
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "aarch64-x86_64!",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_aarch64"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 120
+         }
+        },
+        {
+         "byte": {
+          "value": 56
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 95
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 52
+         }
+        },
+        {
+         "byte": {
+          "value": 33
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "aarch64-AARCH64",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_aarch64"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 65
+         }
+        },
+        {
+         "byte": {
+          "value": 65
+         }
+        },
+        {
+         "byte": {
+          "value": 82
+         }
+        },
+        {
+         "byte": {
+          "value": 67
+         }
+        },
+        {
+         "byte": {
+          "value": 72
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 52
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "aarch64-aarch65",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_aarch64"
+    },
+    "arguments": [
+     {
+      "sequence": {
+       "values": [
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 97
+         }
+        },
+        {
+         "byte": {
+          "value": 114
+         }
+        },
+        {
+         "byte": {
+          "value": 99
+         }
+        },
+        {
+         "byte": {
+          "value": 104
+         }
+        },
+        {
+         "byte": {
+          "value": 54
+         }
+        },
+        {
+         "byte": {
+          "value": 53
+         }
+        }
+       ]
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "digits-31",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_digits"
+    },
+    "arguments": [
+     {
+      "byte": {
+       "value": 51
+      }
+     },
+     {
+      "byte": {
+       "value": 49
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "integer": {
+      "value": 31,
+      "type": {
+       "bits": 64,
+       "signed": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "digits-00",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_digits"
+    },
+    "arguments": [
+     {
+      "byte": {
+       "value": 48
+      }
+     },
+     {
+      "byte": {
+       "value": 48
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "integer": {
+      "value": 0,
+      "type": {
+       "bits": 64,
+       "signed": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "digits-99",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_digits"
+    },
+    "arguments": [
+     {
+      "byte": {
+       "value": 57
+      }
+     },
+     {
+      "byte": {
+       "value": 57
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "integer": {
+      "value": 99,
+      "type": {
+       "bits": 64,
+       "signed": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "digits-3x",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_digits"
+    },
+    "arguments": [
+     {
+      "byte": {
+       "value": 51
+      }
+     },
+     {
+      "byte": {
+       "value": 120
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "integer": {
+      "value": -1,
+      "type": {
+       "bits": 64,
+       "signed": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "digits-ab",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "pressure.text_probe",
+     "function": "candidate_digits"
+    },
+    "arguments": [
+     {
+      "byte": {
+       "value": 97
+      }
+     },
+     {
+      "byte": {
+       "value": 98
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "integer": {
+      "value": -1,
+      "type": {
+       "bits": 64,
+       "signed": true
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -101,6 +101,7 @@ def _clock_minutes(value: time) -> int:
 
 
 def window_contains(start: time, end: time, current: time) -> bool:
+    """Decide window openness; relation owned by ``mncs/fabric_availability.mncs``."""
     now = _clock_minutes(current)
     begin = _clock_minutes(start)
     finish = _clock_minutes(end)

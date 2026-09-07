@@ -92,6 +92,7 @@ def explain_eligibility(
     *,
     intent: str = "normal",
     prefer: Iterable[str] = (),
+    authority: object | None = None,
 ) -> FleetResolution:
     """Machine-readable eligibility for a capability set over workers."""
     query = CapabilityQuery(
@@ -100,7 +101,7 @@ def explain_eligibility(
         intent=intent,
     )
     snapshots = [_snapshot_for_slot(worker) for worker in workers]
-    return resolve_fleet(query, snapshots, replicas=1)
+    return resolve_fleet(query, snapshots, replicas=1, authority=authority)
 
 
 def schedule(
@@ -112,7 +113,15 @@ def schedule(
     intent: str = "normal",
     prefer: Iterable[str] = (),
     query: CapabilityQuery | None = None,
+    authority: object | None = None,
 ) -> ScheduleDecision:
+    """Schedule with capability-aware admission.
+
+    When ``authority`` (an ``mncs_fabric.mncs_authority.MncsAuthority``)
+    is provided, the ordered per-worker base codes are answered by the
+    compiled MNCS implementation; otherwise the legacy Python path
+    decides. Either way the decision is explicit: no silent fallback.
+    """
     checked = validate_job_plan(plan)
     if not isinstance(replicas, int) or replicas < 1 or replicas > 64:
         raise ValidationError("replicas must be between 1 and 64")
@@ -133,7 +142,7 @@ def schedule(
             intent=query.intent,
         )
     snapshots = [_snapshot_for_slot(worker) for worker in worker_list]
-    fleet = resolve_fleet(query, snapshots, replicas=1)
+    fleet = resolve_fleet(query, snapshots, replicas=1, authority=authority)
     by_id = {item.worker_id: item for item in fleet.per_worker}
     eligible = [
         worker

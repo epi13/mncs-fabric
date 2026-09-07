@@ -1,0 +1,8742 @@
+{
+ "schema_version": "0.1",
+ "name": "fabric-availability-window",
+ "cases": [
+  {
+   "id": "window-day0-0-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1439-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-1439-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-1439-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-359",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 359,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-360",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-361",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 361,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-360-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-59",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 59,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-60",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-61",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-62",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 62,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-60-61-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-0-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-359",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 359,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-360",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-361",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 361,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-360-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-0-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-59",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 59,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-60",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-61",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-1379",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1379,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-1380",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-1381",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1381,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1380-60-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-718",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 718,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-720-719-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-0-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1438-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1438-1437",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1437,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1438-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day0-1439-1438-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": false
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1439-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-1439-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-1439-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-359",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 359,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-360",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-361",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 361,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-360-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-59",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 59,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-60",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-61",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-62",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 62,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-60-61-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-0-720-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-1439-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-359",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 359,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-360",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-361",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 361,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-360-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 360,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-0-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-59",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 59,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-60",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-61",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 61,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-1379",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1379,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-1380",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-1381",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1381,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1380-60-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1380,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 60,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-718",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 718,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-719",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-720",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-721",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 721,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-720-719-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 720,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 719,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-0-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-0-1",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-0-2",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 2,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1-0-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1438-0",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 0,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1438-1437",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1437,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1438-1438",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": false
+     }
+    }
+   ]
+  },
+  {
+   "id": "window-day1-1439-1438-1439",
+   "request": {
+    "schema_version": "0.1",
+    "target": {
+     "module": "fabric.availability",
+     "function": "candidate"
+    },
+    "arguments": [
+     {
+      "boolean": {
+       "value": true
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1438,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     },
+     {
+      "integer": {
+       "value": 1439,
+       "type": {
+        "bits": 32,
+        "signed": true
+       }
+      }
+     }
+    ],
+    "step_budget": 4096
+   },
+   "expected": [
+    {
+     "boolean": {
+      "value": true
+     }
+    }
+   ]
+  }
+ ]
+}

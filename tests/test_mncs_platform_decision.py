@@ -1,15 +1,18 @@
-"""Fabric platform-decision core in MNCS: corpus agreement plus compiled execution.
+"""Fabric platform decisions pinned to the shared MNCS standard library.
 
-``mncs/fabric_platform_decision.mncs`` owns the finite platform decision
-(OS/arch/libc/CUDA/resources/flags plus the composed environment check)
-mirroring Section 1 of ``src/mncs_fabric/capability_resolution.py``. These
-tests prove the Python mirror agrees with it:
+Fabric does not keep its own copy of the platform vocabulary:
+``mncs.std.platform.v1`` (in mncs-language ``library/std/platform.mncs``)
+owns the finite platform decision (OS/arch/libc/CUDA/resources/flags
+plus the composed environment check), and Section 1 of
+``src/mncs_fabric/capability_resolution.py`` mirrors it. These tests
+prove the Python mirror agrees with the standard library:
 
 - the checked-in corpus expectations match the Python authority functions
   (always runs; guards corpus drift), and
-- the MNCS toolchain executes the module over the whole corpus and its
-  judgement is PASS (runs when the language CLI is available; the CI
-  ``mncs-conformance`` job builds it at a pinned revision).
+- the MNCS toolchain executes the standard library file itself over the
+  whole corpus and its judgement is PASS (runs when the language
+  checkout and CLI are available; the CI ``mncs-conformance`` job builds
+  them at a pinned revision).
 """
 
 from __future__ import annotations
@@ -33,9 +36,22 @@ from mncs_fabric.capability_resolution import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-SOURCE = REPO_ROOT / "mncs" / "fabric_platform_decision.mncs"
-CORPUS = REPO_ROOT / "mncs" / "fabric_platform_decision_corpus.json"
-MODULE = "fabric.platform_decision"
+CORPUS = REPO_ROOT / "mncs" / "std_platform_parity_corpus.json"
+MODULE = "mncs.std.platform.v1"
+
+
+def _language_dir() -> Path:
+    explicit = os.environ.get("MNCS_LANGUAGE_DIR")
+    if explicit:
+        return Path(explicit)
+    return REPO_ROOT.parent / "mncs-language"
+
+
+def _platform_source() -> Path:
+    return _language_dir() / "library" / "std" / "platform.mncs"
+
+
+SOURCE = _platform_source()
 
 OS_MNCS = ["Linux", "Windows", "MacOs", "Unknown"]
 OS_PY = ["linux", "windows", "macos", "unknown"]
@@ -194,11 +210,13 @@ class TestPlatformDecisionCorpusAgreement(unittest.TestCase):
                 self.fail(f"corpus case has an unexpected id shape: {case_id}")
 
     def test_source_declares_the_executed_module(self) -> None:
+        if not SOURCE.is_file():
+            self.skipTest(f"mncs-language checkout is unavailable at {SOURCE}")
         text = SOURCE.read_text(encoding="utf-8")
-        self.assertIn("module fabric.platform_decision;", text)
+        self.assertIn("module mncs.std.platform.v1;", text)
         for entrypoint in (
             "fn candidate_os(",
-            "fn candidate_arch_match(",
+            "fn arch_matches(",
             "fn candidate_arch(",
             "fn candidate_libc(",
             "fn candidate_cuda(",
@@ -215,11 +233,27 @@ class TestPlatformDecisionCorpusAgreement(unittest.TestCase):
         self.assertFalse(by_id["libc-Gnu-Unknown"]["expected"][0]["boolean"]["value"])
         self.assertTrue(by_id["os-Any-Unknown"]["expected"][0]["boolean"]["value"])
 
+    def test_init_fact_is_ignored_by_composition(self) -> None:
+        # The worker environment carries init on both sides; the composed
+        # check must agree under either value. The corpus runs every env
+        # scenario twice (init Unknown vs Systemd).
+        corpus = json.loads(CORPUS.read_text(encoding="utf-8"))
+        by_id = {case["id"]: case for case in corpus["cases"]}
+        bases = sorted({case_id.removeprefix("env-").rsplit("-init-", 1)[0]
+                        for case_id in by_id if case_id.startswith("env-")})
+        self.assertTrue(bases)
+        for base in bases:
+            unknown = by_id[f"env-{base}-init-unknown"]["expected"][0]["boolean"]["value"]
+            systemd = by_id[f"env-{base}-init-systemd"]["expected"][0]["boolean"]["value"]
+            self.assertEqual(unknown, systemd, base)
+
 
 class TestPlatformDecisionMncsExecution(unittest.TestCase):
     def test_toolchain_executes_platform_corpus(self) -> None:
         if os.environ.get("MNCS_FABRIC_RUN_TOOLCHAIN_TESTS") != "1":
             self.skipTest("toolchain execution runs in mncs-conformance (set MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1)")
+        if not SOURCE.is_file():
+            self.skipTest(f"mncs-language checkout is unavailable at {SOURCE}")
         cli = _find_language_cli()
         if cli is None:
             self.skipTest("mncs-language CLI is unavailable (set MNCS_LANGUAGE_CLI)")

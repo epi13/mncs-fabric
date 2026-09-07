@@ -18,6 +18,19 @@ on:
       - tests/test_mncs_platform_decision.py
       - tests/test_mncs_reconnect_policy.py
       - tests/test_mncs_lifecycle_status.py
+      - tests/test_mncs_authority.py
+      - tests/test_mncs_availability.py
+      - tests/test_mncs_rollout_outcome.py
+      - tests/test_mncs_scheduler_rank.py
+      - tests/test_mncs_work_item.py
+      - tests/test_pressure_text_probe.py
+      - src/mncs_fabric/mncs_authority.py
+      - src/mncs_fabric/capability_resolution.py
+      - src/mncs_fabric/scheduler.py
+      - src/mncs_fabric/availability.py
+      - src/mncs_fabric/rollout.py
+      - src/mncs_fabric/work_queue.py
+      - development-pressure/reproducers/**
       - .github/workflows/mncs-conformance.yml
   pull_request:
     paths:
@@ -28,6 +41,19 @@ on:
       - tests/test_mncs_platform_decision.py
       - tests/test_mncs_reconnect_policy.py
       - tests/test_mncs_lifecycle_status.py
+      - tests/test_mncs_authority.py
+      - tests/test_mncs_availability.py
+      - tests/test_mncs_rollout_outcome.py
+      - tests/test_mncs_scheduler_rank.py
+      - tests/test_mncs_work_item.py
+      - tests/test_pressure_text_probe.py
+      - src/mncs_fabric/mncs_authority.py
+      - src/mncs_fabric/capability_resolution.py
+      - src/mncs_fabric/scheduler.py
+      - src/mncs_fabric/availability.py
+      - src/mncs_fabric/rollout.py
+      - src/mncs_fabric/work_queue.py
+      - development-pressure/reproducers/**
       - .github/workflows/mncs-conformance.yml
   schedule:
     - cron: "23 9 * * 1"
@@ -44,7 +70,7 @@ jobs:
     env:
       # Pinned mncs-language revision the checked-in corpus was generated
       # and executed against. Bump with the corpus in the same commit.
-      MNCS_LANGUAGE_REV: 4f3146a97f92389490d3e8dffdf08266e3390968
+      MNCS_LANGUAGE_REV: 0216d6406c99705679014b6ea2461d710f98e0a7
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,21 +96,34 @@ jobs:
         working-directory: mncs-language
       - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_management.mncs
         working-directory: mncs-language
-      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_platform_decision.mncs
+      - run: ./target/debug/mncs source-study library/std/platform.mncs
         working-directory: mncs-language
       - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_reconnect.mncs
         working-directory: mncs-language
       - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_lifecycle_status.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_availability.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_rollout_outcome.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_scheduler_rank.mncs
+        working-directory: mncs-language
+      - run: ./target/debug/mncs source-study ../mncs-fabric/mncs/fabric_work_item.mncs
         working-directory: mncs-language
       - name: Regenerate corpora and fail on drift
         run: |
           python3 mncs/gen_update_lifecycle_corpus.py
           python3 mncs/gen_capability_corpus.py
           python3 mncs/gen_management_corpus.py
-          python3 mncs/gen_platform_decision_corpus.py
+          python3 mncs/gen_std_platform_parity.py
           python3 mncs/gen_reconnect_corpus.py
           python3 mncs/gen_lifecycle_status_corpus.py
-          git diff --exit-code -- mncs/*_corpus.json
+          python3 mncs/gen_availability_corpus.py
+          python3 mncs/gen_rollout_corpus.py
+          python3 mncs/gen_scheduler_rank_corpus.py
+          python3 mncs/gen_work_item_corpus.py
+          python3 development-pressure/reproducers/gen_text_probe_corpus.py
+          git diff --exit-code -- mncs/*corpus.json development-pressure/reproducers/*corpus.json
         working-directory: mncs-fabric
-      - run: MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1 MNCS_LANGUAGE_CLI=$GITHUB_WORKSPACE/mncs-language/target/debug/mncs python -m unittest tests.test_mncs_update_policy tests.test_mncs_capability_policy tests.test_mncs_management_policy tests.test_mncs_platform_decision tests.test_mncs_reconnect_policy tests.test_mncs_lifecycle_status -v
+      - run: MNCS_FABRIC_RUN_TOOLCHAIN_TESTS=1 MNCS_LANGUAGE_CLI=$GITHUB_WORKSPACE/mncs-language/target/debug/mncs MNCS_LIBRARY_PATH=$GITHUB_WORKSPACE/mncs-language/library python -m unittest tests.test_mncs_update_policy tests.test_mncs_capability_policy tests.test_mncs_management_policy tests.test_mncs_platform_decision tests.test_mncs_reconnect_policy tests.test_mncs_lifecycle_status tests.test_mncs_authority tests.test_mncs_availability tests.test_mncs_rollout_outcome tests.test_mncs_scheduler_rank tests.test_mncs_work_item tests.test_pressure_text_probe -v
         working-directory: mncs-fabric

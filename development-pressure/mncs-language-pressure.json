@@ -1,12 +1,35 @@
 {
   "schema_version": "mncs-fabric.language-pressure.v0.1",
-  "generated_by": "mncs-fabric conversion campaign (feat/mncs-fabric-conversion)",
+  "generated_by": "mncs-fabric conversion campaigns PR #73 + continuation (feat/mncs-authority-and-reuse)",
   "language_toolchain_observed": {
-    "revision": "8d79250d54d4e4241c0bb0ae6f5c632345848a6d (mncs-language feat/std-platform-capability; CI pin remains 4f3146a97f92389490d3e8dffdf08266e3390968)",
-    "backend_exercised": "research-bytecode",
-    "source_profile": "0.6"
+    "revision": "0216d6406c99705679014b6ea2461d710f98e0a7 (mncs-language origin/main; CI pin; all corpora PASS)",
+    "previous_pin": "4f3146a97f92389490d3e8dffdf08266e3390968 (PR #73 pin; all PR #73 corpora also PASS there, verified locally)",
+    "local_dev_revision": "8d79250d54d4e4241c0bb0ae6f5c632345848a6d (unmerged feature branch; superseded by the pin bump)",
+    "evidence_baseline_note": "PR #73 review flagged dev-rev (8d79250) vs pin (4f3146a) drift. Resolved: pin bumped to mainline 0216d64 which contains library/std/platform.mncs; all six PR #73 corpora re-executed PASS at 0216d64 (1216/1216) before migration; new corpora generated+executed at 0216d64. One truthful baseline: Fabric tree + language 0216d64 + profile 0.6/0.7 + research-bytecode (plus wasm/C11 spot evidence).",
+    "backends_exercised": [
+      "research-bytecode",
+      "mncs-portable-wasm-mvp",
+      "mncs-c11"
+    ],
+    "source_profiles": [
+      "0.6",
+      "0.7 (text pressure reproducer only)"
+    ]
   },
-  "classifications": ["LANGUAGE_SYNTAX", "LANGUAGE_SEMANTICS", "TYPE_SYSTEM", "MODULE_SYSTEM", "STDLIB", "COMPILER", "BACKEND", "RUNTIME", "FFI_HOST_BOUNDARY", "TOOLING", "DIAGNOSTICS", "PERFORMANCE"],
+  "classifications": [
+    "LANGUAGE_SYNTAX",
+    "LANGUAGE_SEMANTICS",
+    "TYPE_SYSTEM",
+    "MODULE_SYSTEM",
+    "STDLIB",
+    "COMPILER",
+    "BACKEND",
+    "RUNTIME",
+    "FFI_HOST_BOUNDARY",
+    "TOOLING",
+    "DIAGNOSTICS",
+    "PERFORMANCE"
+  ],
   "findings": [
     {
       "id": "P-001",
@@ -70,7 +93,7 @@
       "title": "Module imports experimental; Fabric duplicates std platform vocabulary",
       "classification": "MODULE_SYSTEM",
       "severity": "medium",
-      "blocking": "awkward",
+      "blocking": "resolved",
       "subsystem": "platform decision",
       "fabric_source_behavior": "Os/Arch/Libc/Accel/ExecMode/Req* enums exist in mncs.std.platform.v1 and are re-declared in fabric.platform_decision.",
       "legacy_path": "mncs/fabric_platform_decision.mncs (local enum declarations)",
@@ -82,7 +105,9 @@
       "stdlib_involved": "mncs.std.platform.v1",
       "migration_boundary": "Duplication is explicit and test-pinned; the import migration is a named follow-up.",
       "owning_repository": "mncs-language",
-      "next_action": "Stabilize module imports for finite/record reuse; then delete the duplicated Fabric enums and re-pin the corpus."
+      "next_action": "Done for platform vocabulary. Repeat the pattern for the next shared vocabulary (bytes classifiers already reused via import in the text reproducer).",
+      "status": "resolved",
+      "resolution": "Disproven as a blocker: `use mncs.std.platform.v1` elaborates, executes, and keeps declaring-module identities across the boundary (proven by pressure.text_probe + the std-parity migration). mncs/fabric_platform_decision.mncs (~302 lines) DELETED; tests/test_mncs_platform_decision.py now executes library/std/platform.mncs itself (461 cases PASS at pin 0216d64). MNCS_LIBRARY_PATH is the only wiring."
     },
     {
       "id": "P-005",
@@ -101,7 +126,9 @@
       "stdlib_involved": "text handling (none in exercised envelope)",
       "migration_boundary": "Host classifies; MNCS decides. The boundary is documented per module and a new platform string can never silently reinterpret an MNCS arm.",
       "owning_repository": "mncs-language",
-      "next_action": "Design bounded-text semantics (RFC) before moving any classifier; until then keep the host-classifies/MNCS-decides split."
+      "next_action": "Bounded views ([E; up_to N]) + a host-bytes input story; then move classify_arch fixed-token arms first.",
+      "status": "narrowed",
+      "resolution_attempt": "Profile 0.7 byte type + exact [byte; N] sequences + `as` conversions + shared mncs.core.bytes.v1 classifiers execute on 3 backends (pressure.text_probe, 13 cases PASS). Exact-width token matching and two-digit accumulation are proven. What remains blocked: variable-length tokens (need views), case folding, delimiter scanning over unbounded input, and the host-bytes feeding story. See new P-014."
     },
     {
       "id": "P-006",
@@ -170,7 +197,7 @@
       "fabric_source_behavior": "Exhaustive finite-domain corpora (449 platform + 328 reconnect + 245 update + 84 capability + 70 management + 40 status = 1216 cases) executed per change.",
       "legacy_path": "mncs/*_corpus.json via `mncs experiment run`",
       "desired_mncs_path": "same corpora, cheaper per-case observation",
-      "minimal_reproducer": "Observed: research-bytecode per-case observation/validation dominates (compile once, pay per case); prior measurement ~2.3 s/case for the deeply-nested 14-state update corpus locally, worse on hosted runners. The four new small-decision modules (887 cases combined) execute in seconds, so cost scales with relation complexity, not just case count; the six-module conformance job keeps a 150-minute timeout for the heavy corpora.",
+      "minimal_reproducer": "Measured at pin 0216d64: deeply-nested 14-state update corpus ~2.3 s/case locally; small-decision modules (887 PR #73 cases) in seconds; 1674 new cases (availability/rollout/rank/work-item) in seconds; frozen-artifact `experiment execute` ~280 ms fixed per batch (~0 marginal). Six-module conformance needs its 150-minute timeout for the heavy corpora only.",
       "expected_behavior": "Sub-second marginal per-case cost (frozen-artifact reuse, cheaper observation) so exhaustive Fabric policies stay in the fast loop.",
       "actual_behavior": "PASS on all modules, but wall-clock bounds how large an executable Fabric policy can grow before the edit/execute loop degrades. Conformance stays path-filtered + weekly for this reason.",
       "backend": "research-bytecode (frozen-artifact execute shows the same marginal)",
@@ -184,19 +211,21 @@
       "title": "No host-callable MNCS artifact story; Python stays the runtime authority",
       "classification": "FFI_HOST_BOUNDARY",
       "severity": "high",
-      "blocking": "blocked",
+      "blocking": "awkward",
       "subsystem": "packaging / runtime authority reversal",
       "fabric_source_behavior": "Scheduler, controller, and worker call Python decision functions at runtime; the MNCS modules execute the same relations in CI but nothing calls them in production.",
       "legacy_path": "src/mncs_fabric/*.py (all runtime call sites)",
       "desired_mncs_path": "mncs-fabric as an MNCS program/artifact with Python as bootstrap glue; runtime calls into compiled MNCS decisions",
       "minimal_reproducer": "There is no supported path in this campaign to load a compiled MNCS artifact from Python (or ship an MNCS-built mncs-fabric executable) with the evidence story intact; `experiment execute` runs frozen artifacts offline but is a conformance tool, not a runtime embedding.",
       "expected_behavior": "Aembedding story: host calls named MNCS entrypoints with JSON values, gets values back, with versioned artifact identities recorded in receipts.",
-      "actual_behavior": "MNCS is the authoring-time and CI-executed authority; Python is the production runtime authority. Two implementations persist by necessity, pinned by tests — exactly the transitional architecture, but the final reversal step has no vehicle.",
+      "actual_behavior": "MNCS is the authoring-time and CI-executed authority; Python is the production runtime authority. Two implementations persist by necessity, pinned by tests \u2014 exactly the transitional architecture, but the final reversal step has no vehicle.",
       "backend": "all",
       "stdlib_involved": null,
       "migration_boundary": "Every duplicated arm is corpus-pinned with a named MNCS owner; drift fails tests. Removal of Python arms waits on the embedding story.",
       "owning_repository": "mncs-language (artifact embedding) + mncs-fabric (packaging)",
-      "next_action": "Design the host-embedding contract (call argparse, value encoding, identity recording); pilot it on resolve_code, the smallest hot decision."
+      "next_action": "Language side: host-callable entrypoint contract (call args, value encoding, identity recording, error semantics) per the measured pilot. Fabric side: flip default once cost < budget.",
+      "status": "pilot-proven",
+      "resolution_attempt": "Authority reversal PILOTED with existing interfaces only: MncsAuthority (src/mncs_fabric/mncs_authority.py) pins a backend artifact identity, marshals typed rows, answers a whole fleet in ONE `mncs experiment execute` call (~280 ms fixed, ~0 marginal for 20 decisions), and binds artifact/backend identity into FleetResolution/ScheduleDecision evidence. resolve_fleet/schedule take authority= explicitly; default stays Python (measured latency + deployment dependency), fail-hard, no silent fallback. tests/test_mncs_authority.py: MNCS answers all 48 resolve arms, fleet+scheduler agree with legacy verdict-for-verdict incl. NO_ELIGIBLE_WORKER. Remaining blocker for default flip: a real embedding API (ms cost, no CLI subprocess, stable output contract) + artifact lifecycle story."
     },
     {
       "id": "P-011",
@@ -215,7 +244,9 @@
       "stdlib_involved": null,
       "migration_boundary": "None; evidence is honestly single-backend until the matrix runs.",
       "owning_repository": "mncs-language (with fabric CI wiring)",
-      "next_action": "Add a weekly multi-backend matrix job over the six Fabric corpora; file backend findings separately from language findings."
+      "next_action": "Add the weekly multi-backend matrix over all Fabric corpora; file backend findings separately.",
+      "status": "evidence-added",
+      "resolution_attempt": "fabric.management 70/70 PASS on research-bytecode + mncs-portable-wasm-mvp + mncs-c11; pressure.text_probe 13 cases PASS on the same three. First non-single-backend Fabric evidence. Remaining: LLVM/Cranelift/RV32/eBPF/PTX runs + a weekly matrix job."
     },
     {
       "id": "P-012",
@@ -235,6 +266,47 @@
       "migration_boundary": "Each module documents its None-folding; corpora pin the present-value arms.",
       "owning_repository": "mncs-language",
       "next_action": "Add option types (or an explicit absence story); migrate the three absence policies first."
+    },
+    {
+      "id": "P-013",
+      "title": "`experiment execute` rejects an empty expected list",
+      "classification": "TOOLING",
+      "severity": "low",
+      "blocking": "awkward",
+      "status": "open",
+      "subsystem": "authority embedding (CLI contract)",
+      "fabric_source_behavior": "MncsAuthority builds caller-judged batches with no expected values.",
+      "legacy_path": "src/mncs_fabric/mncs_authority.py::resolve_codes",
+      "desired_mncs_path": "n/a (CLI contract)",
+      "minimal_reproducer": "A corpus case with `\"expected\": []` makes `experiment execute` exit 1; omitting the key works. Found while building the authority pilot.",
+      "expected_behavior": "Empty expected list means caller-judged (or a diagnostic saying so).",
+      "actual_behavior": "Exit 1 with no pinpoint message.",
+      "backend": "all (CLI layer)",
+      "stdlib_involved": null,
+      "migration_boundary": "Authority omits the key with a comment; no semantic impact.",
+      "owning_repository": "mncs-language",
+      "next_action": "Accept missing/empty expected as caller-judged, or emit a targeted diagnostic."
+    },
+    {
+      "id": "P-014",
+      "title": "Variable-length text needs views; fixed-width entrypoints cannot carry classifiers",
+      "classification": "LANGUAGE_SEMANTICS",
+      "severity": "high",
+      "blocking": "blocked",
+      "status": "open",
+      "subsystem": "OS/arch/libc classification, version parsing, protocol validation",
+      "fabric_source_behavior": "classify_arch/os/libc accept arbitrary platform strings (amd64, arm64, riscv64, i386, X86_64 with case folding).",
+      "legacy_path": "src/mncs_fabric/capability_resolution.py::classify_arch (and siblings)",
+      "desired_mncs_path": "development-pressure/reproducers/text_arch_probe.mncs (fixed-width proof) -> views-based classifier",
+      "minimal_reproducer": "pressure.text_probe proves [byte; 6]/[byte; 7] exact matching + digit accumulation on 3 backends, and pins what fails: amd64/arm64/riscv64/i386/x86 (wrong width or content), case variants (no folding). Bounded views ([E; up_to N]) exist in later profiles but variable matching + host-bytes feeding are unproven in Fabric.",
+      "expected_behavior": "Bounded views with total iteration/matching over caller-supplied bytes, so fixed-token arms (x86_64/amd64, aarch64/arm64, ...) move into MNCS with case folding.",
+      "actual_behavior": "Only exact-width entrypoints; every real classifier stays Python.",
+      "backend": "all (frontend/profile)",
+      "stdlib_involved": "mncs.core.bytes.v1 (reused), views (unproven here)",
+      "migration_boundary": "Host classifies full strings; MNCS decides over finite values (unchanged).",
+      "owning_repository": "mncs-language",
+      "next_action": "Prove a views-based variable token matcher for the arch aliases; then move classify_arch arm by arm."
     }
-  ]
+  ],
+  "metrics": {}
 }
