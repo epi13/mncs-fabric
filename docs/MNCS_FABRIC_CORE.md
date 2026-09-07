@@ -47,9 +47,12 @@ and how to add the next one. The rule for everything below:
   comparator behind the sort key, replica sufficiency, slot admission,
   and replica bounds. The sort and the identity tie-break stay
   host-side (P-007).
-- `fabric.work_item` (26 cases): terminal classification (reads the
-  real `_TERMINAL` set), priority order (checked against the real tick
-  sort key), and dispatch holds (pause outranks missing eligibility).
+- `fabric.work_item` (166 cases): terminal classification (reads the
+  real `_TERMINAL` set), signed-64-bit priority order with the
+  documented zero-folds-to-100 read, and dispatch holds (pause outranks
+  missing eligibility). The priority domain is a clarified contract,
+  not a narrowing: `checked_priority` validates new inputs explicitly
+  while stored history is untouched.
 - `pressure.text_probe` (13 cases, reproducer): bounded byte-token
   matching and digit accumulation at profile 0.7 with
   `mncs.core.bytes.v1` reuse, green on 3 backends. Pins the remaining
@@ -60,16 +63,21 @@ and how to add the next one. The rule for everything below:
 For most modules Python is still the production runtime authority and
 the corpus generator reads the Python tables, while MNCS is the
 CI-executed authority. One subsystem goes further:
-`src/mncs_fabric/mncs_authority.py` (`MncsAuthority`) pins a backend
-artifact identity, marshals typed rows, and answers a whole fleet in
-one `mncs experiment execute` batch (~280 ms fixed, ~0 marginal).
-`resolve_fleet`/`schedule` take `authority=` explicitly; artifact and
-backend identity land in `FleetResolution`/`ScheduleDecision` evidence.
-There is no silent fallback: misconfiguration raises `AuthorityError`.
-The production default stays Python for measured latency and
-deployment reasons; flipping it needs a real embedding API (P-010
-remainder). `tests/test_mncs_authority.py` proves MNCS answers all 48
-resolve arms and agrees with legacy verdict-for-verdict.
+`src/mncs_fabric/mncs_authority.py` (`MncsAuthority`) reads the pinned
+artifact bytes once, verifies the declared identity, retains the bytes
+immutably, and executes exactly those bytes: every call materializes
+them into a fresh exclusively-created file, so replacing or modifying
+the artifact path afterwards cannot affect execution (no TOCTOU).
+Answers correlate by case identity (duplicates, omissions, extras, and
+reordering fail closed); output is bounded; evidence carries the
+declared identity, the SHA-256 of the executed bytes, and the backend
+name. `resolve_fleet`/`schedule` take `authority=` explicitly. There is
+no silent fallback: misconfiguration raises `AuthorityError`. The
+production default stays Python for measured latency and deployment
+reasons; flipping it needs a real embedding API (P-010 remainder).
+`tests/test_mncs_authority.py` proves MNCS answers all 48 resolve arms,
+agrees with legacy verdict-for-verdict, survives artifact tampering,
+and matches `mncs abi` output field-for-field.
 
 ## How to add the next module
 

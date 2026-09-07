@@ -16,6 +16,28 @@ from .node import utc_now
 from .store import FabricLedger, iter_ledger_records
 
 SCHEDULED_WORK_SCHEMA = "mncs-fabric.scheduled-work.v0.1"
+
+# Clarified priority contract (v0.1 accepts any int()-able value; this
+# documents and enforces the actual domain): signed 64-bit. Lower values
+# dispatch first. Falsy input (missing, zero, empty) means "no priority
+# given" and stores the default 100, preserving the long-standing read
+# behavior in enqueue and tick. History already stored is untouched:
+# validation applies to newly enqueued items only.
+PRIORITY_DEFAULT = 100
+PRIORITY_MIN = -(2**63)
+PRIORITY_MAX = 2**63 - 1
+
+
+def checked_priority(raw: object) -> int:
+    """Validate and normalize a submitted priority for storage."""
+    candidate = raw if raw else PRIORITY_DEFAULT
+    try:
+        priority = int(candidate)  # type: ignore[arg-type]
+    except (ValueError, TypeError) as exc:
+        raise ValidationError("scheduled work priority is invalid") from exc
+    if not PRIORITY_MIN <= priority <= PRIORITY_MAX:
+        raise ValidationError("scheduled work priority is out of range")
+    return priority
 _TERMINAL = {"COMPLETED", "FAILED", "CANCELLED"}
 
 
@@ -106,7 +128,7 @@ class WorkQueue:
             "workload_class": str(value.get("workload_class") or "python"),
             "required_capabilities": [str(item) for item in required_capabilities],
             "required_worker_id": value.get("required_worker_id"),
-            "priority": int(value.get("priority") or 100),
+            "priority": checked_priority(value.get("priority")),
             "project": value.get("project"),
             "observed_at": utc_now(),
             "attempt": 1,

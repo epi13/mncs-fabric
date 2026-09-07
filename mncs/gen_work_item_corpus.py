@@ -48,8 +48,20 @@ def boolean(value):
     return {"boolean": {"value": bool(value)}}
 
 
-def integer32(value):
-    return {"integer": {"value": int(value), "type": {"bits": 32, "signed": True}}}
+def integer64(value):
+    return {"integer": {"value": int(value), "type": {"bits": 64, "signed": True}}}
+
+
+I64_MIN = -(2**63)
+I64_MAX = 2**63 - 1
+# Domain boundaries: i64 extremes, +-2^31 edges (the old implicit
+# boundary), negatives, zero (folds to default), small values, equality.
+PRIORITIES = [I64_MIN, -2**31 - 1, -2**31, -1, 0, 1, 50, 100, 200, 2**31 - 1, 2**31, I64_MAX]
+
+
+def effective(priority):
+    # The queue's falsy-means-default read over stored ints.
+    return 100 if priority == 0 else priority
 
 
 def case(case_id, function, arguments, expected, step_budget=4096):
@@ -77,14 +89,24 @@ def main():
                 boolean(state in TERMINAL),
             )
         )
-    for a_priority, b_priority in itertools.product((1, 50, 100, 200), repeat=2):
-        # Python authority: the queue sorts ascending by (priority, work_id).
+    for a_priority, b_priority in itertools.product(PRIORITIES, repeat=2):
+        # Python authority: the queue sorts ascending by effective
+        # (priority, work_id); stored zeros sort as the default 100.
         cases.append(
             case(
                 f"priority-{a_priority}-{b_priority}",
                 "candidate_priority",
-                [integer32(a_priority), integer32(b_priority)],
-                boolean(a_priority < b_priority),
+                [integer64(effective(a_priority)), integer64(effective(b_priority))],
+                boolean(effective(a_priority) < effective(b_priority)),
+            )
+        )
+    for raw in PRIORITIES:
+        cases.append(
+            case(
+                f"effective-{raw}",
+                "candidate_effective",
+                [integer64(raw)],
+                integer64(effective(raw)),
             )
         )
     for paused, eligible in itertools.product((False, True), repeat=2):
