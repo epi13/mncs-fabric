@@ -44,7 +44,7 @@ This iteration was aligned against these local sibling snapshots:
 | --- | --- | --- | --- |
 | `machine-native-complexity-standard` | `80f08d312dce963265c7f69ac5b4bae8245bd692` | EA-NEXT-001 typed receipt, EA-NEXT-002 immutable execution bundle, and EA-NEXT-005 challenge/replay `0.1-experimental` | receipt, bundle, and additive challenge/replay adapters; assurance remains UNKNOWN where Fabric cannot establish a property |
 | `MNCS-Commons` | `b1eb5a1081bbb63ee3a6284e8046035bd72a47bc` | append/recovery, locking, structured adapter, and public-node boundary concepts | Fabric-owned ledger/network; no private Commons dependency |
-| `mncs-forge-mcp` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
+| `mncs-forge` | `7710ea606bd592e0be95957c96132e8732fbb955` | Runner/LocalProcessRunner, service boundary, Provider Protocol, local threat harness | Forge-controlled workflow and public service boundary |
 | `mncs-language` | `f234cc8079faa5895a38b7abce0c96031f7d2565` | executable semantic/HIR and provider vocabulary | no new authority vocabulary |
 | `RAVEL` | `99d39a1ce184c814a3ae6b15fe52612f6e708d92` | lifecycle/episode identity awareness | no RAVEL conformance claim |
 | `Machine-Native-Experimental-Learning` | `57b07b2d25a8ea9dad93ea396ae5cc0dff7f9f5b` | identity/lifecycle and native artifact vocabulary | no imported private contract |
