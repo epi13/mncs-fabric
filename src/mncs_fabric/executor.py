@@ -170,7 +170,18 @@ def execute_local(
     *, results_dir: Path | None = None, work_root: Path | None = None,
     containment_mode: str = "compatibility-uncontained",
     containment_provider: BubblewrapProvider | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> dict[str, Any]:
+    """Execute one validated job plan as a bounded child process.
+
+    ``cancel_event`` is a cooperative cancellation hook for layers that run
+    executions on threads (queue/service/Forge adapters): when set, the child
+    process tree is terminated and the record reports ``termination_reason``
+    ``CANCELLED`` with outcome ``UNKNOWN``. Cancellation is never reported
+    as semantic FAIL; higher layers decide what it means. A pre-set event
+    cancels before spawning; a late event after completion is a no-op and
+    the completed result stands; repeated cancellation is idempotent.
+    """
     started_at = utc_now()
     started_monotonic = time.monotonic()
     node = collect_node_capabilities(machine_label)
@@ -189,6 +200,8 @@ def execute_local(
     missing_capabilities = sorted(set(plan["required_capabilities"]) - capability_names(node))
     if missing_capabilities:
         return _failure_record(plan=plan, manifest_identity=manifest["manifest_identity"], node=node, started_at=started_at, started_monotonic=started_monotonic, reason="CAPABILITY_UNAVAILABLE", detail=f"missing capabilities: {missing_capabilities}")
+    if cancel_event is not None and cancel_event.is_set():
+        return _failure_record(plan=plan, manifest_identity=manifest["manifest_identity"], node=node, started_at=started_at, started_monotonic=started_monotonic, reason="CANCELLED", detail="cancellation was requested before the child process was spawned")
 
     temporary_parent = None if work_root is None else str(work_root)
     with tempfile.TemporaryDirectory(prefix="mncs-fabric-", dir=temporary_parent) as temporary:
@@ -248,6 +261,10 @@ def execute_local(
         reason = "COMPLETED"
         deadline = time.monotonic() + float(plan["timeout_seconds"])
         while proc.poll() is None:
+            if cancel_event is not None and cancel_event.is_set():
+                reason = "CANCELLED"
+                _terminate_process(proc)
+                break
             if stdout_collector.exceeded.is_set() or stderr_collector.exceeded.is_set():
                 reason = "OUTPUT_LIMIT"
                 _terminate_process(proc)

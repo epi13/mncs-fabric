@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- Repair the mutual-TLS dispatch test for pre-execution capability
+  resolution: a registered worker with no authenticated observation is
+  `WORKER_DISCONNECTED` by design, so the test now refreshes the
+  worker over mutual TLS (marking it AVAILABLE through the canonical
+  observation path) before dispatching, serving both requests from one
+  bounded `serve_forever(max_requests=2)` endpoint.
+- Add cooperative cancellation at the execution boundary:
+  `execute_local(..., cancel_event=...)` (mirrored by
+  `FabricService.execute_local`) terminates the child process tree and
+  reports termination reason `CANCELLED` with outcome `UNKNOWN`, never
+  FAIL. Pre-spawn cancellation skips spawning; post-completion
+  cancellation is a no-op; repeated cancellation is idempotent.
+  Cancellation propagation above dispatch (worker protocol has no
+  cancel message) remains a known limitation; see the Forge boundary
+  section in `ARCHITECTURE.md`.
 - Resolve workload placement before execution with capability-aware
   scheduling: `mncs/worker_capability.mncs` owns the eligibility
   relation (liveness, freshness, provenance, environment, policy/intent)

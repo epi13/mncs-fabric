@@ -233,13 +233,18 @@ class TLSTransportTests(unittest.TestCase):
             worker = LocalWorker("worker-a", bundle, root / "worker-ledger.jsonl")
             server = TLSWorkerServer(worker, "127.0.0.1", 0, ca_file=cert["ca"], server_cert=cert["server"], server_key=cert["server_key"], controller_id="controller-a", worker_id="worker-a", trust_store=worker_trust)
             port = server.bind()
-            thread = threading.Thread(target=server.serve_once, daemon=True)
+            thread = threading.Thread(target=lambda: server.serve_forever(max_requests=2, idle_timeout=10.0), daemon=True)
             thread.start()
             transport = TLSNetworkTransport("127.0.0.1", port, ca_file=cert["ca"], client_cert=cert["client"], client_key=cert["client_key"], expected_worker_id="worker-a", trust_store=controller_trust)
             controller = NetworkController("controller-a", root / "controller-ledger.jsonl")
             controller.register_remote("worker-a", worker.capabilities(), transport)
+            # Pre-execution capability resolution refuses workers with no
+            # authenticated observation, so a fresh refresh marks the worker
+            # AVAILABLE over mutual TLS before the dispatch is attempted.
+            refresh = controller.refresh_fleet(worker_ids=["worker-a"])
+            self.assertEqual(refresh["outcome"], "PASS")
             responses = controller.dispatch_remote(plan, manifest)
-            thread.join(timeout=5)
+            thread.join(timeout=15)
             self.assertFalse(thread.is_alive())
             self.assertEqual(responses[0]["message_type"], "execution.result")
             self.assertEqual(controller.reconcile_dispatch(responses)["outcome"], "PASS")

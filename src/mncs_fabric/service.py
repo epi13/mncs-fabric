@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -39,8 +40,8 @@ class FabricService:
     def validate_plan(self, plan: object) -> dict[str, Any]:
         return validate_job_plan(plan)
 
-    def execute_local(self, plan: object, root: Path, manifest: object, label: str, *, results_dir: Path | None = None, work_root: Path | None = None) -> dict[str, Any]:
-        return execute_local(plan, root, manifest, label, results_dir=results_dir, work_root=work_root)
+    def execute_local(self, plan: object, root: Path, manifest: object, label: str, *, results_dir: Path | None = None, work_root: Path | None = None, cancel_event: threading.Event | None = None) -> dict[str, Any]:
+        return execute_local(plan, root, manifest, label, results_dir=results_dir, work_root=work_root, cancel_event=cancel_event)
 
     def verify_record(self, record: object) -> dict[str, Any]:
         if not isinstance(record, dict):

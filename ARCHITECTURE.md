@@ -329,8 +329,17 @@ steps into semantic agent authority.
 ## Status ordering
 
 - `FAIL`: a declared check contradicted the artifact, execution, or cohort requirements.
-- `UNKNOWN`: execution could not establish the declared result, including timeout, unavailable capability, output limit, or launch failure.
+- `UNKNOWN`: execution could not establish the declared result, including timeout, unavailable capability, output limit, launch failure, or cancellation.
 - `PASS`: every implemented declared check passed.
+- `CANCELLED` is a termination reason, never an outcome: a cancelled execution reports outcome `UNKNOWN`. Cancellation is operational, not semantic; higher layers decide what it means.
+
+## Forge boundary
+
+Forge owns verification orchestration, admission policy, workflow, and continuous verification. Fabric owns the worker fleet and bounded execution beneath it. The direction is Forge → Fabric execution request → bounded execution → observation → Forge (today via the `FabricExecutionFacts` translation shape; a Fabric-backed Forge runner remains future work, not a second workflow engine inside Fabric).
+
+Concretely: placement envelopes arrive in the request and Fabric evaluates fit against observed worker snapshots — it never invents resource policy. Reconciliation rolls up execution-record agreement; it never decides whether a test or obligation is satisfied. Cooperative cancellation is available at the execution boundary (`execute_local(..., cancel_event=...)`, mirrored by `FabricService.execute_local`): a set event terminates the child process tree, reports `CANCELLED`/`UNKNOWN`, and never converts to FAIL. Cancellation requested before spawn cancels without spawning; late cancellation after completion is a no-op; repeated cancellation is idempotent.
+
+Known limitation (pressure): cancellation propagation stops at dispatch. The worker protocol has no cancel message, so a cancellation raised above the worker (queue/service/Forge adapter) cannot reach an already-dispatched remote execution except through its timeout. Adding protocol-level cancellation is future work owned jointly with the Forge runner integration.
 
 Across a cohort, `FAIL` dominates `UNKNOWN`, and `UNKNOWN` dominates `PASS`.
 
