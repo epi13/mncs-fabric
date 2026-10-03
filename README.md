@@ -1,6 +1,19 @@
 # MNCS Fabric
 
 <!-- MNCS:generated:begin -->
+## Project entry
+
+MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the MNCS family: bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
+
+```bash
+python -m unittest discover -s tests
+```
+
+Declared capabilities (declarations do not establish execution health):
+
+- `public-controller-contract/0.2.0a31` — execution-substrate (experimental)
+
+Semantic sources and ownership: `.mncs/projections.json`.
 <!-- MNCS:generated:end -->
 
 [![MNCS checks](docs/mncs-badge.svg)](docs/mncs-badge.json)
