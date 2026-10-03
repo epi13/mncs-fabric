@@ -24,7 +24,7 @@ suite via `.github/workflows/mncs-family.yml`). Green means that
 workflow's required checks passed on the pictured revision; the sidecar
 links the evidence. It is never hand-edited.
 
-Fabric 0.2.0a18 includes a versioned controller-local registry for explicitly
+Fabric includes a versioned controller-local registry for explicitly
 known worker endpoints. Registry membership is not discovery, trust, or
 availability; mTLS identity, TrustStore authorization, and authenticated refresh
 remain authoritative. See [`docs/WORKER_REGISTRY.md`](docs/WORKER_REGISTRY.md).
@@ -61,7 +61,7 @@ state.
 
 MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the Machine-Native Complexity Standard project family. It provides bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.
 
-> **Status:** `0.2.0a18` experimental execution substrate. Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, rebuildable target-evidence indexing, and required bubblewrap containment for Fedora/Linux Python targets are implemented and covered by tests. Cross-platform containment/packaging, resource reservation, protected custody, and independent evaluation remain out of scope.
+> **Status:** experimental execution substrate (current version: [`docs/fabric-version.json`](docs/fabric-version.json)). Provider-neutral capability/resource observations, controller-owned worker leases, authenticated worker-initiated rendezvous, protected file-mediated Fedora commissioning, exact no-fallback target execution, bounded persistent-service execution, rebuildable target-evidence indexing, and required bubblewrap containment for Fedora/Linux Python targets are implemented and covered by tests. Cross-platform containment/packaging, resource reservation, protected custody, and independent evaluation remain out of scope.
 
 ## Authority boundary
 
