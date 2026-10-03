@@ -1,0 +1,10 @@
+{
+  "name": "mncs-fabric",
+  "schema_version": "mncs.fabric-version/1",
+  "source": {
+    "file": "pyproject.toml",
+    "selector": "/project/version",
+    "source_identity": "sha256:008b4940f399284977c16a95351aaab67e1b5d0aec9a3be0cd36e8fb61431cdb"
+  },
+  "version": "0.2.0a31"
+}
