@@ -137,6 +137,82 @@
      "identity": "mncs.project-view/1"
     }
    }
+  },
+  {
+   "schema_version": "mncs.semantic-projection/1",
+   "id": "mncs-fabric:version",
+   "owner": "mncs-fabric:project-state",
+   "template": "mncs-fabric.version",
+   "inputs": [
+    "pyproject.toml"
+   ],
+   "subjects": [
+    {
+     "subject": "mncs-fabric:package-version",
+     "slot": "pyproject",
+     "path": "pyproject.toml",
+     "format": "utf-8"
+    }
+   ],
+   "output": "docs/fabric-version.json",
+   "output_kind": "whole-file",
+   "renderer": {
+    "identity": "mncs-fabric.version",
+    "version": "1",
+    "schema_version": "mncs.semantic-state/1",
+    "entry": {
+     "module": "projector/version.py",
+     "callable": "render_fabric_version"
+    }
+   },
+   "provider_capability": "mncs-doc:documentation-projection",
+   "render_argv": [
+    "semantic-project",
+    "--state",
+    "{semantic}",
+    "--route",
+    "mncs-fabric.version",
+    "--output",
+    "{artifact}/rendered.md",
+    "--provenance-out",
+    "{artifact}/receipt.json",
+    "--renderer-root",
+    "{checkout}"
+   ],
+   "policy": "ambient-safe",
+   "manual_edit_policy": "protected",
+   "verification": {
+    "required": false
+   },
+   "validation": {
+    "format": "json",
+    "schema": {
+     "type": "object",
+     "required": [
+      "schema_version",
+      "name",
+      "version",
+      "source"
+     ],
+     "properties": {
+      "schema_version": {
+       "const": "mncs.fabric-version/1"
+      },
+      "name": {
+       "const": "mncs-fabric"
+      },
+      "version": {
+       "pattern": "^[0-9]+[.][0-9]+[.][0-9A-Za-z.]+$"
+      },
+      "source": {
+       "type": "object"
+      }
+     }
+    }
+   },
+   "renderer_sources": [
+    "projector/version.py"
+   ]
   }
  ]
 }
