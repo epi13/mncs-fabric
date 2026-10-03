@@ -1,5 +1,8 @@
 # MNCS Fabric
 
+<!-- MNCS:generated:begin -->
+<!-- MNCS:generated:end -->
+
 [![MNCS checks](docs/mncs-badge.svg)](docs/mncs-badge.json)
 
 The MNCS checks badge is rendered by `mncs-actions` from the aggregate

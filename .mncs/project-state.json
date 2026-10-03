@@ -1,0 +1,17 @@
+{
+  "schema_version": "mncs.project-intent/1",
+  "purpose": "MNCS Fabric is an experimental, operator-controlled execution and evidence fabric for the MNCS family: bounded local execution, content-addressed artifact manifests, host capability records, raw execution records, and deterministic cross-host reconciliation.",
+  "entry": [
+    "python -m unittest discover -s tests"
+  ],
+  "milestones": [
+    {
+      "id": "mncs-fabric:projection-conformance",
+      "title": "Declared ambient projection surfaces satisfy their contract",
+      "subject_slot": "declarations",
+      "evidence": "projection-conformance",
+      "dependencies": [],
+      "blockers": []
+    }
+  ]
+}
