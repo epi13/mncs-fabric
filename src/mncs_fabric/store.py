@@ -5,8 +5,9 @@ from __future__ import annotations
 import collections
 import json
 import os
+import sqlite3
 import time
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Callable, Iterator
@@ -16,6 +17,17 @@ from .errors import StorageError
 
 LEDGER_SCHEMA = "mncs-fabric.ledger.v0.1"
 COMPACTION_SCHEMA = "mncs-fabric.ledger-compaction.v0.1"
+INDEX_SCHEMA = "mncs-fabric.ledger-index.v0.1"
+_INDEX_BATCH_SIZE = 512
+
+
+def _digest_bytes(identity: str) -> bytes:
+    if isinstance(identity, str) and identity.startswith("sha256:") and len(identity) == 71:
+        try:
+            return bytes.fromhex(identity[7:])
+        except ValueError:
+            pass
+    return str(identity).encode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -104,15 +116,369 @@ class FabricLedger:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._index_path = self.path.with_name(self.path.name + ".idx")
         self._verified_token: tuple[int, int] | None = None
+        self._full_audit_token: tuple[int, int] | None = None
         self._record_count: int = 0
         self._last_entry: dict[str, Any] | None = None
         self._diagnostics: list[LedgerDiagnostic] = []
         self._partial: bool = False
 
-    def _verify_unlocked(self) -> tuple[int, dict[str, Any] | None, list[LedgerDiagnostic], bool]:
+    def _remove_index_unlocked(self) -> None:
+        try:
+            self._index_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _connect_index_unlocked(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._index_path, isolation_level=None)
+        try:
+            conn.execute("PRAGMA journal_mode=MEMORY")
+            conn.execute("PRAGMA synchronous=OFF")
+            conn.execute("PRAGMA temp_store=MEMORY")
+        except BaseException:
+            conn.close()
+            raise
+        return conn
+
+    @staticmethod
+    def _init_index_tables(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS meta (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                schema_version TEXT NOT NULL,
+                ledger_size INTEGER NOT NULL,
+                record_count INTEGER NOT NULL,
+                first_offset INTEGER NOT NULL,
+                first_length INTEGER NOT NULL,
+                first_entry_id TEXT NOT NULL,
+                prev_entry_id TEXT,
+                last_offset INTEGER NOT NULL,
+                last_length INTEGER NOT NULL,
+                last_entry_id TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS entries (
+                seq INTEGER PRIMARY KEY,
+                offset INTEGER NOT NULL,
+                length INTEGER NOT NULL,
+                record_type TEXT NOT NULL,
+                record_id BLOB NOT NULL
+            )
+            """
+        )
+
+    @staticmethod
+    def _init_index_indexes(conn: sqlite3.Connection) -> None:
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_record_id ON entries(record_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_entries_type_seq ON entries(record_type, seq)")
+
+    @classmethod
+    def _init_index_schema(cls, conn: sqlite3.Connection) -> None:
+        cls._init_index_tables(conn)
+        cls._init_index_indexes(conn)
+
+    def _read_entry_at_unlocked(self, offset: int, length: int, *, line_hint: int = 1) -> dict[str, Any]:
+        if offset < 0 or length <= 0 or not self.path.exists():
+            raise StorageError(f"ledger line {line_hint} offset is invalid")
+        with self.path.open("rb") as stream:
+            stream.seek(offset)
+            raw = stream.read(length)
+        if len(raw) != length or not raw.endswith(b"\n"):
+            raise StorageError(f"ledger line {line_hint} is truncated or misaligned")
+        stripped = raw.rstrip(b"\r\n")
+        if not stripped:
+            raise StorageError(f"ledger line {line_hint} is empty")
+        try:
+            value = json.loads(stripped.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise StorageError(f"ledger line {line_hint} is corrupt: {exc}") from exc
+        if not isinstance(value, dict):
+            raise StorageError(f"ledger line {line_hint} is not an object")
+        if value.get("schema_version") != LEDGER_SCHEMA:
+            raise StorageError(f"ledger line {line_hint} uses an unsupported schema version")
+        required = {
+            "schema_version",
+            "sequence",
+            "previous_identity",
+            "record_type",
+            "record",
+            "record_identity",
+            "entry_identity",
+        }
+        if set(value) != required:
+            raise StorageError(f"ledger line {line_hint} has an unexpected field set")
+        record = value.get("record")
+        if not isinstance(record, dict) or value.get("record_identity") != sha256_identity(record):
+            raise StorageError(f"ledger record identity is invalid at line {line_hint}")
+        material = {key: item for key, item in value.items() if key != "entry_identity"}
+        if value.get("entry_identity") != sha256_identity(material):
+            raise StorageError(f"ledger entry identity is invalid at line {line_hint}")
+        return value
+
+    def _sync_from_index_unlocked(
+        self, stat: os.stat_result, token: tuple[int, int]
+    ) -> tuple[int, dict[str, Any] | None, list[LedgerDiagnostic], bool] | None:
+        if not self._index_path.exists():
+            return None
+        try:
+            with closing(self._connect_index_unlocked()) as conn:
+                row = conn.execute(
+                    """
+                    SELECT schema_version, ledger_size, record_count,
+                           first_offset, first_length, first_entry_id,
+                           prev_entry_id, last_offset, last_length, last_entry_id
+                    FROM meta WHERE id = 1
+                    """
+                ).fetchone()
+                if row is None:
+                    return None
+                (
+                    schema_version,
+                    ledger_size,
+                    record_count,
+                    first_offset,
+                    first_length,
+                    first_entry_id,
+                    prev_entry_id,
+                    last_offset,
+                    last_length,
+                    last_entry_id,
+                ) = row
+                if (
+                    schema_version != INDEX_SCHEMA
+                    or not isinstance(record_count, int)
+                    or record_count < 1
+                    or first_offset != 0
+                    or first_length <= 0
+                    or last_length <= 0
+                    or last_offset + last_length != ledger_size
+                    or ledger_size <= 0
+                    or stat.st_size < ledger_size
+                ):
+                    return None
+                first_entry = self._read_entry_at_unlocked(0, first_length, line_hint=1)
+                self._validate_entry_fast(first_entry, 0, None, 1)
+                if first_entry.get("entry_identity") != first_entry_id:
+                    return None
+                if record_count == 1:
+                    if prev_entry_id is not None or last_offset != 0 or last_length != first_length:
+                        return None
+                    tail_entry = first_entry
+                else:
+                    tail_entry = self._read_entry_at_unlocked(last_offset, last_length, line_hint=record_count)
+                    self._validate_entry_fast(tail_entry, record_count - 1, prev_entry_id, record_count)
+                    if tail_entry.get("entry_identity") != last_entry_id:
+                        return None
+
+                if stat.st_size == ledger_size:
+                    self._verified_token = token
+                    self._record_count = record_count
+                    self._last_entry = tail_entry
+                    self._diagnostics = []
+                    self._partial = False
+                    return record_count, tail_entry, [], False
+
+                # Incremental scan of new bytes appended after ledger_size
+                count = record_count
+                previous_sequence = record_count
+                previous_entry_identity: str | None = str(last_entry_id)
+                prev_for_last: str | None = prev_entry_id
+                last_entry: dict[str, Any] | None = tail_entry
+                diagnostics: list[LedgerDiagnostic] = []
+                trailing_partial = False
+                new_rows: list[tuple[int, int, int, str, bytes]] = []
+                cur_offset = int(ledger_size)
+                cur_last_offset = int(last_offset)
+                cur_last_length = int(last_length)
+
+                with self.path.open("rb") as stream:
+                    stream.seek(ledger_size)
+                    line_number = record_count
+                    for line in stream:
+                        line_number += 1
+                        line_len = len(line)
+                        trailing_partial = not line.endswith(b"\n")
+                        stripped = line.rstrip(b"\r\n")
+                        if not stripped:
+                            if trailing_partial:
+                                diagnostics.append(
+                                    LedgerDiagnostic("TRUNCATED_TAIL", "empty line in partial tail", line_number)
+                                )
+                                break
+                            raise StorageError(f"ledger line {line_number} is empty")
+                        try:
+                            value = json.loads(stripped.decode("utf-8"))
+                        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                            if trailing_partial:
+                                diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", str(exc), line_number))
+                                break
+                            raise StorageError(f"ledger line {line_number} is corrupt: {exc}") from exc
+                        if not isinstance(value, dict):
+                            raise StorageError(f"ledger line {line_number} is not an object")
+                        self._validate_entry_fast(value, previous_sequence, previous_entry_identity, line_number)
+                        prev_for_last = previous_entry_identity
+                        previous_sequence = int(value["sequence"])
+                        previous_entry_identity = str(value["entry_identity"])
+                        last_entry = value
+                        count += 1
+                        cur_last_offset = cur_offset
+                        cur_last_length = line_len
+                        if not trailing_partial:
+                            new_rows.append(
+                                (
+                                    previous_sequence,
+                                    cur_offset,
+                                    line_len,
+                                    str(value["record_type"]),
+                                    _digest_bytes(str(value["record_identity"])),
+                                )
+                            )
+                        cur_offset += line_len
+
+                if trailing_partial and last_entry is not None and not diagnostics:
+                    diagnostics.append(
+                        LedgerDiagnostic(
+                            "TRAILING_NEWLINE_MISSING",
+                            "valid final ledger entry is missing its newline",
+                            count,
+                        )
+                    )
+                if not diagnostics and new_rows and last_entry is not None:
+                    conn.execute("BEGIN")
+                    for idx in range(0, len(new_rows), _INDEX_BATCH_SIZE):
+                        conn.executemany(
+                            "INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?)",
+                            new_rows[idx : idx + _INDEX_BATCH_SIZE],
+                        )
+                    conn.execute(
+                        """
+                        UPDATE meta
+                        SET ledger_size = ?, record_count = ?, prev_entry_id = ?,
+                            last_offset = ?, last_length = ?, last_entry_id = ?
+                        WHERE id = 1
+                        """,
+                        (
+                            stat.st_size,
+                            count,
+                            prev_for_last,
+                            cur_last_offset,
+                            cur_last_length,
+                            str(last_entry["entry_identity"]),
+                        ),
+                    )
+                    conn.execute("COMMIT")
+                self._verified_token = token
+                self._record_count = count
+                self._last_entry = last_entry
+                self._diagnostics = diagnostics
+                self._partial = trailing_partial
+                return count, last_entry, diagnostics, trailing_partial
+        except StorageError:
+            # Anchor or interior corruption: fall back to full byte-0 audit so exact
+            # line-level StorageError is raised deterministically.
+            return None
+        except (sqlite3.Error, OSError, ValueError, TypeError):
+            return None
+
+    def _append_entries_to_index_unlocked(
+        self,
+        new_entries: list[tuple[dict[str, Any], int, int, str | None]],
+        *,
+        new_ledger_size: int,
+    ) -> None:
+        if not new_entries:
+            return
+        try:
+            with closing(self._connect_index_unlocked()) as conn:
+                self._init_index_schema(conn)
+                meta = conn.execute("SELECT record_count, first_offset, first_length, first_entry_id FROM meta WHERE id = 1").fetchone()
+                first_entry, first_off, first_len, _ = new_entries[0]
+                if meta is None:
+                    if int(first_entry["sequence"]) != 1 or first_off != 0:
+                        conn.close()
+                        self._remove_index_unlocked()
+                        return
+                    first_offset = 0
+                    first_length = first_len
+                    first_entry_id = str(first_entry["entry_identity"])
+                else:
+                    first_offset = int(meta[1])
+                    first_length = int(meta[2])
+                    first_entry_id = str(meta[3])
+                rows = [
+                    (
+                        int(entry["sequence"]),
+                        offset,
+                        length,
+                        str(entry["record_type"]),
+                        _digest_bytes(str(entry["record_identity"])),
+                    )
+                    for entry, offset, length, _ in new_entries
+                ]
+                last_entry, last_off, last_len, prev_id = new_entries[-1]
+                conn.execute("BEGIN")
+                conn.executemany("INSERT OR REPLACE INTO entries VALUES (?, ?, ?, ?, ?)", rows)
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO meta (
+                        id, schema_version, ledger_size, record_count,
+                        first_offset, first_length, first_entry_id,
+                        prev_entry_id, last_offset, last_length, last_entry_id
+                    ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        INDEX_SCHEMA,
+                        new_ledger_size,
+                        int(last_entry["sequence"]),
+                        first_offset,
+                        first_length,
+                        first_entry_id,
+                        prev_id,
+                        last_off,
+                        last_len,
+                        str(last_entry["entry_identity"]),
+                    ),
+                )
+                conn.execute("COMMIT")
+        except (sqlite3.Error, OSError):
+            self._remove_index_unlocked()
+
+    def _lookup_by_record_identity_unlocked(self, record_identity: str) -> dict[str, Any] | None:
+        if self._record_count == 0 or not self.path.exists():
+            return None
+        if self._last_entry is not None and self._last_entry.get("record_identity") == record_identity:
+            return self._last_entry
+        if not self._index_path.exists():
+            self._verify_unlocked(full=True)
+        if self._index_path.exists():
+            try:
+                with closing(self._connect_index_unlocked()) as conn:
+                    rows = conn.execute(
+                        "SELECT seq, offset, length FROM entries WHERE record_id = ? ORDER BY seq ASC",
+                        (_digest_bytes(record_identity),),
+                    ).fetchall()
+                for seq, offset, length in rows:
+                    candidate = self._read_entry_at_unlocked(int(offset), int(length), line_hint=int(seq))
+                    if candidate.get("record_identity") == record_identity:
+                        return candidate
+                return None
+            except (sqlite3.Error, OSError, StorageError):
+                self._remove_index_unlocked()
+        for existing in self._stream_unlocked():
+            if existing.get("record_identity") == record_identity:
+                return existing
+        return None
+
+    def _verify_unlocked(self, *, full: bool = False) -> tuple[int, dict[str, Any] | None, list[LedgerDiagnostic], bool]:
         if not self.path.exists():
+            self._remove_index_unlocked()
             self._verified_token = None
+            self._full_audit_token = None
             self._record_count = 0
             self._last_entry = None
             self._diagnostics = []
@@ -120,63 +486,170 @@ class FabricLedger:
             return 0, None, [], False
         stat = self.path.stat()
         token = (stat.st_size, stat.st_mtime_ns)
-        if token == self._verified_token:
-            return (
-                self._record_count,
-                self._last_entry,
-                self._diagnostics,
-                self._partial,
-            )
         if stat.st_size == 0:
+            self._remove_index_unlocked()
             self._verified_token = token
+            self._full_audit_token = token
             self._record_count = 0
             self._last_entry = None
             self._diagnostics = []
             self._partial = False
             return 0, None, [], False
 
+        need_index_rebuild = True
+        if full:
+            if token == self._full_audit_token and (self._record_count == 0 or self._index_path.exists()):
+                return (
+                    self._record_count,
+                    self._last_entry,
+                    self._diagnostics,
+                    self._partial,
+                )
+            synced = self._sync_from_index_unlocked(stat, token)
+            if synced is not None and not synced[2]:
+                need_index_rebuild = False
+        else:
+            if token == self._verified_token and (self._record_count == 0 or self._index_path.exists()):
+                return (
+                    self._record_count,
+                    self._last_entry,
+                    self._diagnostics,
+                    self._partial,
+                )
+            synced = self._sync_from_index_unlocked(stat, token)
+            if synced is not None:
+                return synced
+
         count = 0
         previous_sequence = 0
         previous_entry_identity: str | None = None
+        prev_for_last: str | None = None
         last_entry: dict[str, Any] | None = None
         diagnostics: list[LedgerDiagnostic] = []
         trailing_partial = False
 
-        with self.path.open("rb") as stream:
-            line_number = 0
-            for line in stream:
-                line_number += 1
-                trailing_partial = not line.endswith(b"\n")
-                stripped = line.rstrip(b"\r\n")
-                if not stripped:
-                    if trailing_partial:
-                        diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", "empty line in partial tail", line_number))
-                        break
-                    raise StorageError(f"ledger line {line_number} is empty")
-                try:
-                    value = json.loads(stripped.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-                    if trailing_partial:
-                        diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", str(exc), line_number))
-                        break
-                    raise StorageError(f"ledger line {line_number} is corrupt: {exc}") from exc
-                if not isinstance(value, dict):
-                    raise StorageError(f"ledger line {line_number} is not an object")
-                self._validate_entry_fast(value, previous_sequence, previous_entry_identity, line_number)
-                previous_sequence = int(value["sequence"])
-                previous_entry_identity = str(value["entry_identity"])
-                last_entry = value
-                count += 1
+        first_length = 0
+        first_entry_id = ""
+        last_offset = 0
+        last_length = 0
+        cur_offset = 0
 
-        if trailing_partial and last_entry is not None and not diagnostics:
-            diagnostics.append(
-                LedgerDiagnostic(
-                    "TRAILING_NEWLINE_MISSING",
-                    "valid final ledger entry is missing its newline",
-                    count,
+        conn: sqlite3.Connection | None = None
+        batch: list[tuple[int, int, int, str, bytes]] = []
+        if need_index_rebuild:
+            self._remove_index_unlocked()
+            try:
+                conn = self._connect_index_unlocked()
+                self._init_index_tables(conn)
+                conn.execute("BEGIN")
+            except sqlite3.Error:
+                if conn is not None:
+                    conn.close()
+                conn = None
+
+        try:
+            with self.path.open("rb") as stream:
+                line_number = 0
+                for line in stream:
+                    line_number += 1
+                    line_len = len(line)
+                    trailing_partial = not line.endswith(b"\n")
+                    stripped = line.rstrip(b"\r\n")
+                    if not stripped:
+                        if trailing_partial:
+                            diagnostics.append(
+                                LedgerDiagnostic("TRUNCATED_TAIL", "empty line in partial tail", line_number)
+                            )
+                            break
+                        raise StorageError(f"ledger line {line_number} is empty")
+                    try:
+                        value = json.loads(stripped.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        if trailing_partial:
+                            diagnostics.append(LedgerDiagnostic("TRUNCATED_TAIL", str(exc), line_number))
+                            break
+                        raise StorageError(f"ledger line {line_number} is corrupt: {exc}") from exc
+                    if not isinstance(value, dict):
+                        raise StorageError(f"ledger line {line_number} is not an object")
+                    self._validate_entry_fast(value, previous_sequence, previous_entry_identity, line_number)
+                    prev_for_last = previous_entry_identity
+                    previous_sequence = int(value["sequence"])
+                    previous_entry_identity = str(value["entry_identity"])
+                    last_entry = value
+                    count += 1
+                    if count == 1:
+                        first_length = line_len
+                        first_entry_id = previous_entry_identity
+                    last_offset = cur_offset
+                    last_length = line_len
+                    if conn is not None and not trailing_partial:
+                        batch.append(
+                            (
+                                previous_sequence,
+                                cur_offset,
+                                line_len,
+                                str(value["record_type"]),
+                                _digest_bytes(str(value["record_identity"])),
+                            )
+                        )
+                        if len(batch) >= _INDEX_BATCH_SIZE:
+                            conn.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?)", batch)
+                            batch.clear()
+                    cur_offset += line_len
+
+            if trailing_partial and last_entry is not None and not diagnostics:
+                diagnostics.append(
+                    LedgerDiagnostic(
+                        "TRAILING_NEWLINE_MISSING",
+                        "valid final ledger entry is missing its newline",
+                        count,
+                    )
                 )
-            )
+
+            if conn is not None:
+                if not diagnostics and count > 0 and last_entry is not None:
+                    if batch:
+                        conn.executemany("INSERT INTO entries VALUES (?, ?, ?, ?, ?)", batch)
+                        batch.clear()
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO meta (
+                            id, schema_version, ledger_size, record_count,
+                            first_offset, first_length, first_entry_id,
+                            prev_entry_id, last_offset, last_length, last_entry_id
+                        ) VALUES (1, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            INDEX_SCHEMA,
+                            stat.st_size,
+                            count,
+                            first_length,
+                            first_entry_id,
+                            prev_for_last,
+                            last_offset,
+                            last_length,
+                            str(last_entry["entry_identity"]),
+                        ),
+                    )
+                    self._init_index_indexes(conn)
+                    conn.execute("COMMIT")
+                    conn.close()
+                    conn = None
+                else:
+                    conn.close()
+                    conn = None
+                    self._remove_index_unlocked()
+        except Exception:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+                self._remove_index_unlocked()
+            raise
+
         self._verified_token = token
+        self._full_audit_token = token
         self._record_count = count
         self._last_entry = last_entry
         self._diagnostics = diagnostics
@@ -239,7 +712,7 @@ class FabricLedger:
 
     def verify(self) -> dict[str, Any]:
         with _exclusive_lock(self.path):
-            count, _, diagnostics, _ = self._verify_unlocked()
+            count, _, diagnostics, _ = self._verify_unlocked(full=True)
         return {
             "schema_version": LEDGER_SCHEMA,
             "record_count": count,
@@ -249,7 +722,7 @@ class FabricLedger:
 
     def recover(self, *, repair_truncated_tail: bool = False) -> dict[str, Any]:
         with _exclusive_lock(self.path):
-            count, _, diagnostics, partial = self._verify_unlocked()
+            count, _, diagnostics, partial = self._verify_unlocked(full=True)
             repaired = False
             if partial and repair_truncated_tail:
                 if diagnostics and diagnostics[-1].code == "TRAILING_NEWLINE_MISSING":
@@ -267,8 +740,10 @@ class FabricLedger:
                         stream.flush()
                         os.fsync(stream.fileno())
                 repaired = True
+                self._remove_index_unlocked()
                 self._verified_token = None
-                count, _, diagnostics, _ = self._verify_unlocked()
+                self._full_audit_token = None
+                count, _, diagnostics, _ = self._verify_unlocked(full=True)
         return {
             "record_count": count,
             "diagnostics": [diagnostic.__dict__ for diagnostic in diagnostics],
@@ -280,19 +755,15 @@ class FabricLedger:
         if not isinstance(record_type, str) or not record_type:
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            count, last_entry, diagnostics, _ = self._verify_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked(full=False)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             record_identity = sha256_identity(record)
-            if last_entry is not None and last_entry.get("record_identity") == record_identity:
-                if last_entry.get("record_type") != record_type or last_entry.get("record") != record:
+            existing = self._lookup_by_record_identity_unlocked(record_identity)
+            if existing is not None:
+                if existing.get("record_type") != record_type or existing.get("record") != record:
                     raise StorageError("conflicting duplicate record identity")
-                return last_entry
-            for existing in self._stream_unlocked():
-                if existing.get("record_identity") == record_identity:
-                    if existing.get("record_type") != record_type or existing.get("record") != record:
-                        raise StorageError("conflicting duplicate record identity")
-                    return existing
+                return existing
             previous_identity = last_entry["entry_identity"] if last_entry else None
             entry: dict[str, Any] = {
                 "schema_version": LEDGER_SCHEMA,
@@ -303,12 +774,23 @@ class FabricLedger:
                 "record_identity": record_identity,
             }
             entry["entry_identity"] = sha256_identity(entry)
+            raw_line = canonical_json_bytes(entry) + b"\n"
+            offset = self.path.stat().st_size if self.path.exists() else 0
+            prev_token = self._verified_token
+            had_full_audit = prev_token is not None and self._full_audit_token == prev_token
             with self.path.open("ab") as stream:
-                stream.write(canonical_json_bytes(entry) + b"\n")
+                stream.write(raw_line)
                 stream.flush()
                 os.fsync(stream.fileno())
             stat = self.path.stat()
-            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            new_token = (stat.st_size, stat.st_mtime_ns)
+            self._append_entries_to_index_unlocked(
+                [(entry, offset, len(raw_line), previous_identity)],
+                new_ledger_size=stat.st_size,
+            )
+            self._verified_token = new_token
+            if had_full_audit or count == 0:
+                self._full_audit_token = new_token
             self._record_count = count + 1
             self._last_entry = entry
             self._diagnostics = []
@@ -331,7 +813,7 @@ class FabricLedger:
         if not isinstance(record_type, str) or not record_type:
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            count, last_entry, diagnostics, _ = self._verify_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked(full=False)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             records = list(self._stream_unlocked())
@@ -352,12 +834,23 @@ class FabricLedger:
                 "record_identity": record_identity,
             }
             entry["entry_identity"] = sha256_identity(entry)
+            raw_line = canonical_json_bytes(entry) + b"\n"
+            offset = self.path.stat().st_size if self.path.exists() else 0
+            prev_token = self._verified_token
+            had_full_audit = prev_token is not None and self._full_audit_token == prev_token
             with self.path.open("ab") as stream:
-                stream.write(canonical_json_bytes(entry) + b"\n")
+                stream.write(raw_line)
                 stream.flush()
                 os.fsync(stream.fileno())
             stat = self.path.stat()
-            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            new_token = (stat.st_size, stat.st_mtime_ns)
+            self._append_entries_to_index_unlocked(
+                [(entry, offset, len(raw_line), previous_identity)],
+                new_ledger_size=stat.st_size,
+            )
+            self._verified_token = new_token
+            if had_full_audit or count == 0:
+                self._full_audit_token = new_token
             self._record_count = count + 1
             self._last_entry = entry
             self._diagnostics = []
@@ -380,7 +873,7 @@ class FabricLedger:
         if any(not isinstance(record_type, str) or not record_type for record_type, _ in records_to_append):
             raise StorageError("record_type must be a non-empty string")
         with _exclusive_lock(self.path):
-            count, last_entry, diagnostics, _ = self._verify_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked(full=False)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             records = list(self._stream_unlocked())
@@ -409,13 +902,29 @@ class FabricLedger:
                     previous = entry
             new_entries = [entry for entry in entries if entry not in records]
             if new_entries:
+                offset = self.path.stat().st_size if self.path.exists() else 0
+                prev_token = self._verified_token
+                had_full_audit = prev_token is not None and self._full_audit_token == prev_token
+                indexed_batch: list[tuple[dict[str, Any], int, int, str | None]] = []
                 with self.path.open("ab") as stream:
                     for entry in new_entries:
-                        stream.write(canonical_json_bytes(entry) + b"\n")
+                        raw_line = canonical_json_bytes(entry) + b"\n"
+                        stream.write(raw_line)
+                        indexed_batch.append(
+                            (entry, offset, len(raw_line), entry.get("previous_identity"))
+                        )
+                        offset += len(raw_line)
                     stream.flush()
                     os.fsync(stream.fileno())
                 stat = self.path.stat()
-                self._verified_token = (stat.st_size, stat.st_mtime_ns)
+                new_token = (stat.st_size, stat.st_mtime_ns)
+                self._append_entries_to_index_unlocked(
+                    indexed_batch,
+                    new_ledger_size=stat.st_size,
+                )
+                self._verified_token = new_token
+                if had_full_audit or count == 0:
+                    self._full_audit_token = new_token
                 self._record_count = count + len(new_entries)
                 self._last_entry = new_entries[-1]
                 self._diagnostics = []
@@ -428,9 +937,31 @@ class FabricLedger:
         if limit == 0:
             return []
         with _exclusive_lock(self.path):
-            _, _, diagnostics, _ = self._verify_unlocked()
+            count, _, diagnostics, _ = self._verify_unlocked(full=False)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
+            if count == 0:
+                return []
+            if self._index_path.exists():
+                try:
+                    with closing(self._connect_index_unlocked()) as conn:
+                        if record_type is None:
+                            rows = conn.execute(
+                                "SELECT seq, offset, length FROM entries ORDER BY seq DESC LIMIT ?",
+                                (limit,),
+                            ).fetchall()
+                        else:
+                            rows = conn.execute(
+                                "SELECT seq, offset, length FROM entries WHERE record_type = ? ORDER BY seq DESC LIMIT ?",
+                                (record_type, limit),
+                            ).fetchall()
+                    rows.reverse()
+                    return [
+                        self._read_entry_at_unlocked(int(offset), int(length), line_hint=int(seq))
+                        for seq, offset, length in rows
+                    ]
+                except (sqlite3.Error, OSError, StorageError):
+                    self._remove_index_unlocked()
             window: collections.deque[dict[str, Any]] = collections.deque(maxlen=limit)
             for entry in self._stream_unlocked():
                 if record_type is None or entry.get("record_type") == record_type:
@@ -447,7 +978,7 @@ class FabricLedger:
         """
 
         with _exclusive_lock(self.path):
-            _, _, diagnostics, _ = self._verify_unlocked()
+            _, _, diagnostics, _ = self._verify_unlocked(full=True)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             for entry in self._stream_unlocked():
@@ -458,7 +989,7 @@ class FabricLedger:
         """Read the full authoritative ledger for deterministic derived-state rebuilds."""
 
         with _exclusive_lock(self.path):
-            _, _, diagnostics, _ = self._verify_unlocked()
+            _, _, diagnostics, _ = self._verify_unlocked(full=True)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             return [
@@ -499,7 +1030,7 @@ class FabricLedger:
         from datetime import datetime, timezone
 
         with _exclusive_lock(self.path):
-            count, last_entry, diagnostics, _ = self._verify_unlocked()
+            count, last_entry, diagnostics, _ = self._verify_unlocked(full=True)
             if diagnostics:
                 raise StorageError("ledger has an unrepaired truncated tail")
             kept: list[dict[str, Any]] = []
@@ -545,14 +1076,28 @@ class FabricLedger:
             receipt_entry["entry_identity"] = sha256_identity(receipt_entry)
             resealed.append(receipt_entry)
             staged = self.path.with_name(self.path.name + f".compact.{os.getpid()}.tmp")
+            indexed_batch: list[tuple[dict[str, Any], int, int, str | None]] = []
+            offset = 0
             with staged.open("wb") as stream:
                 for item in resealed:
-                    stream.write(canonical_json_bytes(item) + b"\n")
+                    raw_line = canonical_json_bytes(item) + b"\n"
+                    stream.write(raw_line)
+                    indexed_batch.append(
+                        (item, offset, len(raw_line), item.get("previous_identity"))
+                    )
+                    offset += len(raw_line)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(staged, self.path)
             stat = self.path.stat()
-            self._verified_token = (stat.st_size, stat.st_mtime_ns)
+            self._remove_index_unlocked()
+            self._append_entries_to_index_unlocked(
+                indexed_batch,
+                new_ledger_size=stat.st_size,
+            )
+            token = (stat.st_size, stat.st_mtime_ns)
+            self._verified_token = token
+            self._full_audit_token = token
             self._record_count = len(resealed)
             self._last_entry = resealed[-1]
             self._diagnostics = []

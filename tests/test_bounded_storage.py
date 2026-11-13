@@ -338,6 +338,111 @@ class TestBoundedStorageArchitecture(unittest.TestCase):
             doc = svc.doctor()
             self.assertEqual(doc["checks"]["storage"], "PASS")
 
+    def test_ledger_append_scales_constantly_and_detects_duplicates_and_corruption(self) -> None:
+        """Append latency does not scale linearly with ledger history while preserving duplicate/collision/corruption guarantees."""
+        from mncs_fabric.errors import StorageError
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ledger_path = Path(temp_dir) / "scaling.jsonl"
+            ledger = FabricLedger(ledger_path)
+
+            # Seed 200 initial records and measure per-append time
+            for i in range(200):
+                ledger.append("event.alpha", {"seq": i, "payload": "a" * 256})
+            t_small_0 = time.perf_counter()
+            for i in range(200, 220):
+                ledger.append("event.alpha", {"seq": i, "payload": "a" * 256})
+            small_per_append = (time.perf_counter() - t_small_0) / 20.0
+
+            # Grow to 4,000 records (20x larger) and measure per-append time
+            for i in range(220, 4000):
+                ledger.append("event.beta" if i % 5 == 0 else "event.alpha", {"seq": i, "payload": "a" * 256})
+            t_large_0 = time.perf_counter()
+            for i in range(4000, 4020):
+                ledger.append("event.alpha", {"seq": i, "payload": "a" * 256})
+            large_per_append = (time.perf_counter() - t_large_0) / 20.0
+
+            # Reopened instance append on 4,020-record ledger
+            reopened = FabricLedger(ledger_path)
+            t_reopen_0 = time.perf_counter()
+            reopened.append("event.beta", {"seq": 4020, "payload": "a" * 256})
+            reopen_append = time.perf_counter() - t_reopen_0
+
+            # Large append and reopened append must remain fast (< 25ms per append)
+            self.assertLess(small_per_append, 0.025)
+            self.assertLess(large_per_append, 0.025)
+            self.assertLess(reopen_append, 0.050)
+
+            # Duplicate idempotent return & conflicting record_type rejection at head, middle, and tail
+            for target_seq in (0, 2000, 4020):
+                expected_type = "event.beta" if (target_seq == 4020 or (target_seq >= 220 and target_seq % 5 == 0)) else "event.alpha"
+                dup = reopened.append(expected_type, {"seq": target_seq, "payload": "a" * 256})
+                self.assertEqual(dup["sequence"], target_seq + 1)
+                with self.assertRaisesRegex(StorageError, "conflicting duplicate record identity"):
+                    reopened.append("event.conflicting", {"seq": target_seq, "payload": "a" * 256})
+
+            # Indexed filtered tail window query
+            beta_tail = reopened.records(record_type="event.beta", limit=3)
+            self.assertEqual([e["record"]["seq"] for e in beta_tail], [3990, 3995, 4020])
+
+            # Corrupting or deleting the sidecar .idx file auto-recovers transparently
+            idx_path = ledger_path.with_name(ledger_path.name + ".idx")
+            self.assertTrue(idx_path.exists())
+            idx_path.write_bytes(b"corrupted-sqlite-header")
+            recovered_reader = FabricLedger(ledger_path)
+            self.assertEqual(recovered_reader.records(record_type="event.beta", limit=1)[0]["record"]["seq"], 4020)
+            recovered_reader.append("event.alpha", {"seq": 4021, "payload": "a" * 256})
+            self.assertEqual(recovered_reader.verify()["record_count"], 4022)
+
+            # Corrupting an interior ledger record in .jsonl is caught by verify() and all_records()
+            lines = ledger_path.read_text(encoding="utf-8").splitlines()
+            mid = json.loads(lines[1500])
+            mid["record"]["payload"] = "tampered"
+            lines[1500] = json.dumps(mid, sort_keys=True)
+            ledger_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            auditor = FabricLedger(ledger_path)
+            with self.assertRaises(StorageError):
+                auditor.verify()
+            with self.assertRaises(StorageError):
+                auditor.all_records()
+
+    def test_network_controller_suppresses_unchanged_liveness_and_telemetry_drift(self) -> None:
+        """Repeated fleet refreshes with unchanged unavailability or volatile description drift do not bloat the ledger."""
+        import copy
+        from mncs_fabric.controller import NetworkController
+        from tests.test_fleet_refresh import _CachedDescribeTransport, _DownTransport
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            ledger_path = root / "controller-workers-network.jsonl"
+            ctrl = NetworkController("ctrl-1", ledger_path)
+            desc1 = _sample_worker_description("worker-up", sequence=1)
+            up_transport = _CachedDescribeTransport(desc1)
+            ctrl.register_remote("worker-up", frozenset({"python"}), up_transport)
+            ctrl.register_remote("worker-down", frozenset({"python"}), _DownTransport())
+
+            # First fleet refresh records initial worker.description.request, worker.description, worker.state, and down worker.liveness
+            report1 = ctrl.refresh_fleet()
+            self.assertEqual(report1["outcome"], "PASS")
+            initial_count = len(ctrl.ledger.all_records())
+            self.assertEqual(initial_count, 4)
+
+            # 20 repeated refreshes with volatile timestamp/telemetry drift on worker-up and same failure on worker-down
+            for seq in range(2, 22):
+                up_transport.description = _sample_worker_description("worker-up", sequence=seq)
+                ctrl.refresh_fleet()
+
+            # Ledger record count must remain 4 (no bloat from unchanged unavailability or timestamp drift)
+            self.assertEqual(len(ctrl.ledger.all_records()), initial_count)
+
+            # Material change on worker-up (service version change) IS persisted
+            material_desc = copy.deepcopy(up_transport.description)
+            material_desc["worker_service_version"] = "0.2.0a99"
+            material_desc.update(attach_identity(material_desc, "description_identity"))
+            up_transport.description = material_desc
+            ctrl.refresh_fleet()
+            self.assertEqual(len(ctrl.ledger.all_records()), initial_count + 3)
+
 
 if __name__ == "__main__":
     unittest.main()

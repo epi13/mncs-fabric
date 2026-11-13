@@ -1382,7 +1382,7 @@ class ControllerService:
 
         health = self.lifecycle.doctor(now=now)
         service_health = self.service_ledger.verify()
-        service_events = self.service_ledger.records(record_type="controller.service")
+        service_events = self.service_ledger.records(record_type="controller.service", limit=1)
         latest_event = service_events[-1]["record"].get("event") if service_events else None
         runtime = "RUNNING" if latest_event == "started" else "STOPPED" if latest_event == "stopped" else "NOT_STARTED"
         public_contract = build_public_contract(__version__)
@@ -1398,7 +1398,7 @@ class ControllerService:
             "service_ledger": {
                 "path": str(self.service_ledger.path),
                 "size_bytes": self.service_ledger.path.stat().st_size if self.service_ledger.path.exists() else 0,
-                "record_count": self.service_ledger.verify().get("record_count", 0),
+                "record_count": service_health.get("record_count", 0),
             },
             "replay_state": {
                 "path": str(self._replay_cache._state_path) if self._replay_cache._state_path is not None else None,

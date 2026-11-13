@@ -513,6 +513,7 @@ class NetworkController(LocalController):
         self.runtime_observations: dict[str, dict[str, Any]] = {}
         self.runtime_capability_observations: dict[str, dict[str, Any]] = {}
         self.remote_liveness: dict[str, dict[str, Any]] = {}
+        self._persisted_liveness_keys: dict[str, tuple[str, str | None, str | None]] = {}
         self._remote_lock = threading.Lock()
 
     def register_remote(self, worker_id: str, capabilities: frozenset[str], transport: EnvelopeTransport, *, concurrency_limit: int = 1, resource_snapshot: dict[str, Any] | None = None) -> None:
@@ -585,8 +586,10 @@ class NetworkController(LocalController):
         if response.get("message_type") != "worker.describe.result" or response.get("worker_id") != worker_id or response.get("controller_id") != self.controller_id:
             raise ProtocolError("worker description response identity is invalid")
         description = validate_worker_description(response["payload"].get("description"), expected_worker_id=worker_id)
+        from .rendezvous import material_description_key
+
         current = self.remote_descriptions.get(worker_id)
-        if current is None or current.get("description_identity") != description.get("description_identity"):
+        if current is None or material_description_key(current) != material_description_key(description):
             self.ledger.append("worker.description.request", envelope)
             self.ledger.append("worker.description", description)
         return description
@@ -603,13 +606,20 @@ class NetworkController(LocalController):
     def _set_remote_state(self, worker_id: str, *, description: dict[str, Any] | None, state: str, failure: str | None = None) -> dict[str, Any]:
         if worker_id not in self.remote_workers:
             raise ProtocolError(f"worker is not registered: {worker_id}")
+        from .rendezvous import material_description_key
+
         with self._remote_lock:
             transport, slot = self.remote_workers[worker_id]
             current_desc = self.remote_descriptions.get(worker_id)
+            new_mat_key = material_description_key(description) if description is not None else (
+                material_description_key(current_desc) if current_desc is not None else None
+            )
             desc_changed = description is not None and (
                 current_desc is None
-                or current_desc.get("description_identity") != description.get("description_identity")
+                or material_description_key(current_desc) != new_mat_key
             )
+            prev_persisted = self._persisted_liveness_keys.get(worker_id)
+            state_changed = prev_persisted is None or prev_persisted[:2] != (state, failure)
             liveness = build_liveness_observation(worker_id=worker_id, state=state, observed_at=utc_now(), description_identity=description.get("description_identity") if description else (self.remote_liveness.get(worker_id, {}).get("description_identity")), lease_seconds=DESCRIPTION_LEASE_SECONDS, last_failure=failure)
             self.remote_liveness[worker_id] = liveness
             if description is not None:
@@ -647,8 +657,10 @@ class NetworkController(LocalController):
                     # embedding the same multi-KB object here doubled every
                     # description change in the controller ledger.
                     self.ledger.append("worker.state", {"worker_id": worker_id, "description_identity": description["description_identity"], "liveness": liveness})
-                else:
+                    self._persisted_liveness_keys[worker_id] = (state, failure, new_mat_key)
+                elif state_changed:
                     self.ledger.append("worker.liveness", liveness)
+                    self._persisted_liveness_keys[worker_id] = (state, failure, new_mat_key)
             else:
                 slot = dataclasses.replace(
                     slot,
@@ -656,7 +668,9 @@ class NetworkController(LocalController):
                     liveness="AVAILABLE" if state == "AVAILABLE" else "UNAVAILABLE",
                 )
                 self.remote_workers[worker_id] = (transport, slot)
-                self.ledger.append("worker.liveness", liveness)
+                if state_changed:
+                    self.ledger.append("worker.liveness", liveness)
+                    self._persisted_liveness_keys[worker_id] = (state, failure, new_mat_key)
             return self._worker_state_unlocked(worker_id, apply_lease=False)
 
     def refresh_remote(self, worker_id: str, *, deadline_seconds: float | None = None) -> dict[str, Any]:
@@ -956,6 +970,13 @@ class NetworkController(LocalController):
                     self.remote_workers[worker_id] = (transport, slot)
                 if liveness is not None:
                     self.remote_liveness[worker_id] = liveness
+                    from .rendezvous import material_description_key
+
+                    self._persisted_liveness_keys[worker_id] = (
+                        str(liveness.get("state", "UNKNOWN")),
+                        liveness.get("last_failure"),
+                        material_description_key(description) if description is not None else None,
+                    )
                 restored += 1
         return {
             "restored_workers": restored,
